@@ -1,5 +1,5 @@
 {
-  "packageName": "py-mergin-client",
-  "projectName": "mergin-api",
+  "packageName": "mergin_client",
+  "projectName": "mergin_client",
   "packageVersion": "0.1"
 }

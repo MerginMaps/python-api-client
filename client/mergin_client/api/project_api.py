@@ -18,7 +18,7 @@ import re  # noqa: F401
 # python 2 and python 3 compatibility library
 import six
 
-from py-mergin-client.api_client import ApiClient
+from mergin_client.api_client import ApiClient
 
 
 class ProjectApi(object):

@@ -1,4 +1,4 @@
-# py-mergin-client.ProjectApi
+# mergin_client.ProjectApi
 
 All URIs are relative to *https://localhost/v1*
 
@@ -24,18 +24,18 @@ Add a new mergin project.
 ```python
 from __future__ import print_function
 import time
-import py-mergin-client
-from py-mergin-client.rest import ApiException
+import mergin_client
+from mergin_client.rest import ApiException
 from pprint import pprint
 
 # Configure HTTP basic authorization: basicAuth
-configuration = py-mergin-client.Configuration()
+configuration = mergin_client.Configuration()
 configuration.username = 'YOUR_USERNAME'
 configuration.password = 'YOUR_PASSWORD'
 
 # create an instance of the API class
-api_instance = py-mergin-client.ProjectApi(py-mergin-client.ApiClient(configuration))
-project = py-mergin-client.Project() # Project | Project object that needs to be added to the database.
+api_instance = mergin_client.ProjectApi(mergin_client.ApiClient(configuration))
+project = mergin_client.Project() # Project | Project object that needs to be added to the database.
 
 try:
     # Add a new mergin project.
@@ -76,17 +76,17 @@ Delete a project.
 ```python
 from __future__ import print_function
 import time
-import py-mergin-client
-from py-mergin-client.rest import ApiException
+import mergin_client
+from mergin_client.rest import ApiException
 from pprint import pprint
 
 # Configure HTTP basic authorization: basicAuth
-configuration = py-mergin-client.Configuration()
+configuration = mergin_client.Configuration()
 configuration.username = 'YOUR_USERNAME'
 configuration.password = 'YOUR_PASSWORD'
 
 # create an instance of the API class
-api_instance = py-mergin-client.ProjectApi(py-mergin-client.ApiClient(configuration))
+api_instance = mergin_client.ProjectApi(mergin_client.ApiClient(configuration))
 project_name = 'project_name_example' # str | name of project to delete.
 
 try:
@@ -126,17 +126,17 @@ Download dir for single project.
 ```python
 from __future__ import print_function
 import time
-import py-mergin-client
-from py-mergin-client.rest import ApiException
+import mergin_client
+from mergin_client.rest import ApiException
 from pprint import pprint
 
 # Configure HTTP basic authorization: basicAuth
-configuration = py-mergin-client.Configuration()
+configuration = mergin_client.Configuration()
 configuration.username = 'YOUR_USERNAME'
 configuration.password = 'YOUR_PASSWORD'
 
 # create an instance of the API class
-api_instance = py-mergin-client.ProjectApi(py-mergin-client.ApiClient(configuration))
+api_instance = mergin_client.ProjectApi(mergin_client.ApiClient(configuration))
 project_name = 'project_name_example' # str | name of project to return.
 format = 'format_example' # str | output format. (optional)
 
@@ -178,17 +178,17 @@ Download single project file.
 ```python
 from __future__ import print_function
 import time
-import py-mergin-client
-from py-mergin-client.rest import ApiException
+import mergin_client
+from mergin_client.rest import ApiException
 from pprint import pprint
 
 # Configure HTTP basic authorization: basicAuth
-configuration = py-mergin-client.Configuration()
+configuration = mergin_client.Configuration()
 configuration.username = 'YOUR_USERNAME'
 configuration.password = 'YOUR_PASSWORD'
 
 # create an instance of the API class
-api_instance = py-mergin-client.ProjectApi(py-mergin-client.ApiClient(configuration))
+api_instance = mergin_client.ProjectApi(mergin_client.ApiClient(configuration))
 project_name = 'project_name_example' # str | name of project.
 file = 'file_example' # str | path of file.
 
@@ -232,17 +232,17 @@ Returns a single project.
 ```python
 from __future__ import print_function
 import time
-import py-mergin-client
-from py-mergin-client.rest import ApiException
+import mergin_client
+from mergin_client.rest import ApiException
 from pprint import pprint
 
 # Configure HTTP basic authorization: basicAuth
-configuration = py-mergin-client.Configuration()
+configuration = mergin_client.Configuration()
 configuration.username = 'YOUR_USERNAME'
 configuration.password = 'YOUR_PASSWORD'
 
 # create an instance of the API class
-api_instance = py-mergin-client.ProjectApi(py-mergin-client.ApiClient(configuration))
+api_instance = mergin_client.ProjectApi(mergin_client.ApiClient(configuration))
 project_name = 'project_name_example' # str | name of project to return
 
 try:
@@ -285,17 +285,17 @@ Returns list of all projects.
 ```python
 from __future__ import print_function
 import time
-import py-mergin-client
-from py-mergin-client.rest import ApiException
+import mergin_client
+from mergin_client.rest import ApiException
 from pprint import pprint
 
 # Configure HTTP basic authorization: basicAuth
-configuration = py-mergin-client.Configuration()
+configuration = mergin_client.Configuration()
 configuration.username = 'YOUR_USERNAME'
 configuration.password = 'YOUR_PASSWORD'
 
 # create an instance of the API class
-api_instance = py-mergin-client.ProjectApi(py-mergin-client.ApiClient(configuration))
+api_instance = mergin_client.ProjectApi(mergin_client.ApiClient(configuration))
 
 try:
     # Find all mergin projects.
@@ -334,19 +334,19 @@ Update an existing project.
 ```python
 from __future__ import print_function
 import time
-import py-mergin-client
-from py-mergin-client.rest import ApiException
+import mergin_client
+from mergin_client.rest import ApiException
 from pprint import pprint
 
 # Configure HTTP basic authorization: basicAuth
-configuration = py-mergin-client.Configuration()
+configuration = mergin_client.Configuration()
 configuration.username = 'YOUR_USERNAME'
 configuration.password = 'YOUR_PASSWORD'
 
 # create an instance of the API class
-api_instance = py-mergin-client.ProjectApi(py-mergin-client.ApiClient(configuration))
+api_instance = mergin_client.ProjectApi(mergin_client.ApiClient(configuration))
 project_name = 'project_name_example' # str | name of project that need to be updated.
-project = py-mergin-client.Project1() # Project1 | Project object that needs to be updated.
+project = mergin_client.Project1() # Project1 | Project object that needs to be updated.
 
 try:
     # Update an existing project.

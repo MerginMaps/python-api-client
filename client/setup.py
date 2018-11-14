@@ -13,7 +13,7 @@
 
 from setuptools import setup, find_packages  # noqa: H301
 
-NAME = "mergin-api"
+NAME = "mergin_client"
 VERSION = "0.1"
 # To install the library, run the following
 #

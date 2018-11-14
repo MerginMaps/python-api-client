@@ -16,7 +16,7 @@ import re  # noqa: F401
 
 import six
 
-from py-mergin-client.models.storage_params import StorageParams  # noqa: F401,E501
+from mergin_client.models.storage_params import StorageParams  # noqa: F401,E501
 
 
 class Project1(object):

@@ -16,9 +16,9 @@ import re  # noqa: F401
 
 import six
 
-from py-mergin-client.models.project import Project  # noqa: F401,E501
-from py-mergin-client.models.project_meta import ProjectMeta  # noqa: F401,E501
-from py-mergin-client.models.project_storage_params import ProjectStorageParams  # noqa: F401,E501
+from mergin_client.models.project import Project  # noqa: F401,E501
+from mergin_client.models.project_meta import ProjectMeta  # noqa: F401,E501
+from mergin_client.models.project_storage_params import ProjectStorageParams  # noqa: F401,E501
 
 
 class ProjectListItem(object):

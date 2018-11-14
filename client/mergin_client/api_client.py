@@ -23,9 +23,9 @@ import tempfile
 import six
 from six.moves.urllib.parse import quote
 
-from py-mergin-client.configuration import Configuration
-import py-mergin-client.models
-from py-mergin-client import rest
+from mergin_client.configuration import Configuration
+import mergin_client.models
+from mergin_client import rest
 
 
 class ApiClient(object):
@@ -258,7 +258,7 @@ class ApiClient(object):
             if klass in self.NATIVE_TYPES_MAPPING:
                 klass = self.NATIVE_TYPES_MAPPING[klass]
             else:
-                klass = getattr(py-mergin-client.models, klass)
+                klass = getattr(mergin_client.models, klass)
 
         if klass in self.PRIMITIVE_TYPES:
             return self.__deserialize_primitive(data, klass)
