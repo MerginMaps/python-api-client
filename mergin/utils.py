@@ -39,3 +39,9 @@ def save_to_file(stream, path):
             else:
                 writer.flush()
                 break
+
+def move_file(src, dest):
+    dest_dir = os.path.dirname(dest)
+    if not os.path.exists(dest_dir):
+        os.makedirs(dest_dir)
+    os.rename(src, dest)

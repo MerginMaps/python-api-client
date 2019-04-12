@@ -1,10 +1,11 @@
 import os
 import json
 import base64
+import shutil
 import urllib.parse
 import urllib.request
 
-from .utils import save_to_file, generate_checksum
+from .utils import save_to_file, generate_checksum, move_file
 from .multipart import MultipartReader, MultipartEncoder, Field, parse_boundary
 
 
@@ -81,6 +82,15 @@ def inspect_project(directory):
     with open(info_file, 'r') as f:
         return json.load(f)
 
+def save_project_file(project_directory, data):
+    meta_dir = os.path.join(project_directory, '.mergin')
+    if not os.path.exists(meta_dir):
+        os.makedirs(meta_dir)
+
+    project_file = os.path.join(meta_dir, 'mergin.json')
+    with open(project_file, 'w') as f:
+        json.dump(data, f, indent=2)
+
 
 class MerginClient:
 
@@ -106,10 +116,10 @@ class MerginClient:
             if e.headers.get("Content-Type", "") == "application/problem+json":
                 info = json.load(e)
                 raise ClientError(info.get("detail"))
-            raise ClientError(e.read())
+            raise ClientError(e.read().decode("utf-8"))
 
     def get(self, path, data=None):
-        url = urllib.parse.urljoin(self.url, path)
+        url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         if data:
             url += "?" + urllib.parse.urlencode(data)
         request = urllib.request.Request(url)
@@ -118,7 +128,7 @@ class MerginClient:
         return self._do_request(request)
 
     def post(self, path, data, headers={}):
-        url = urllib.parse.urljoin(self.url, path)
+        url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         if headers.get("Content-Type", None) == "application/json":
             data = json.dumps(data).encode("utf-8")
         request = urllib.request.Request(url, data, headers)
@@ -139,16 +149,21 @@ class MerginClient:
         :param is_public: Flag for public/private project
         :type directory: Boolean
         """
+        if not os.path.exists(directory):
+            raise Exception("Project directory does not exists")
+
         params = {
             "name": project_name,
             "public": is_public
         }
-        self.post(
-            "/v1/project".format(project_name),
-            params,
-            {"Content-Type": "application/json"}
-        )
-        self.push_project(project_name, directory)
+        self.post("/v1/project", params, {"Content-Type": "application/json"})
+        data = {
+            "name": project_name,
+            "version": "",
+            "files": None
+        }
+        save_project_file(directory, data)
+        self.push_project(directory)
 
     def projects_list(self, tags=None):
         """
@@ -213,15 +228,12 @@ class MerginClient:
             save_to_file(part, dest)
             part = reader.next_part()
 
-        meta_dir = os.path.join(directory, '.mergin')
-        os.makedirs(meta_dir)
-        info_path = os.path.join(meta_dir, 'mergin.json')
-        with open(info_path, 'w') as f:
-            data = {
-                "name": project_name,
-                "version": project_info["version"]
-            }
-            json.dump(data, f, indent=2)
+        data = {
+            "name": project_name,
+            "version": project_info["version"],
+            "files": project_info["files"]
+        }
+        save_project_file(directory, data)
 
     def push_project(self, directory):
         """
@@ -233,7 +245,7 @@ class MerginClient:
         local_info = inspect_project(directory)
         project_name = local_info["name"]
         server_info = self.project_info(project_name)
-        if local_info["version"] != server_info["version"]:
+        if local_info.get("version", "") != server_info.get("version", ""):
             raise Exception("Update your local repository")
 
         files = list_project_directory(directory)
@@ -249,6 +261,10 @@ class MerginClient:
 
             encoder = MultipartEncoder(fields())
             resp = self.post("/v1/project/data_sync/{}".format(project_name), encoder, encoder.get_headers())
+            new_project_info = json.load(resp)
+            local_info["files"] = new_project_info["files"]
+            local_info["version"] = new_project_info["version"]
+            save_project_file(directory, local_info)
 
     def pull_project(self, directory):
         """
@@ -265,25 +281,41 @@ class MerginClient:
         files = list_project_directory(directory)
         changes = project_changes(files, server_info["files"])
 
-        # TODO: locally modified files
+        def local_path(path):
+            return os.path.join(directory, path)
+
+        def can_overwrite(file):
+            return False
+
+        fetch_files = changes["added"] + changes["updated"]
+        if fetch_files:
+            resp = self.post(
+                "/v1/project/fetch/{}".format(project_name),
+                fetch_files,
+                {"Content-Type": "application/json"}
+            )
+            reader = MultipartReader(resp, parse_boundary(resp.headers["Content-Type"]))
+            part = reader.next_part()
+            temp_dir = os.path.join(directory, '.mergin', 'fetch_{}'.format(server_info["version"]))
+            while part:
+                print("Fetching", part.filename)
+                dest = os.path.join(temp_dir, part.filename)
+                save_to_file(part, dest)
+                part = reader.next_part()
+
+            for file in fetch_files:
+                src = os.path.join(temp_dir, file["path"])
+                move_file(src, local_path(file["path"]))
+            shutil.rmtree(temp_dir)
+
         for file in changes["removed"]:
-            print("Delete", file["path"])
+            print("Deleting", file["path"])
+            os.remove(local_path(file["path"]))
 
         for file in changes["renamed"]:
-            print("Rename", file["path"], "->", file["new_path"])
+            print("Renaming", file["path"], "->", file["new_path"])
+            move_file(local_path(file["path"]), local_path(file["new_path"]))
 
-        # fetch_files = [file["path"] for file in changes["added"] + changes["updated"]]
-        fetch_files = changes["added"] + changes["updated"]
-        print("Download", fetch_files)
-        resp = self.post(
-            "/v1/project/fetch/{}".format(project_name),
-            fetch_files,
-            {"Content-Type": "application/json"}
-        )
-        reader = MultipartReader(resp, parse_boundary(resp.headers["Content-Type"]))
-        part = reader.next_part()
-        while part:
-            print("Part", part.filename)
-            # dest = os.path.join(directory, part.filename)
-            # save_to_file(part, dest)
-            part = reader.next_part()
+        local_info["files"] = server_info["files"]
+        local_info["version"] = server_info["version"]
+        save_project_file(directory, local_info)
