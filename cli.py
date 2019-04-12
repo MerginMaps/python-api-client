@@ -20,42 +20,40 @@ from mergin import (
 )
 
 # TODO: use config file
-url = 'http://localhost:5000'
+url = "http://localhost:5000"
 
+
+def get_changes_count(diff):
+    attrs = ["added", "removed", "updated", "renamed"]
+    return sum([len(diff[attr]) for attr in attrs])
 
 def pretty_diff(diff):
     added = diff["added"]
     removed = diff["removed"]
     updated = diff["updated"]
     renamed = diff["renamed"]
-    total_changes = sum([len(l) for l in (added, removed, updated, renamed)])
-    if total_changes == 0:
-        print("No local changes!")
-        return
-
-    print("Local changes:", total_changes)
 
     if renamed:
-        print("\n>>> Renamed:")
+        click.secho("\n>>> Renamed:", fg="cyan")
         for f in renamed:
-            print(f["path"], "->", f["new_path"])
+            click.echo(" ".join([f["path"], "->", f["new_path"]]))
 
     if removed:
-        print("\n>>> Removed:")
-        print("\n".join("- " + f["path"] for f in removed))
+        click.secho("\n>>> Removed:", fg="cyan")
+        click.secho("\n".join("- " + f["path"] for f in removed), fg="red")
 
     if added:
-        print("\n>>> Added:")
-        print("\n".join("+ " + f["path"] for f in added))
+        click.secho("\n>>> Added:", fg="cyan")
+        click.secho("\n".join("+ " + f["path"] for f in added), fg="green")
 
     if updated:
-        print("\n>>> Modified:")
-        print("\n".join("M " + f["path"] for f in updated))
+        click.secho("\n>>> Modified:", fg="cyan")
+        click.secho("\n".join("M " + f["path"] for f in updated), fg="yellow")
 
 
 def _init_client(url, auth):
     if auth:
-        username, password = auth.split(':', 1)
+        username, password = auth.split(":", 1)
         return MerginClient(url, username, password)
 
     return MerginClient(url)
@@ -67,16 +65,21 @@ def cli():
 
 @cli.command()
 # @click.argument('url')
-@click.argument('project', type=click.Path(exists=True))
+@click.argument('directory', type=click.Path(exists=True))
 @click.option('--public', default=False, help='Public project, visible to everyone')
 @click.option('--auth', '-a', help='Authentication in form <username>:<password>')
-def init(project, public, auth):
-    """Initialize new project from existing PROJECT directory name"""
+def init(directory, public, auth):
+    """Initialize new project from existing DIRECTORY name"""
 
+    directory = os.path.abspath(directory)
+    project_name = os.path.basename(directory)
     c = _init_client(url, auth)
-    c.create_project(project, project, is_public=False)
-    click.echo('Done')
 
+    try:
+        c.create_project(project_name, directory, is_public=False)
+        click.echo('Done')
+    except Exception as e:
+        click.secho(str(e), fg='red')
 
 @cli.command()
 # @click.argument('url')
@@ -105,25 +108,43 @@ def status(auth):
     try:
         project_info = inspect_project(os.getcwd())
     except InvalidProject:
-        click.echo('Invalid project directory')
+        click.secho('Invalid project directory', fg='red')
         return
 
     project_name = project_info["name"]
     c = _init_client(url, auth)
 
     local_version = num_version(project_info["version"])
-    versions = c.project_versions(project_name)
-    last_version = versions[-1]
+    local_files = list_project_directory(os.getcwd())
 
+    try:
+        versions = c.project_versions(project_name)
+    except Exception as e:
+        click.secho(str(e), fg='red')
+        return
+
+    click.echo("Current version: {}".format(project_info["version"]))
+    last_version = versions[-1]
     new_versions = [v for v in versions if num_version(v["name"]) > local_version]
     if new_versions:
-        print("Updates from server:", len(new_versions))
-        print()
+        click.secho("### Available updates: {}".format(len(new_versions)), fg="magenta")
 
-    server_files = c.project_info(project_name)["files"]
-    local_files = list_project_directory(os.getcwd())
-    changes = project_changes(server_files, local_files)
-    pretty_diff(changes)
+        # TODO: insufficient API, files could be included in versions,
+        # or we should be able to request project_info at specific version
+        server_files = c.project_info(project_name)["files"]
+        changes = project_changes(local_files, server_files)
+        click.echo()
+        click.secho("### Changes:", fg="magenta")
+        pretty_diff(changes)
+        click.echo()
+
+    changes = project_changes(project_info["files"], local_files)
+    changes_count = get_changes_count(changes)
+    if changes_count:
+        click.secho("### Local changes: {}".format(changes_count), fg="magenta")
+        pretty_diff(changes)
+    else:
+        click.echo("No local changes!")
     # TODO: show conflicts
 
 @cli.command()
@@ -137,7 +158,7 @@ def push(auth):
     except InvalidProject:
         click.echo('Invalid project directory')
     except Exception as e:
-        click.echo(str(e))
+        click.secho(str(e), fg='red')
 
 @cli.command()
 @click.option('--auth', '-a', help='Authentication in form <username>:<password>')
@@ -148,7 +169,7 @@ def pull(auth):
     try:
         c.pull_project(os.getcwd())
     except InvalidProject:
-        click.echo('Invalid project directory')
+        click.secho('Invalid project directory', fg='red')
 
 @cli.command()
 @click.argument('directory', required=False)
@@ -157,14 +178,17 @@ def modtime(directory):
     Show files modification time info. For debug purposes only.
     """
     from datetime import datetime
-    directory = directory or os.getcwd()
-    for root, dirs, files in os.walk(directory):
+    directory = os.path.abspath(directory or os.getcwd())
+    strip_len = len(directory) + 1
+    for root, dirs, files in os.walk(directory, topdown=True):
         for entry in dirs + files:
             abs_path = os.path.abspath(os.path.join(root, entry))
-            print(entry)
-            print('\tatime', datetime.fromtimestamp(os.path.getatime(abs_path)))
-            print('\tmtime', datetime.fromtimestamp(os.path.getmtime(abs_path)))
-            print('\tctime', datetime.fromtimestamp(os.path.getctime(abs_path)))
+
+            click.echo(abs_path[strip_len:])
+            # click.secho('atime %s' % datetime.fromtimestamp(os.path.getatime(abs_path)), fg="cyan")
+            click.secho('mtime %s' % datetime.fromtimestamp(os.path.getmtime(abs_path)), fg="cyan")
+            # click.secho('ctime %s' % datetime.fromtimestamp(os.path.getctime(abs_path)), fg="cyan")
+            click.echo()
 
 
 if __name__ == '__main__':
