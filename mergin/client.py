@@ -21,6 +21,10 @@ def find(items, fn):
         if fn(item):
             return item
 
+
+# TODO: maybe following functions (or some of them) could be
+# encapsulated in the new MerginProject class
+
 def list_project_directory(directory):
     prefix = os.path.abspath(directory) # .rstrip(os.path.sep)
     proj_files = []
@@ -110,6 +114,8 @@ class MerginClient:
             self._auth_header = None
 
     def _do_request(self, request):
+        if self._auth_header:
+            request.add_header("Authorization", "Basic {}".format(self._auth_header))
         try:
             return self.opener.open(request)
         except urllib.error.HTTPError as e:
@@ -123,8 +129,6 @@ class MerginClient:
         if data:
             url += "?" + urllib.parse.urlencode(data)
         request = urllib.request.Request(url)
-        if self._auth_header:
-            request.add_header("Authorization", "Basic {}".format(self._auth_header))
         return self._do_request(request)
 
     def post(self, path, data, headers={}):
@@ -132,8 +136,6 @@ class MerginClient:
         if headers.get("Content-Type", None) == "application/json":
             data = json.dumps(data).encode("utf-8")
         request = urllib.request.Request(url, data, headers)
-        if self._auth_header:
-            request.add_header("Authorization", "Basic {}".format(self._auth_header))
         return self._do_request(request)
 
     def create_project(self, project_name, directory, is_public=False):
@@ -279,15 +281,29 @@ class MerginClient:
 
         server_info = self.project_info(project_name)
         files = list_project_directory(directory)
-        changes = project_changes(files, server_info["files"])
+        local_changes = project_changes(files, local_info["files"])
+        pull_changes = project_changes(local_info["files"], server_info["files"])
 
         def local_path(path):
             return os.path.join(directory, path)
 
-        def can_overwrite(file):
-            return False
+        locally_modified = list(
+            [f["path"] for f in local_changes["added"] + local_changes["updated"]] + \
+            [f["new_path"] for f in local_changes["renamed"]]
+        )
 
-        fetch_files = changes["added"] + changes["updated"]
+        def backup_if_conflict(path, checksum):
+            if path in locally_modified:
+                current_file = find(files, lambda f: f["path"] == path)
+                if current_file["checksum"] != checksum:
+                    backup_path = local_path("{}_conflict_copy".format(path))
+                    index = 2
+                    while os.path.exists(backup_path):
+                        backup_path = local_path("{}_conflict_copy{}".format(path, index))
+                        index += 1
+                    shutil.copy(local_path(path), backup_path)
+
+        fetch_files = pull_changes["added"] + pull_changes["updated"]
         if fetch_files:
             resp = self.post(
                 "/v1/project/fetch/{}".format(project_name),
@@ -296,24 +312,25 @@ class MerginClient:
             )
             reader = MultipartReader(resp, parse_boundary(resp.headers["Content-Type"]))
             part = reader.next_part()
-            temp_dir = os.path.join(directory, '.mergin', 'fetch_{}'.format(server_info["version"]))
+            temp_dir = os.path.join(directory, '.mergin', 'fetch_{}-{}'.format(local_info["version"], server_info["version"]))
             while part:
-                print("Fetching", part.filename)
                 dest = os.path.join(temp_dir, part.filename)
                 save_to_file(part, dest)
                 part = reader.next_part()
 
             for file in fetch_files:
                 src = os.path.join(temp_dir, file["path"])
-                move_file(src, local_path(file["path"]))
+                dest = local_path(file["path"])
+                backup_if_conflict(file["path"], file["checksum"])
+                move_file(src, dest)
             shutil.rmtree(temp_dir)
 
-        for file in changes["removed"]:
-            print("Deleting", file["path"])
+        for file in pull_changes["removed"]:
+            backup_if_conflict(file["path"], file["checksum"])
             os.remove(local_path(file["path"]))
 
-        for file in changes["renamed"]:
-            print("Renaming", file["path"], "->", file["new_path"])
+        for file in pull_changes["renamed"]:
+            backup_if_conflict(file["new_path"], file["checksum"])
             move_file(local_path(file["path"]), local_path(file["new_path"]))
 
         local_info["files"] = server_info["files"]

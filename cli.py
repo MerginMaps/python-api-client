@@ -19,7 +19,7 @@ from mergin import (
     inspect_project
 )
 
-# TODO: use config file
+# TODO: use config file (configparser or json)
 url = "http://localhost:5000"
 
 
@@ -66,7 +66,7 @@ def cli():
 @cli.command()
 # @click.argument('url')
 @click.argument('directory', type=click.Path(exists=True))
-@click.option('--public', default=False, help='Public project, visible to everyone')
+@click.option('--public', is_flag=True, default=False, help='Public project, visible to everyone')
 @click.option('--auth', '-a', help='Authentication in form <username>:<password>')
 def init(directory, public, auth):
     """Initialize new project from existing DIRECTORY name"""
@@ -76,7 +76,7 @@ def init(directory, public, auth):
     c = _init_client(url, auth)
 
     try:
-        c.create_project(project_name, directory, is_public=False)
+        c.create_project(project_name, directory, is_public=public)
         click.echo('Done')
     except Exception as e:
         click.secho(str(e), fg='red')
@@ -92,8 +92,11 @@ def download(project, directory, auth):
     c = _init_client(url, auth)
     directory = directory or project
     click.echo('Downloading into {}'.format(directory))
-    c.download_project(project, directory)
-    click.echo('Done')
+    try:
+        c.download_project(project, directory)
+        click.echo('Done')
+    except Exception as e:
+        click.secho(str(e), fg='red')
 
 
 def num_version(name):
@@ -103,7 +106,7 @@ def num_version(name):
 # @click.argument('url')
 @click.option('--auth', '-a', help='Authentication in form <username>:<password>')
 def status(auth):
-    """Show local changes in project files"""
+    """Show all changes in project files - upstream and local"""
 
     try:
         project_info = inspect_project(os.getcwd())
@@ -132,7 +135,13 @@ def status(auth):
         # TODO: insufficient API, files could be included in versions,
         # or we should be able to request project_info at specific version
         server_files = c.project_info(project_name)["files"]
-        changes = project_changes(local_files, server_files)
+
+        # changes between current files and last version on server
+        # changes = project_changes(local_files, server_files)
+
+        # changes between versions on server
+        changes = project_changes(project_info["files"], server_files)
+
         click.echo()
         click.secho("### Changes:", fg="magenta")
         pretty_diff(changes)
@@ -144,7 +153,7 @@ def status(auth):
         click.secho("### Local changes: {}".format(changes_count), fg="magenta")
         pretty_diff(changes)
     else:
-        click.echo("No local changes!")
+        click.secho("No local changes!", fg="magenta")
     # TODO: show conflicts
 
 @cli.command()
@@ -155,6 +164,7 @@ def push(auth):
     c = _init_client(url, auth)
     try:
         c.push_project(os.getcwd())
+        click.echo('Done')
     except InvalidProject:
         click.echo('Invalid project directory')
     except Exception as e:
@@ -168,6 +178,7 @@ def pull(auth):
     c = _init_client(url, auth)
     try:
         c.pull_project(os.getcwd())
+        click.echo('Done')
     except InvalidProject:
         click.secho('Invalid project directory', fg='red')
 
