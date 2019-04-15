@@ -169,7 +169,7 @@ class MultipartEncoder:
                     self._field = field
             elif not self.eof:
                 self.eof = True
-                self.buffer.write(b'--' + b(self.boundary) + b'--\r\n')
+                self.buffer.write(b'\r\n--' + b(self.boundary) + b'--\r\n')
 
         pos = self.buffer.tell()
         self.buffer.seek(0)
