@@ -7,7 +7,7 @@ setup(
     name='mergin-client',
     version='dev',
     url='https://gitlab.cloud.lutraconsulting.co.uk/mergin/py-client',
-    license='Proprietary',
+    license='MIT',
     author='Lutra Consulting Ltd.',
     author_email='mergin@lutraconsulting.co.uk',
     description='Mergin utils and client',
@@ -23,8 +23,8 @@ setup(
     classifiers=[
         'Development Status :: 5 - Production/Stable',
         'Intended Audience :: Developers',
-        'License :: Proprietary License',
+        'License :: MIT License',
         'Operating System :: OS Independent',
-        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3'
     ]
 )
