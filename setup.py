@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 setup(
     name='mergin-client',
     version='dev',
-    url='https://gitlab.cloud.lutraconsulting.co.uk/mergin/py-client',
+    url='',
     license='MIT',
     author='Lutra Consulting Ltd.',
     author_email='mergin@lutraconsulting.co.uk',
