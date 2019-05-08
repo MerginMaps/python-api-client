@@ -1,9 +1,13 @@
 import os
 import json
+import pytz
+import zlib
 import base64
 import shutil
 import urllib.parse
 import urllib.request
+import dateutil.parser
+from datetime import datetime
 
 from .utils import save_to_file, generate_checksum, move_file
 from .multipart import MultipartReader, MultipartEncoder, Field, parse_boundary
@@ -95,27 +99,54 @@ def save_project_file(project_directory, data):
     with open(project_file, 'w') as f:
         json.dump(data, f, indent=2)
 
+def decode_token_data(token):
+    if not token.startswith("Bearer ."):
+        raise ValueError("Invalid token type")
+
+    try:
+        data = token[8:].split('.')[0]
+        data += "=" * (-len(data) % 4)
+        decoded = zlib.decompress(base64.urlsafe_b64decode(data))
+        return json.loads(decoded)
+    except (IndexError, TypeError, ValueError):
+        raise ValueError("Invalid token data")
+
 
 class MerginClient:
 
-    def __init__(self, url, username=None, password=None):
+    def __init__(self, url, auth_token=None, login=None, password=None):
         self.url = url
 
-        # auth_handler = urllib.request.HTTPBasicAuthHandler()
-        # auth_handler.add_password("", url, username, password)
-        # opener = urllib.request.build_opener(auth_handler)
+        self._auth_params = None
+        self._auth_session = None
+        self._user_info = None
+        if auth_token:
+            token_data = decode_token_data(auth_token)
+            self._auth_session = {
+                "token": auth_token,
+                "expire": dateutil.parser.parse(token_data["expire"])
+            }
+            self._user_info = {
+                "username": token_data["username"]
+            }
+
+        if login and password:
+            self.login(login, password)
 
         self.opener = urllib.request.build_opener()
         urllib.request.install_opener(self.opener)
-        if username and password:
-            auth_string = "{}:{}".format(username, password)
-            self._auth_header = base64.standard_b64encode(auth_string.encode("utf-8")).decode("utf-8")
-        else:
-            self._auth_header = None
 
     def _do_request(self, request):
-        if self._auth_header:
-            request.add_header("Authorization", "Basic {}".format(self._auth_header))
+        if self._auth_session:
+            delta = self._auth_session["expire"] - datetime.now(pytz.utc)
+            if delta.total_seconds() < 1:
+                self._auth_session = None
+                # Refresh auth token when login credentials are available
+                if self._auth_params:
+                    self.login(self._auth_params["login"], self._auth_params["password"])
+
+            if self._auth_session:
+                request.add_header("Authorization", self._auth_session["token"])
         try:
             return self.opener.open(request)
         except urllib.error.HTTPError as e:
@@ -138,6 +169,33 @@ class MerginClient:
         request = urllib.request.Request(url, data, headers)
         return self._do_request(request)
 
+    def login(self, login, password):
+        """
+        Authenticate login credentials and store session token
+
+        :param login: User's username of email address
+        :type login: String
+
+        :param password: User's password
+        :type password: String
+        """
+        params = {
+            "login": login,
+            "password": password
+        }
+        self._auth_params = params
+        resp = self.post("/v1/auth/login", params, {"Content-Type": "application/json"})
+        data = session = json.load(resp)
+        session = data["session"]
+        self._auth_session = {
+            "token" : session["token"],
+            "expire": dateutil.parser.parse(session["expire"])
+        }
+        self._user_info = {
+            "username": data["username"]
+        }
+        return session
+
     def create_project(self, project_name, directory, is_public=False):
         """
         Create new project repository on Mergin server from given directory.
@@ -151,6 +209,8 @@ class MerginClient:
         :param is_public: Flag for public/private project
         :type directory: Boolean
         """
+        if not self._user_info:
+            raise Exception("Authentication required")
         if not os.path.exists(directory):
             raise Exception("Project directory does not exists")
 
@@ -158,59 +218,77 @@ class MerginClient:
             "name": project_name,
             "public": is_public
         }
-        self.post("/v1/project", params, {"Content-Type": "application/json"})
+        namespace = self._user_info["username"]
+        self.post("/v1/project/%s" % namespace, params, {"Content-Type": "application/json"})
         data = {
-            "name": project_name,
+            "name": "%s/%s" % (namespace, project_name),
             "version": "",
             "files": None
         }
         save_project_file(directory, data)
         self.push_project(directory)
 
-    def projects_list(self, tags=None):
+    def projects_list(self, tags=None, user=None, flag=None, q=None):
         """
         Find all available mergin projects.
 
         :param tags: Filter projects by tags ('valid_qgis', 'mappin_use', input_use')
         :type tags: List
 
+        :param user: Username for 'flag' filter. If not provided, it means user executing request.
+        :type user: String
+
+        :param flag: Predefined filter flag ('created', 'shared')
+        :type flag: String
+
+        :param q: Search query string
+        :type q: String
+
         :rtype: List[Dict]
         """
-        params = {"tags": ",".join(tags)} if tags else None
+        params = {}
+        if tags:
+            params["tags"] = ",".join(tags)
+        if user:
+            params["user"] = user
+        if flag:
+            params["flag"] = flag
+        if q:
+            params["q"] = q
         resp = self.get("/v1/project", params)
         projects = json.load(resp)
         return projects
 
-    def project_info(self, project_name):
+    def project_info(self, project_path):
         """
         Fetch info about project.
 
-        :param project_name: Project's name
-        :type project_name: String
+        :param project_path: Project's full name (<namespace>/<name>)
+        :type project_path: String
 
         :rtype: Dict
         """
-        resp = self.get("/v1/project/{}".format(project_name))
+        resp = self.get("/v1/project/{}".format(project_path))
         return json.load(resp)
 
-    def project_versions(self, project_name):
+    def project_versions(self, project_path):
         """
         Get records of all project's versions (history).
 
-        :param project_name: Project's name
-        :type project_name: String
+        :param project_path: Project's full name (<namespace>/<name>)
+        :type project_path: String
 
         :rtype: List[Dict]
         """
-        resp = self.get("/v1/project/version/{}".format(project_name))
+        resp = self.get("/v1/project/version/{}".format(project_path))
         return json.load(resp)
 
-    def download_project(self, project_name, directory):
+    def download_project(self, project_path, directory):
         """
         Download last version of project into given directory.
 
-        :param project_name: Project's name
-        :type project_name: String
+        :param project_path: Project's full name (<namespace>/<name>)
+        :type project_path: String
 
         :param directory: Target directory
         :type directory: String
@@ -221,8 +299,8 @@ class MerginClient:
 
         # TODO: this shouldn't be two independent operations, or we should use version tag in download requests.
         # But current server API doesn't allow something better.
-        project_info = self.project_info(project_name)
-        resp = self.get("/v1/project/download/{}".format(project_name))
+        project_info = self.project_info(project_path)
+        resp = self.get("/v1/project/download/{}".format(project_path))
         reader = MultipartReader(resp, parse_boundary(resp.headers["Content-Type"]))
         part = reader.next_part()
         while part:
@@ -231,7 +309,7 @@ class MerginClient:
             part = reader.next_part()
 
         data = {
-            "name": project_name,
+            "name": project_path,
             "version": project_info["version"],
             "files": project_info["files"]
         }
@@ -245,8 +323,8 @@ class MerginClient:
         :type directory: String
         """
         local_info = inspect_project(directory)
-        project_name = local_info["name"]
-        server_info = self.project_info(project_name)
+        project_path = local_info["name"]
+        server_info = self.project_info(project_path)
         if local_info.get("version", "") != server_info.get("version", ""):
             raise Exception("Update your local repository")
 
@@ -262,7 +340,7 @@ class MerginClient:
                         yield Field(path, f, filename=path, content_type="application/octet-stream")
 
             encoder = MultipartEncoder(fields())
-            resp = self.post("/v1/project/data_sync/{}".format(project_name), encoder, encoder.get_headers())
+            resp = self.post("/v1/project/data_sync/{}".format(project_path), encoder, encoder.get_headers())
             new_project_info = json.load(resp)
             local_info["files"] = new_project_info["files"]
             local_info["version"] = new_project_info["version"]
@@ -277,9 +355,9 @@ class MerginClient:
         """
 
         local_info = inspect_project(directory)
-        project_name = local_info["name"]
+        project_path = local_info["name"]
 
-        server_info = self.project_info(project_name)
+        server_info = self.project_info(project_path)
         files = list_project_directory(directory)
         local_changes = project_changes(files, local_info["files"])
         pull_changes = project_changes(local_info["files"], server_info["files"])
@@ -306,7 +384,7 @@ class MerginClient:
         fetch_files = pull_changes["added"] + pull_changes["updated"]
         if fetch_files:
             resp = self.post(
-                "/v1/project/fetch/{}".format(project_name),
+                "/v1/project/fetch/{}".format(project_path),
                 fetch_files,
                 {"Content-Type": "application/json"}
             )
