@@ -19,9 +19,6 @@ from mergin import (
     inspect_project
 )
 
-# TODO: use config file (configparser or json)
-url = "http://localhost:5000"
-
 
 def get_changes_count(diff):
     attrs = ["added", "removed", "updated", "renamed"]
@@ -51,12 +48,10 @@ def pretty_diff(diff):
         click.secho("\n".join("M " + f["path"] for f in updated), fg="yellow")
 
 
-def _init_client(url, auth):
-    if auth:
-        username, password = auth.split(":", 1)
-        return MerginClient(url, username, password)
-
-    return MerginClient(url)
+def _init_client():
+    url = os.environ.get('MERGIN_URL')
+    auth_token = os.environ.get('MERGIN_AUTH')
+    return MerginClient(url, auth_token=auth_token)
 
 
 @click.group()
@@ -64,16 +59,25 @@ def cli():
     pass
 
 @cli.command()
-# @click.argument('url')
+@click.argument('url')
+@click.option('--login', prompt=True)
+@click.option('--password', prompt=True, hide_input=True)
+def login(url, login, password):
+    """Fetch new authentication token"""
+    c = MerginClient(url)
+    session = c.login(login, password)
+    print('export MERGIN_URL="%s"' % url)
+    print('export MERGIN_AUTH="Bearer %s"' % session['token'])
+
+@cli.command()
 @click.argument('directory', type=click.Path(exists=True))
 @click.option('--public', is_flag=True, default=False, help='Public project, visible to everyone')
-@click.option('--auth', '-a', help='Authentication in form <username>:<password>')
-def init(directory, public, auth):
+def init(directory, public):
     """Initialize new project from existing DIRECTORY name"""
 
     directory = os.path.abspath(directory)
     project_name = os.path.basename(directory)
-    c = _init_client(url, auth)
+    c = _init_client()
 
     try:
         c.create_project(project_name, directory, is_public=public)
@@ -82,15 +86,13 @@ def init(directory, public, auth):
         click.secho(str(e), fg='red')
 
 @cli.command()
-# @click.argument('url')
 @click.argument('project')
 @click.argument('directory', type=click.Path(), required=False)
-@click.option('--auth', '-a', help='Authentication in form <username>:<password>')
-def download(project, directory, auth):
+def download(project, directory):
     """Download last version of mergin project"""
 
-    c = _init_client(url, auth)
-    directory = directory or project
+    c = _init_client()
+    directory = directory or os.path.basename(project)
     click.echo('Downloading into {}'.format(directory))
     try:
         c.download_project(project, directory)
@@ -103,9 +105,7 @@ def num_version(name):
     return int(name.lstrip("v"))
 
 @cli.command()
-# @click.argument('url')
-@click.option('--auth', '-a', help='Authentication in form <username>:<password>')
-def status(auth):
+def status():
     """Show all changes in project files - upstream and local"""
 
     try:
@@ -115,7 +115,7 @@ def status(auth):
         return
 
     project_name = project_info["name"]
-    c = _init_client(url, auth)
+    c = _init_client()
 
     local_version = num_version(project_info["version"])
     local_files = list_project_directory(os.getcwd())
@@ -157,11 +157,10 @@ def status(auth):
     # TODO: show conflicts
 
 @cli.command()
-@click.option('--auth', '-a', help='Authentication in form <username>:<password>')
-def push(auth):
+def push():
     """Upload local changes into Mergin repository"""
 
-    c = _init_client(url, auth)
+    c = _init_client()
     try:
         c.push_project(os.getcwd())
         click.echo('Done')
@@ -171,16 +170,25 @@ def push(auth):
         click.secho(str(e), fg='red')
 
 @cli.command()
-@click.option('--auth', '-a', help='Authentication in form <username>:<password>')
-def pull(auth):
+def pull():
     """Fetch changes from Mergin repository"""
 
-    c = _init_client(url, auth)
+    c = _init_client()
     try:
         c.pull_project(os.getcwd())
         click.echo('Done')
     except InvalidProject:
         click.secho('Invalid project directory', fg='red')
+
+@cli.command()
+def version():
+    """Check and display server version"""
+    c = _init_client()
+    serv_ver = c.server_version()
+    ok = c.check_version()
+    click.echo("Server version: %s" % serv_ver)
+    if not ok:
+        click.secho("Server doesn't meet the minimum required version: %s" % c.min_server_version, fg='yellow')
 
 @cli.command()
 @click.argument('directory', required=False)
