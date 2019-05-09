@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import pytz
 import zlib
@@ -100,11 +101,13 @@ def save_project_file(project_directory, data):
         json.dump(data, f, indent=2)
 
 def decode_token_data(token):
-    if not token.startswith("Bearer ."):
+    token_prefix = "Bearer ."
+    if not token.startswith(token_prefix):
         raise ValueError("Invalid token type")
 
     try:
-        data = token[8:].split('.')[0]
+        data = token[len(token_prefix):].split('.')[0]
+        # add proper base64 padding"
         data += "=" * (-len(data) % 4)
         decoded = zlib.decompress(base64.urlsafe_b64decode(data))
         return json.loads(decoded)
@@ -113,6 +116,7 @@ def decode_token_data(token):
 
 
 class MerginClient:
+    min_server_version = '2019.3-22'
 
     def __init__(self, url, auth_token=None, login=None, password=None):
         self.url = url
@@ -168,6 +172,42 @@ class MerginClient:
             data = json.dumps(data).encode("utf-8")
         request = urllib.request.Request(url, data, headers)
         return self._do_request(request)
+
+    def server_version(self):
+        """
+        Return version of the server
+
+        rtype: String
+        """
+        resp = self.get("/ping")
+        try:
+            data = json.load(resp)
+            return data["version"]
+        except:
+            raise ClientError("Unknown server")
+
+    def check_version(self):
+        """
+        Test whether version of the server meets the minimum required value
+
+        rtype: Boolean
+        """
+        server_version = self.server_version()
+
+        if server_version == "dev":
+            return True
+
+        def parse_version(string):
+            m = re.match("^(\d+).(\d+)-(\d+)", string)
+            if m:
+                return list(map(int, m.groups()))
+
+        try:
+            s1, s2, s3 = parse_version(server_version)
+            m1, m2, m3 = parse_version(self.min_server_version)
+            return s1 > m1 or (s1 == m1 and (s2 > m2 or (s2 == m2 and s3 >= m3)))
+        except (TypeError, ValueError):
+            raise ClientError("Unknown server version: %s" % server_version)
 
     def login(self, login, password):
         """
@@ -356,8 +396,11 @@ class MerginClient:
 
         local_info = inspect_project(directory)
         project_path = local_info["name"]
-
         server_info = self.project_info(project_path)
+
+        if local_info["version"] == server_info["version"]:
+            return # Project is up to date
+
         files = list_project_directory(directory)
         local_changes = project_changes(files, local_info["files"])
         pull_changes = project_changes(local_info["files"], server_info["files"])
