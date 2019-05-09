@@ -134,11 +134,11 @@ class MerginClient:
                 "username": token_data["username"]
             }
 
-        if login and password:
-            self.login(login, password)
-
         self.opener = urllib.request.build_opener()
         urllib.request.install_opener(self.opener)
+
+        if login and password:
+            self.login(login, password)
 
     def _do_request(self, request):
         if self._auth_session:
@@ -225,7 +225,7 @@ class MerginClient:
         }
         self._auth_params = params
         resp = self.post("/v1/auth/login", params, {"Content-Type": "application/json"})
-        data = session = json.load(resp)
+        data = json.load(resp)
         session = data["session"]
         self._auth_session = {
             "token" : session["token"],
