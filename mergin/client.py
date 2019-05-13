@@ -1,15 +1,30 @@
 import os
 import re
 import json
-import pytz
 import zlib
 import base64
 import shutil
 import urllib.parse
 import urllib.request
-import dateutil.parser
 from datetime import datetime
-from requests_toolbelt import MultipartEncoder
+
+this_dir = os.path.dirname(os.path.realpath(__file__))
+
+try:
+    from requests_toolbelt import MultipartEncode
+    import pytz
+    import dateutil.parser
+except ImportError:
+    # this is to import all dependencies shipped with package (e.g. to use in qgis-plugin)
+    deps_dir = os.path.join(this_dir, 'deps')
+    if os.path.exists(deps_dir):
+        import sys
+        for f in os.listdir(os.path.join(deps_dir)):
+            sys.path.append(os.path.join(deps_dir, f))
+
+        from requests_toolbelt import MultipartEncode
+        import pytz
+        import dateutil.parser
 
 from .utils import save_to_file, generate_checksum, move_file
 from .multipart import MultipartReader, parse_boundary
