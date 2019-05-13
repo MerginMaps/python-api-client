@@ -16,7 +16,11 @@ setup(
     packages=find_packages(),
 
     platforms='any',
-    install_requires=[],
+    install_requires=[
+        'pytz',
+        'python-dateutil',
+        'requests_toolbelt'
+    ],
 
     test_suite='nose.collector',
     tests_require=['nose'],

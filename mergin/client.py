@@ -1,17 +1,33 @@
 import os
 import re
 import json
-import pytz
 import zlib
 import base64
 import shutil
 import urllib.parse
 import urllib.request
-import dateutil.parser
 from datetime import datetime
 
+this_dir = os.path.dirname(os.path.realpath(__file__))
+
+try:
+    from requests_toolbelt import MultipartEncode
+    import pytz
+    import dateutil.parser
+except ImportError:
+    # this is to import all dependencies shipped with package (e.g. to use in qgis-plugin)
+    deps_dir = os.path.join(this_dir, 'deps')
+    if os.path.exists(deps_dir):
+        import sys
+        for f in os.listdir(os.path.join(deps_dir)):
+            sys.path.append(os.path.join(deps_dir, f))
+
+        from requests_toolbelt import MultipartEncode
+        import pytz
+        import dateutil.parser
+
 from .utils import save_to_file, generate_checksum, move_file
-from .multipart import MultipartReader, MultipartEncoder, Field, parse_boundary
+from .multipart import MultipartReader, parse_boundary
 
 
 class InvalidProject(Exception):
@@ -372,15 +388,26 @@ class MerginClient:
         changes = project_changes(server_info["files"], files)
         count = sum(len(items) for items in changes.values())
         if count:
-            def fields():
-                yield Field("changes", json.dumps(changes).encode("utf-8"))
-                for file in (changes["added"] + changes["updated"]):
-                    path = file["path"]
-                    with open(os.path.join(directory, path), "rb") as f:
-                        yield Field(path, f, filename=path, content_type="application/octet-stream")
+            # Custom MultipartEncoder doesn't compute Content-Length,
+            # which is currently required by gunicorn.
+            # def fields():
+            #     yield Field("changes", json.dumps(changes).encode("utf-8"))
+            #     for file in (changes["added"] + changes["updated"]):
+            #         path = file["path"]
+            #         with open(os.path.join(directory, path), "rb") as f:
+            #             yield Field(path, f, filename=path, content_type="application/octet-stream")
+            # encoder = MultipartEncoder(fields())
 
-            encoder = MultipartEncoder(fields())
-            resp = self.post("/v1/project/data_sync/{}".format(project_path), encoder, encoder.get_headers())
+            fields = {"changes": json.dumps(changes).encode("utf-8")}
+            for file in (changes["added"] + changes["updated"]):
+                path = file["path"]
+                fields[path] = (path, open(os.path.join(directory, path), 'rb'), "application/octet-stream")
+            encoder = MultipartEncoder(fields=fields)
+            headers = {
+                "Content-Type": encoder.content_type,
+                "Content-Length": encoder.len
+            }
+            resp = self.post("/v1/project/data_sync/{}".format(project_path), encoder, headers=headers)
             new_project_info = json.load(resp)
             local_info["files"] = new_project_info["files"]
             local_info["version"] = new_project_info["version"]
