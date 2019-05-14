@@ -11,7 +11,7 @@ from datetime import datetime
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
 try:
-    from requests_toolbelt import MultipartEncode
+    from requests_toolbelt import MultipartEncoder
     import pytz
     import dateutil.parser
 except ImportError:
@@ -22,7 +22,7 @@ except ImportError:
         for f in os.listdir(os.path.join(deps_dir)):
             sys.path.append(os.path.join(deps_dir, f))
 
-        from requests_toolbelt import MultipartEncode
+        from requests_toolbelt import MultipartEncoder
         import pytz
         import dateutil.parser
 
