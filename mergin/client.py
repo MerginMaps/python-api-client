@@ -26,7 +26,7 @@ except ImportError:
         import pytz
         import dateutil.parser
 
-from .utils import generate_checksum, move_file
+from .utils import generate_checksum, move_file, save_to_file
 
 
 class InvalidProject(Exception):
@@ -450,8 +450,6 @@ class MerginClient:
         fetch_files = pull_changes["added"] + pull_changes["updated"]
         if fetch_files:
             temp_dir = os.path.join(directory, '.mergin', 'fetch_{}-{}'.format(local_info["version"], server_info["version"]))
-            if not os.path.exists(temp_dir):
-                os.makedirs(temp_dir)
             for file in fetch_files:
                 self._download_file(project_path, server_info['version'], file, temp_dir)
                 src = os.path.join(temp_dir, file["path"])
@@ -485,11 +483,13 @@ class MerginClient:
         :param directory: Project's directory
         :type directory: String
         """
-        chunk_size = 2 * 1024 * 1024
+        chunk_size = 10 * 1024 * 1024
         query_params = {
             "file": file['path'],
             "version": project_version
         }
+        file_dir = os.path.dirname(os.path.normpath(os.path.join(directory, file['path'])))
+        basename = os.path.basename(file['path'])
         length = 0
         count = 0
         while length < file['size']:
@@ -497,17 +497,12 @@ class MerginClient:
             resp = self.get("/v1/project/raw/{}".format(project_path), data=query_params, headers=range_header)
             # TODO some kind of recovery? do_request already raises exception
             if resp.status in [200, 206]:
-                file_dir = os.path.dirname(os.path.normpath(file['path']))
-                if file_dir:
-                    if not os.path.exists(os.path.join(directory, file_dir)):
-                        os.makedirs(os.path.join(directory, file_dir))
-                with open(os.path.join(directory, file['path'] + ".{}".format(count)), 'wb') as output:
-                    output.write(resp.read())
+                save_to_file(resp, os.path.join(file_dir, basename+".{}".format(count)))
                 length += (chunk_size + 1)
                 count += 1
 
         # merge chunks together (maybe do checksum check? (might be costly))
-        with open(os.path.join(directory, file['path']), 'wb') as final:
+        with open(os.path.join(file_dir, basename), 'wb') as final:
             for i in range(count):
                 with open(os.path.join(directory, file['path'] + ".{}".format(i)), 'rb') as chunk:
                     shutil.copyfileobj(chunk, final)
