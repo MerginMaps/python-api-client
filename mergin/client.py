@@ -26,8 +26,7 @@ except ImportError:
         import pytz
         import dateutil.parser
 
-from .utils import save_to_file, generate_checksum, move_file
-from .multipart import MultipartReader, parse_boundary
+from .utils import generate_checksum, move_file
 
 
 class InvalidProject(Exception):
@@ -175,11 +174,14 @@ class MerginClient:
                 raise ClientError(info.get("detail"))
             raise ClientError(e.read().decode("utf-8"))
 
-    def get(self, path, data=None):
+    def get(self, path, data=None, headers={}):
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         if data:
             url += "?" + urllib.parse.urlencode(data)
-        request = urllib.request.Request(url)
+        if headers:
+            request = urllib.request.Request(url, headers=headers)
+        else:
+            request = urllib.request.Request(url)
         return self._do_request(request)
 
     def post(self, path, data, headers={}):
@@ -341,7 +343,7 @@ class MerginClient:
 
     def download_project(self, project_path, directory):
         """
-        Download last version of project into given directory.
+        Download latest version of project into given directory.
 
         :param project_path: Project's full name (<namespace>/<name>)
         :type project_path: String
@@ -353,16 +355,10 @@ class MerginClient:
             raise Exception("Project directory already exists")
         os.makedirs(directory)
 
-        # TODO: this shouldn't be two independent operations, or we should use version tag in download requests.
-        # But current server API doesn't allow something better.
         project_info = self.project_info(project_path)
-        resp = self.get("/v1/project/download/{}".format(project_path))
-        reader = MultipartReader(resp, parse_boundary(resp.headers["Content-Type"]))
-        part = reader.next_part()
-        while part:
-            dest = os.path.join(directory, part.filename)
-            save_to_file(part, dest)
-            part = reader.next_part()
+
+        for file in project_info['files']:
+            self._download_file(project_path, project_info['version'], file, directory)
 
         data = {
             "name": project_path,
@@ -453,20 +449,11 @@ class MerginClient:
 
         fetch_files = pull_changes["added"] + pull_changes["updated"]
         if fetch_files:
-            resp = self.post(
-                "/v1/project/fetch/{}".format(project_path),
-                fetch_files,
-                {"Content-Type": "application/json"}
-            )
-            reader = MultipartReader(resp, parse_boundary(resp.headers["Content-Type"]))
-            part = reader.next_part()
             temp_dir = os.path.join(directory, '.mergin', 'fetch_{}-{}'.format(local_info["version"], server_info["version"]))
-            while part:
-                dest = os.path.join(temp_dir, part.filename)
-                save_to_file(part, dest)
-                part = reader.next_part()
-
+            if not os.path.exists(temp_dir):
+                os.makedirs(temp_dir)
             for file in fetch_files:
+                self._download_file(project_path, server_info['version'], file, temp_dir)
                 src = os.path.join(temp_dir, file["path"])
                 dest = local_path(file["path"])
                 backup_if_conflict(file["path"], file["checksum"])
@@ -484,3 +471,44 @@ class MerginClient:
         local_info["files"] = server_info["files"]
         local_info["version"] = server_info["version"]
         save_project_file(directory, local_info)
+
+    def _download_file(self, project_path, project_version, file, directory):
+        """
+        Helper to download single project file from server in chunks.
+
+        :param project_path: Project's full name (<namespace>/<name>)
+        :type project_path: String
+        :param project_version: Version of the project (v<n>)
+        :type project_version: String
+        :param file: File metadata item from Project['files']
+        :type file: dict
+        :param directory: Project's directory
+        :type directory: String
+        """
+        chunk_size = 2 * 1024 * 1024
+        query_params = {
+            "file": file['path'],
+            "version": project_version
+        }
+        length = 0
+        count = 0
+        while length < file['size']:
+            range_header = {"Range": "bytes={}-{}".format(length, length + chunk_size)}
+            resp = self.get("/v1/project/raw/{}".format(project_path), data=query_params, headers=range_header)
+            # TODO some kind of recovery? do_request already raises exception
+            if resp.status in [200, 206]:
+                file_dir = os.path.dirname(os.path.normpath(file['path']))
+                if file_dir:
+                    if not os.path.exists(os.path.join(directory, file_dir)):
+                        os.makedirs(os.path.join(directory, file_dir))
+                with open(os.path.join(directory, file['path'] + ".{}".format(count)), 'wb') as output:
+                    output.write(resp.read())
+                length += (chunk_size + 1)
+                count += 1
+
+        # merge chunks together (maybe do checksum check? (might be costly))
+        with open(os.path.join(directory, file['path']), 'wb') as final:
+            for i in range(count):
+                with open(os.path.join(directory, file['path'] + ".{}".format(i)), 'rb') as chunk:
+                    shutil.copyfileobj(chunk, final)
+                os.remove(os.path.join(directory, file['path'] + ".{}".format(i)))
