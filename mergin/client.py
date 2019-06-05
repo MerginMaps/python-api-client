@@ -6,14 +6,15 @@ import base64
 import shutil
 import urllib.parse
 import urllib.request
-from datetime import datetime
+import dateutil.parser
+from dateutil.tz import tzlocal
+from datetime import datetime, timezone
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 CHUNK_SIZE = 10 * 1024 * 1024
 
 try:
     from requests_toolbelt import MultipartEncoder
-    import pytz
     import dateutil.parser
 except ImportError:
     # this is to import all dependencies shipped with package (e.g. to use in qgis-plugin)
@@ -24,10 +25,9 @@ except ImportError:
             sys.path.append(os.path.join(deps_dir, f))
 
         from requests_toolbelt import MultipartEncoder
-        import pytz
         import dateutil.parser
 
-from .utils import generate_checksum, move_file, save_to_file
+from .utils import save_to_file, generate_checksum, move_file, DateTimeEncoder
 
 
 class InvalidProject(Exception):
@@ -58,7 +58,8 @@ def list_project_directory(directory):
             proj_files.append({
                 "path": proj_path,
                 "checksum": generate_checksum(abs_path),
-                "size": os.path.getsize(abs_path)
+                "size": os.path.getsize(abs_path),
+                "mtime": datetime.fromtimestamp(os.path.getmtime(abs_path), tzlocal())
             })
     return proj_files
 
@@ -158,7 +159,7 @@ class MerginClient:
 
     def _do_request(self, request):
         if self._auth_session:
-            delta = self._auth_session["expire"] - datetime.now(pytz.utc)
+            delta = self._auth_session["expire"] - datetime.now(timezone.utc)
             if delta.total_seconds() < 1:
                 self._auth_session = None
                 # Refresh auth token when login credentials are available
@@ -247,7 +248,7 @@ class MerginClient:
         data = json.load(resp)
         session = data["session"]
         self._auth_session = {
-            "token" : session["token"],
+            "token" : "Bearer %s" % session["token"],
             "expire": dateutil.parser.parse(session["expire"])
         }
         self._user_info = {
@@ -396,7 +397,7 @@ class MerginClient:
             #             yield Field(path, f, filename=path, content_type="application/octet-stream")
             # encoder = MultipartEncoder(fields())
 
-            fields = {"changes": json.dumps(changes).encode("utf-8")}
+            fields = {"changes": json.dumps(changes, cls=DateTimeEncoder).encode("utf-8")}
             for file in (changes["added"] + changes["updated"]):
                 path = file["path"]
                 fields[path] = (path, open(os.path.join(directory, path), 'rb'), "application/octet-stream")

@@ -67,7 +67,8 @@ def login(url, login, password):
     c = MerginClient(url)
     session = c.login(login, password)
     print('export MERGIN_URL="%s"' % url)
-    print('export MERGIN_AUTH="Bearer %s"' % session['token'])
+    print('export MERGIN_AUTH="%s"' % session['token'])
+    print('export MERGIN_AUTH_HEADER="Authorization: %s"' % session['token'])
 
 @cli.command()
 @click.argument('directory', type=click.Path(exists=True))

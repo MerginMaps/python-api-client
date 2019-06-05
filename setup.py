@@ -17,7 +17,6 @@ setup(
 
     platforms='any',
     install_requires=[
-        'pytz',
         'python-dateutil',
         'requests_toolbelt'
     ],
