@@ -180,17 +180,19 @@ class MerginClient:
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         if data:
             url += "?" + urllib.parse.urlencode(data)
+
         if headers:
             request = urllib.request.Request(url, headers=headers)
         else:
             request = urllib.request.Request(url)
+
         return self._do_request(request)
 
-    def post(self, path, data, headers={}):
+    def post(self, path, data=None, headers={}):
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         if headers.get("Content-Type", None) == "application/json":
-            data = json.dumps(data).encode("utf-8")
-        request = urllib.request.Request(url, data, headers)
+            data = json.dumps(data, cls=DateTimeEncoder).encode("utf-8")
+        request = urllib.request.Request(url, data, headers, method="POST")
         return self._do_request(request)
 
     def server_version(self):
@@ -508,3 +510,16 @@ class MerginClient:
                 with open(os.path.join(directory, file['path'] + ".{}".format(i)), 'rb') as chunk:
                     shutil.copyfileobj(chunk, final)
                 os.remove(os.path.join(directory, file['path'] + ".{}".format(i)))
+
+    def delete_project(self, project_path):
+        """
+        Delete project repository on server.
+
+        :param project_path: Project's full name (<namespace>/<name>)
+        :type project_path: String
+
+        """
+        path = "/v1/project/%s" % project_path
+        url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
+        request = urllib.request.Request(url, method="DELETE")
+        self._do_request(request)
