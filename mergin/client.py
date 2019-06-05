@@ -6,16 +6,14 @@ import base64
 import shutil
 import urllib.parse
 import urllib.request
-import dateutil.parser
-from dateutil.tz import tzlocal
 from datetime import datetime, timezone
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 CHUNK_SIZE = 10 * 1024 * 1024
 
 try:
-    from requests_toolbelt import MultipartEncoder
     import dateutil.parser
+    from dateutil.tz import tzlocal
 except ImportError:
     # this is to import all dependencies shipped with package (e.g. to use in qgis-plugin)
     deps_dir = os.path.join(this_dir, 'deps')
@@ -24,8 +22,8 @@ except ImportError:
         for f in os.listdir(os.path.join(deps_dir)):
             sys.path.append(os.path.join(deps_dir, f))
 
-        from requests_toolbelt import MultipartEncoder
         import dateutil.parser
+        from dateutil.tz import tzlocal
 
 from .utils import save_to_file, generate_checksum, move_file, DateTimeEncoder
 
@@ -288,7 +286,8 @@ class MerginClient:
             "files": None
         }
         save_project_file(directory, data)
-        self.push_project(directory)
+        if len(os.listdir(directory)) > 1:
+            self.push_project(directory)
 
     def projects_list(self, tags=None, user=None, flag=None, q=None):
         """
@@ -383,36 +382,53 @@ class MerginClient:
         project_path = local_info["name"]
         server_info = self.project_info(project_path)
         if local_info.get("version", "") != server_info.get("version", ""):
-            raise Exception("Update your local repository")
+            raise ClientError("Update your local repository")
 
         files = list_project_directory(directory)
         changes = project_changes(server_info["files"], files)
-        count = sum(len(items) for items in changes.values())
-        if count:
-            # Custom MultipartEncoder doesn't compute Content-Length,
-            # which is currently required by gunicorn.
-            # def fields():
-            #     yield Field("changes", json.dumps(changes).encode("utf-8"))
-            #     for file in (changes["added"] + changes["updated"]):
-            #         path = file["path"]
-            #         with open(os.path.join(directory, path), "rb") as f:
-            #             yield Field(path, f, filename=path, content_type="application/octet-stream")
-            # encoder = MultipartEncoder(fields())
 
-            fields = {"changes": json.dumps(changes, cls=DateTimeEncoder).encode("utf-8")}
-            for file in (changes["added"] + changes["updated"]):
-                path = file["path"]
-                fields[path] = (path, open(os.path.join(directory, path), 'rb'), "application/octet-stream")
-            encoder = MultipartEncoder(fields=fields)
-            headers = {
-                "Content-Type": encoder.content_type,
-                "Content-Length": encoder.len
-            }
-            resp = self.post("/v1/project/data_sync/{}".format(project_path), encoder, headers=headers)
-            new_project_info = json.load(resp)
-            local_info["files"] = new_project_info["files"]
-            local_info["version"] = new_project_info["version"]
-            save_project_file(directory, local_info)
+        import uuid
+        import math
+        chunk_size = 10 * 1024 * 1024 # 1MB
+        upload_files = changes["added"] + changes["updated"]
+
+        if upload_files:
+            for f in upload_files:
+                f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["size"] / chunk_size))]
+
+        data = {
+            "version": local_info.get("version"),
+            "changes": changes
+        }
+        resp = self.post("/v1/project/push/%s" % project_path, data, {"Content-Type": "application/json"})
+        info = json.load(resp)
+
+        if upload_files:
+            headers = {"Content-Type": "application/octet-stream"}
+            for f in upload_files:
+                with open(os.path.join(directory, f["path"]), 'rb') as file:
+                    for chunk in f["chunks"]:
+                        data = file.read(chunk_size)
+                        import hashlib
+                        checksum = hashlib.sha1()
+                        checksum.update(data)
+                        size = len(data)
+                        resp = self.post("/v1/project/push/chunk/%s/%s" % (info["transaction"], chunk), data, headers)
+                        data = json.load(resp)
+                        if not (data['size'] == size and data['checksum'] == checksum.hexdigest()):
+                            # TODO add some retry 
+                            self.post("/v1/project/push/cancel/%s" % info["transaction"])
+                            raise ClientError("Mismatch between uploaded file and local one")
+            try:
+                resp = self.post("/v1/project/push/finish/%s" % info["transaction"])
+                info = json.load(resp)
+            except ClientError:
+                self.post("/v1/project/push/cancel/%s" % info["transaction"])
+                raise
+
+        local_info["files"] = info["files"]
+        local_info["version"] = info["version"]
+        save_project_file(directory, local_info)
 
     def pull_project(self, directory):
         """
@@ -450,6 +466,7 @@ class MerginClient:
                     while os.path.exists(backup_path):
                         backup_path = local_path("{}_conflict_copy{}".format(path, index))
                         index += 1
+                    # it is unnecessary to copy conflicted file, it would be better to simply rename it
                     shutil.copy(local_path(path), backup_path)
 
         fetch_files = pull_changes["added"] + pull_changes["updated"]
