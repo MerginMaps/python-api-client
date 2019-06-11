@@ -55,7 +55,9 @@ def list_project_directory(directory):
         dirs[:] = [d for d in dirs if d not in excluded_dirs]
         for file in files:
             abs_path = os.path.abspath(os.path.join(root, file))
-            proj_path = abs_path[len(prefix) + 1:]
+            rel_path = os.path.relpath(abs_path, start=prefix)
+            # we need posix path
+            proj_path = '/'.join(rel_path.split(os.path.sep))
             proj_files.append({
                 "path": proj_path,
                 "checksum": generate_checksum(abs_path),
