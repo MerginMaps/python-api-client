@@ -127,7 +127,6 @@ def status():
         return
 
     click.echo("Current version: {}".format(project_info["version"]))
-    last_version = versions[-1]
     new_versions = [v for v in versions if num_version(v["name"]) > local_version]
     if new_versions:
         click.secho("### Available updates: {}".format(len(new_versions)), fg="magenta")

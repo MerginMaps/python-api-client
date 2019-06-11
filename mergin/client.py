@@ -356,13 +356,14 @@ class MerginClient:
         os.makedirs(directory)
 
         project_info = self.project_info(project_path)
+        version = project_info['version'] if len(project_info['version']) else 'v0'
 
         for file in project_info['files']:
-            self._download_file(project_path, project_info['version'], file, directory)
+            self._download_file(project_path, version, file, directory)
 
         data = {
             "name": project_path,
-            "version": project_info["version"],
+            "version": version,
             "files": project_info["files"]
         }
         save_project_file(directory, data)
@@ -467,7 +468,7 @@ class MerginClient:
             move_file(local_path(file["path"]), local_path(file["new_path"]))
 
         local_info["files"] = server_info["files"]
-        local_info["version"] = server_info["version"]
+        local_info["version"] = server_info["version"] if len(server_info["version"]) else 'v0'
         save_project_file(directory, local_info)
 
     def _download_file(self, project_path, project_version, file, directory):
