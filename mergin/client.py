@@ -6,6 +6,9 @@ import base64
 import shutil
 import urllib.parse
 import urllib.request
+import uuid
+import math
+import hashlib
 from datetime import datetime, timezone
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
@@ -178,12 +181,7 @@ class MerginClient:
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         if data:
             url += "?" + urllib.parse.urlencode(data)
-
-        if headers:
-            request = urllib.request.Request(url, headers=headers)
-        else:
-            request = urllib.request.Request(url)
-
+        request = urllib.request.Request(url, headers=headers)
         return self._do_request(request)
 
     def post(self, path, data=None, headers={}):
@@ -248,7 +246,7 @@ class MerginClient:
         data = json.load(resp)
         session = data["session"]
         self._auth_session = {
-            "token" : "Bearer %s" % session["token"],
+            "token": "Bearer %s" % session["token"],
             "expire": dateutil.parser.parse(session["expire"])
         }
         self._user_info = {
@@ -282,8 +280,8 @@ class MerginClient:
         self.post("/v1/project/%s" % namespace, params, {"Content-Type": "application/json"})
         data = {
             "name": "%s/%s" % (namespace, project_name),
-            "version": "",
-            "files": None
+            "version": "v0",
+            "files": []
         }
         save_project_file(directory, data)
         if len(os.listdir(directory)) > 1:
@@ -381,20 +379,16 @@ class MerginClient:
         local_info = inspect_project(directory)
         project_path = local_info["name"]
         server_info = self.project_info(project_path)
-        if local_info.get("version", "") != server_info.get("version", ""):
+        server_version = server_info["version"] if server_info["version"] else "v0"
+        if local_info.get("version", "v0") != server_version:
             raise ClientError("Update your local repository")
 
         files = list_project_directory(directory)
         changes = project_changes(server_info["files"], files)
-
-        import uuid
-        import math
-        chunk_size = 10 * 1024 * 1024 # 1MB
         upload_files = changes["added"] + changes["updated"]
 
-        if upload_files:
-            for f in upload_files:
-                f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["size"] / chunk_size))]
+        for f in upload_files:
+            f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["size"] / CHUNK_SIZE))]
 
         data = {
             "version": local_info.get("version"),
@@ -403,20 +397,19 @@ class MerginClient:
         resp = self.post("/v1/project/push/%s" % project_path, data, {"Content-Type": "application/json"})
         info = json.load(resp)
 
+        # upload files' chunks and close transaction
         if upload_files:
             headers = {"Content-Type": "application/octet-stream"}
             for f in upload_files:
                 with open(os.path.join(directory, f["path"]), 'rb') as file:
                     for chunk in f["chunks"]:
-                        data = file.read(chunk_size)
-                        import hashlib
+                        data = file.read(CHUNK_SIZE)
                         checksum = hashlib.sha1()
                         checksum.update(data)
                         size = len(data)
                         resp = self.post("/v1/project/push/chunk/%s/%s" % (info["transaction"], chunk), data, headers)
                         data = json.load(resp)
                         if not (data['size'] == size and data['checksum'] == checksum.hexdigest()):
-                            # TODO add some retry 
                             self.post("/v1/project/push/cancel/%s" % info["transaction"])
                             raise ClientError("Mismatch between uploaded file and local one")
             try:
