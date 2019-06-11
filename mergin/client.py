@@ -9,6 +9,7 @@ import urllib.request
 from datetime import datetime
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
+CHUNK_SIZE = 10 * 1024 * 1024
 
 try:
     from requests_toolbelt import MultipartEncoder
@@ -356,7 +357,7 @@ class MerginClient:
         os.makedirs(directory)
 
         project_info = self.project_info(project_path)
-        version = project_info['version'] if len(project_info['version']) else 'v0'
+        version = project_info['version'] if project_info['version'] else 'v0'
 
         for file in project_info['files']:
             self._download_file(project_path, version, file, directory)
@@ -468,7 +469,7 @@ class MerginClient:
             move_file(local_path(file["path"]), local_path(file["new_path"]))
 
         local_info["files"] = server_info["files"]
-        local_info["version"] = server_info["version"] if len(server_info["version"]) else 'v0'
+        local_info["version"] = server_info["version"] if server_info["version"] else 'v0'
         save_project_file(directory, local_info)
 
     def _download_file(self, project_path, project_version, file, directory):
@@ -484,7 +485,6 @@ class MerginClient:
         :param directory: Project's directory
         :type directory: String
         """
-        chunk_size = 10 * 1024 * 1024
         query_params = {
             "file": file['path'],
             "version": project_version
@@ -494,15 +494,14 @@ class MerginClient:
         length = 0
         count = 0
         while length < file['size']:
-            range_header = {"Range": "bytes={}-{}".format(length, length + chunk_size)}
+            range_header = {"Range": "bytes={}-{}".format(length, length + CHUNK_SIZE)}
             resp = self.get("/v1/project/raw/{}".format(project_path), data=query_params, headers=range_header)
-            # TODO some kind of recovery? do_request already raises exception
             if resp.status in [200, 206]:
                 save_to_file(resp, os.path.join(file_dir, basename+".{}".format(count)))
-                length += (chunk_size + 1)
+                length += (CHUNK_SIZE + 1)
                 count += 1
 
-        # merge chunks together (maybe do checksum check? (might be costly))
+        # merge chunks together
         with open(os.path.join(file_dir, basename), 'wb') as final:
             for i in range(count):
                 with open(os.path.join(directory, file['path'] + ".{}".format(i)), 'rb') as chunk:
