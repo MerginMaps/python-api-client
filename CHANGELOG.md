@@ -4,8 +4,8 @@
 
 - Added filters for listing projects (owner, shared, query)
 - Changed Basic auth to Bearer token-based auth
-- Improved CLI: added login, credentials in environment variables
-- Fixed missing Content-Length header in upload request
+- Improved CLI: added login, credentials in env variables, delete project
+- Download/upload files with multiple sequential requests (chunked transfer)
 
 ## 2019.3
 
