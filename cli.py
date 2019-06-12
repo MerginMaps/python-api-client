@@ -51,12 +51,13 @@ def pretty_diff(diff):
 def _init_client():
     url = os.environ.get('MERGIN_URL')
     auth_token = os.environ.get('MERGIN_AUTH')
-    return MerginClient(url, auth_token=auth_token)
+    return MerginClient(url, auth_token='Bearer {}'.format(auth_token))
 
 
 @click.group()
 def cli():
     pass
+
 
 @cli.command()
 @click.argument('url')
@@ -67,7 +68,9 @@ def login(url, login, password):
     c = MerginClient(url)
     session = c.login(login, password)
     print('export MERGIN_URL="%s"' % url)
-    print('export MERGIN_AUTH="Bearer %s"' % session['token'])
+    print('export MERGIN_AUTH="%s"' % session['token'])
+    print('export MERGIN_AUTH_HEADER="Authorization: %s"' % session['token'])
+
 
 @cli.command()
 @click.argument('directory', type=click.Path(exists=True))
@@ -84,6 +87,7 @@ def init(directory, public):
         click.echo('Done')
     except Exception as e:
         click.secho(str(e), fg='red')
+
 
 @cli.command()
 @click.argument('project')
@@ -155,6 +159,7 @@ def status():
         click.secho("No local changes!", fg="magenta")
     # TODO: show conflicts
 
+
 @cli.command()
 def push():
     """Upload local changes into Mergin repository"""
@@ -168,6 +173,7 @@ def push():
     except Exception as e:
         click.secho(str(e), fg='red')
 
+
 @cli.command()
 def pull():
     """Fetch changes from Mergin repository"""
@@ -179,6 +185,7 @@ def pull():
     except InvalidProject:
         click.secho('Invalid project directory', fg='red')
 
+
 @cli.command()
 def version():
     """Check and display server version"""
@@ -188,6 +195,7 @@ def version():
     click.echo("Server version: %s" % serv_ver)
     if not ok:
         click.secho("Server doesn't meet the minimum required version: %s" % c.min_server_version, fg='yellow')
+
 
 @cli.command()
 @click.argument('directory', required=False)
@@ -207,6 +215,31 @@ def modtime(directory):
             click.secho('mtime %s' % datetime.fromtimestamp(os.path.getmtime(abs_path)), fg="cyan")
             # click.secho('ctime %s' % datetime.fromtimestamp(os.path.getctime(abs_path)), fg="cyan")
             click.echo()
+
+
+@cli.command()
+@click.argument('project', required=False)
+def remove(project):
+    """Remove project from server and locally (if exists)."""
+    local_info = None
+    if not project:
+        from mergin.client import inspect_project
+        try:
+            local_info = inspect_project(os.path.join(os.getcwd()))
+            project = local_info['name']
+        except InvalidProject:
+            click.secho('Invalid project directory', fg='red')
+            return
+
+    c = _init_client()
+    try:
+        c.delete_project(project)
+        if local_info:
+            import shutil
+            shutil.rmtree(os.path.join(os.getcwd()))
+        click.echo('Done')
+    except Exception as e:
+        click.secho(str(e), fg='red')
 
 
 if __name__ == '__main__':

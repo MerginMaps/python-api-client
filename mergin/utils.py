@@ -1,6 +1,8 @@
 import os
 import io
+import json
 import hashlib
+from datetime import datetime
 
 
 def generate_checksum(file, chunk_size=4096):
@@ -45,3 +47,11 @@ def move_file(src, dest):
     if not os.path.exists(dest_dir):
         os.makedirs(dest_dir)
     os.rename(src, dest)
+
+
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+
+        return super().default(obj)

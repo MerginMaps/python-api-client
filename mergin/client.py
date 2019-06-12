@@ -6,15 +6,17 @@ import base64
 import shutil
 import urllib.parse
 import urllib.request
-from datetime import datetime
+import uuid
+import math
+import hashlib
+from datetime import datetime, timezone
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 CHUNK_SIZE = 10 * 1024 * 1024
 
 try:
-    from requests_toolbelt import MultipartEncoder
-    import pytz
     import dateutil.parser
+    from dateutil.tz import tzlocal
 except ImportError:
     # this is to import all dependencies shipped with package (e.g. to use in qgis-plugin)
     deps_dir = os.path.join(this_dir, 'deps')
@@ -23,11 +25,10 @@ except ImportError:
         for f in os.listdir(os.path.join(deps_dir)):
             sys.path.append(os.path.join(deps_dir, f))
 
-        from requests_toolbelt import MultipartEncoder
-        import pytz
         import dateutil.parser
+        from dateutil.tz import tzlocal
 
-from .utils import generate_checksum, move_file, save_to_file
+from .utils import save_to_file, generate_checksum, move_file, DateTimeEncoder
 
 
 class InvalidProject(Exception):
@@ -54,11 +55,14 @@ def list_project_directory(directory):
         dirs[:] = [d for d in dirs if d not in excluded_dirs]
         for file in files:
             abs_path = os.path.abspath(os.path.join(root, file))
-            proj_path = abs_path[len(prefix) + 1:]
+            rel_path = os.path.relpath(abs_path, start=prefix)
+            # we need posix path
+            proj_path = '/'.join(rel_path.split(os.path.sep))
             proj_files.append({
                 "path": proj_path,
                 "checksum": generate_checksum(abs_path),
-                "size": os.path.getsize(abs_path)
+                "size": os.path.getsize(abs_path),
+                "mtime": datetime.fromtimestamp(os.path.getmtime(abs_path), tzlocal())
             })
     return proj_files
 
@@ -158,7 +162,7 @@ class MerginClient:
 
     def _do_request(self, request):
         if self._auth_session:
-            delta = self._auth_session["expire"] - datetime.now(pytz.utc)
+            delta = self._auth_session["expire"] - datetime.now(timezone.utc)
             if delta.total_seconds() < 1:
                 self._auth_session = None
                 # Refresh auth token when login credentials are available
@@ -179,17 +183,14 @@ class MerginClient:
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         if data:
             url += "?" + urllib.parse.urlencode(data)
-        if headers:
-            request = urllib.request.Request(url, headers=headers)
-        else:
-            request = urllib.request.Request(url)
+        request = urllib.request.Request(url, headers=headers)
         return self._do_request(request)
 
-    def post(self, path, data, headers={}):
+    def post(self, path, data=None, headers={}):
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         if headers.get("Content-Type", None) == "application/json":
-            data = json.dumps(data).encode("utf-8")
-        request = urllib.request.Request(url, data, headers)
+            data = json.dumps(data, cls=DateTimeEncoder).encode("utf-8")
+        request = urllib.request.Request(url, data, headers, method="POST")
         return self._do_request(request)
 
     def server_version(self):
@@ -247,7 +248,7 @@ class MerginClient:
         data = json.load(resp)
         session = data["session"]
         self._auth_session = {
-            "token" : session["token"],
+            "token": "Bearer %s" % session["token"],
             "expire": dateutil.parser.parse(session["expire"])
         }
         self._user_info = {
@@ -281,11 +282,12 @@ class MerginClient:
         self.post("/v1/project/%s" % namespace, params, {"Content-Type": "application/json"})
         data = {
             "name": "%s/%s" % (namespace, project_name),
-            "version": "",
-            "files": None
+            "version": "v0",
+            "files": []
         }
         save_project_file(directory, data)
-        self.push_project(directory)
+        if len(os.listdir(directory)) > 1:
+            self.push_project(directory)
 
     def projects_list(self, tags=None, user=None, flag=None, q=None):
         """
@@ -379,37 +381,49 @@ class MerginClient:
         local_info = inspect_project(directory)
         project_path = local_info["name"]
         server_info = self.project_info(project_path)
-        if local_info.get("version", "") != server_info.get("version", ""):
-            raise Exception("Update your local repository")
+        server_version = server_info["version"] if server_info["version"] else "v0"
+        if local_info.get("version", "v0") != server_version:
+            raise ClientError("Update your local repository")
 
         files = list_project_directory(directory)
         changes = project_changes(server_info["files"], files)
-        count = sum(len(items) for items in changes.values())
-        if count:
-            # Custom MultipartEncoder doesn't compute Content-Length,
-            # which is currently required by gunicorn.
-            # def fields():
-            #     yield Field("changes", json.dumps(changes).encode("utf-8"))
-            #     for file in (changes["added"] + changes["updated"]):
-            #         path = file["path"]
-            #         with open(os.path.join(directory, path), "rb") as f:
-            #             yield Field(path, f, filename=path, content_type="application/octet-stream")
-            # encoder = MultipartEncoder(fields())
+        upload_files = changes["added"] + changes["updated"]
 
-            fields = {"changes": json.dumps(changes).encode("utf-8")}
-            for file in (changes["added"] + changes["updated"]):
-                path = file["path"]
-                fields[path] = (path, open(os.path.join(directory, path), 'rb'), "application/octet-stream")
-            encoder = MultipartEncoder(fields=fields)
-            headers = {
-                "Content-Type": encoder.content_type,
-                "Content-Length": encoder.len
-            }
-            resp = self.post("/v1/project/data_sync/{}".format(project_path), encoder, headers=headers)
-            new_project_info = json.load(resp)
-            local_info["files"] = new_project_info["files"]
-            local_info["version"] = new_project_info["version"]
-            save_project_file(directory, local_info)
+        for f in upload_files:
+            f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["size"] / CHUNK_SIZE))]
+
+        data = {
+            "version": local_info.get("version"),
+            "changes": changes
+        }
+        resp = self.post("/v1/project/push/%s" % project_path, data, {"Content-Type": "application/json"})
+        info = json.load(resp)
+
+        # upload files' chunks and close transaction
+        if upload_files:
+            headers = {"Content-Type": "application/octet-stream"}
+            for f in upload_files:
+                with open(os.path.join(directory, f["path"]), 'rb') as file:
+                    for chunk in f["chunks"]:
+                        data = file.read(CHUNK_SIZE)
+                        checksum = hashlib.sha1()
+                        checksum.update(data)
+                        size = len(data)
+                        resp = self.post("/v1/project/push/chunk/%s/%s" % (info["transaction"], chunk), data, headers)
+                        data = json.load(resp)
+                        if not (data['size'] == size and data['checksum'] == checksum.hexdigest()):
+                            self.post("/v1/project/push/cancel/%s" % info["transaction"])
+                            raise ClientError("Mismatch between uploaded file and local one")
+            try:
+                resp = self.post("/v1/project/push/finish/%s" % info["transaction"])
+                info = json.load(resp)
+            except ClientError:
+                self.post("/v1/project/push/cancel/%s" % info["transaction"])
+                raise
+
+        local_info["files"] = info["files"]
+        local_info["version"] = info["version"]
+        save_project_file(directory, local_info)
 
     def pull_project(self, directory):
         """
@@ -447,6 +461,7 @@ class MerginClient:
                     while os.path.exists(backup_path):
                         backup_path = local_path("{}_conflict_copy{}".format(path, index))
                         index += 1
+                    # it is unnecessary to copy conflicted file, it would be better to simply rename it
                     shutil.copy(local_path(path), backup_path)
 
         fetch_files = pull_changes["added"] + pull_changes["updated"]
@@ -507,3 +522,16 @@ class MerginClient:
                 with open(os.path.join(directory, file['path'] + ".{}".format(i)), 'rb') as chunk:
                     shutil.copyfileobj(chunk, final)
                 os.remove(os.path.join(directory, file['path'] + ".{}".format(i)))
+
+    def delete_project(self, project_path):
+        """
+        Delete project repository on server.
+
+        :param project_path: Project's full name (<namespace>/<name>)
+        :type project_path: String
+
+        """
+        path = "/v1/project/%s" % project_path
+        url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
+        request = urllib.request.Request(url, method="DELETE")
+        self._do_request(request)
