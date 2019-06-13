@@ -387,8 +387,10 @@ class MerginClient:
 
         files = list_project_directory(directory)
         changes = project_changes(server_info["files"], files)
-        upload_files = changes["added"] + changes["updated"]
+        if all(len(changes[key]) == 0 for key in changes.keys()):
+            return
 
+        upload_files = changes["added"] + changes["updated"]
         for f in upload_files:
             f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["size"] / CHUNK_SIZE))]
 
