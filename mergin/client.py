@@ -10,9 +10,14 @@ import uuid
 import math
 import hashlib
 from datetime import datetime, timezone
+import concurrent.futures
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
-CHUNK_SIZE = 10 * 1024 * 1024
+
+CHUNK_SIZE = 100 * 1024 * 1024
+# there is an upper limit for chunk size on server, ideally should be requested from there once implemented
+UPLOAD_CHUNK_SIZE = 10 * 1024 * 1024
+
 IGNORE_EXT = re.compile(r'({})$'.format(
     '|'.join(re.escape(x) for x in ['-shm', '-wal', '~', 'pyc', 'swap'])
 ))
@@ -360,7 +365,7 @@ class MerginClient:
         resp = self.get("/v1/project/version/{}".format(project_path))
         return json.load(resp)
 
-    def download_project(self, project_path, directory):
+    def download_project(self, project_path, directory, parallel=True):
         """
         Download latest version of project into given directory.
 
@@ -369,6 +374,9 @@ class MerginClient:
 
         :param directory: Target directory
         :type directory: String
+
+        :param parallel: Use multi-thread approach to download files in parallel requests, default True
+        :type parallel: Boolean
         """
         if os.path.exists(directory):
             raise Exception("Project directory already exists")
@@ -377,8 +385,23 @@ class MerginClient:
         project_info = self.project_info(project_path)
         version = project_info['version'] if project_info['version'] else 'v0'
 
-        for file in project_info['files']:
-            self._download_file(project_path, version, file, directory)
+        # sending parallel requests is good for projects with a lot of small files
+        if parallel:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures_map = {}
+                for file in project_info['files']:
+                    future = executor.submit(self._download_file, project_path, version, file, directory, parallel)
+                    futures_map[future] = file
+
+                for future in concurrent.futures.as_completed(futures_map):
+                    file = futures_map[future]
+                    try:
+                        future.result(60)
+                    except concurrent.futures.TimeoutError:
+                        raise ClientError("Timeout error: failed to download {}".format(file))
+        else:
+            for file in project_info['files']:
+                    self._download_file(project_path, version, file, directory, parallel)
 
         data = {
             "name": project_path,
@@ -387,12 +410,14 @@ class MerginClient:
         }
         save_project_file(directory, data)
 
-    def push_project(self, directory):
+    def push_project(self, directory, parallel=True):
         """
         Upload local changes to the repository.
 
         :param directory: Project's directory
         :type directory: String
+        :param parallel: Use multi-thread approach to upload files in parallel requests, defaults to True
+        :type parallel: Boolean
         """
         local_info = inspect_project(directory)
         project_path = local_info["name"]
@@ -408,7 +433,7 @@ class MerginClient:
 
         upload_files = changes["added"] + changes["updated"]
         for f in upload_files:
-            f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["size"] / CHUNK_SIZE))]
+            f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["size"] / UPLOAD_CHUNK_SIZE))]
 
         data = {
             "version": local_info.get("version"),
@@ -419,19 +444,23 @@ class MerginClient:
 
         # upload files' chunks and close transaction
         if upload_files:
-            headers = {"Content-Type": "application/octet-stream"}
-            for f in upload_files:
-                with open(os.path.join(directory, f["path"]), 'rb') as file:
-                    for chunk in f["chunks"]:
-                        data = file.read(CHUNK_SIZE)
-                        checksum = hashlib.sha1()
-                        checksum.update(data)
-                        size = len(data)
-                        resp = self.post("/v1/project/push/chunk/%s/%s" % (info["transaction"], chunk), data, headers)
-                        data = json.load(resp)
-                        if not (data['size'] == size and data['checksum'] == checksum.hexdigest()):
-                            self.post("/v1/project/push/cancel/%s" % info["transaction"])
-                            raise ClientError("Mismatch between uploaded file and local one")
+            if parallel:
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    futures_map = {}
+                    for file in upload_files:
+                        future = executor.submit(self._upload_file, info["transaction"], directory, file, parallel)
+                        futures_map[future] = file
+
+                    for future in concurrent.futures.as_completed(futures_map):
+                        file = futures_map[future]
+                        try:
+                            future.result(60)
+                        except concurrent.futures.TimeoutError:
+                            raise ClientError("Timeout error: failed to upload {}".format(file))
+            else:
+                for file in upload_files:
+                    self._upload_file(info["transaction"], directory, file, parallel)
+
             try:
                 resp = self.post("/v1/project/push/finish/%s" % info["transaction"])
                 info = json.load(resp)
@@ -443,12 +472,14 @@ class MerginClient:
         local_info["version"] = info["version"]
         save_project_file(directory, local_info)
 
-    def pull_project(self, directory):
+    def pull_project(self, directory, parallel=True):
         """
         Fetch and apply changes from repository.
 
         :param directory: Project's directory
         :type directory: String
+        :param parallel: Use multi-thread approach to fetch files in parallel requests, defaults to True
+        :type parallel: Boolean
         """
 
         local_info = inspect_project(directory)
@@ -485,12 +516,31 @@ class MerginClient:
         fetch_files = pull_changes["added"] + pull_changes["updated"]
         if fetch_files:
             temp_dir = os.path.join(directory, '.mergin', 'fetch_{}-{}'.format(local_info["version"], server_info["version"]))
-            for file in fetch_files:
-                self._download_file(project_path, server_info['version'], file, temp_dir)
-                src = os.path.join(temp_dir, file["path"])
-                dest = local_path(file["path"])
-                backup_if_conflict(file["path"], file["checksum"])
-                move_file(src, dest)
+            # sending parallel requests is good for projects with a lot of small files
+            if parallel:
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    futures_map = {}
+                    for file in fetch_files:
+                        future = executor.submit(project_path, server_info['version'], file, temp_dir, parallel)
+                        futures_map[future] = file
+
+                    for future in concurrent.futures.as_completed(futures_map):
+                        file = futures_map[future]
+                        try:
+                            future.result(60)
+                        except concurrent.futures.TimeoutError:
+                            raise ClientError("Timeout error: failed to download {}".format(file))
+                        src = os.path.join(temp_dir, file["path"])
+                        dest = local_path(file["path"])
+                        backup_if_conflict(file["path"], file["checksum"])
+                        move_file(src, dest)
+            else:
+                for file in fetch_files:
+                    self._download_file(project_path, server_info['version'], file, temp_dir, parallel)
+                    src = os.path.join(temp_dir, file["path"])
+                    dest = local_path(file["path"])
+                    backup_if_conflict(file["path"], file["checksum"])
+                    move_file(src, dest)
             shutil.rmtree(temp_dir)
 
         for file in pull_changes["removed"]:
@@ -505,7 +555,7 @@ class MerginClient:
         local_info["version"] = server_info["version"] if server_info["version"] else 'v0'
         save_project_file(directory, local_info)
 
-    def _download_file(self, project_path, project_version, file, directory):
+    def _download_file(self, project_path, project_version, file, directory, parallel=True):
         """
         Helper to download single project file from server in chunks.
 
@@ -517,6 +567,8 @@ class MerginClient:
         :type file: dict
         :param directory: Project's directory
         :type directory: String
+        :param parallel: Use multi-thread approach to download parts in parallel requests, default True
+        :type parallel: Boolean
         """
         query_params = {
             "file": file['path'],
@@ -524,22 +576,40 @@ class MerginClient:
         }
         file_dir = os.path.dirname(os.path.normpath(os.path.join(directory, file['path'])))
         basename = os.path.basename(file['path'])
-        length = 0
-        count = 0
-        while length < file['size']:
-            range_header = {"Range": "bytes={}-{}".format(length, length + CHUNK_SIZE)}
+
+        def download_file_part(part):
+            """Callback to get a part of file using request to server with Range header."""
+            start = part * (1 + CHUNK_SIZE)
+            range_header = {"Range": "bytes={}-{}".format(start, start + CHUNK_SIZE)}
             resp = self.get("/v1/project/raw/{}".format(project_path), data=query_params, headers=range_header)
             if resp.status in [200, 206]:
-                save_to_file(resp, os.path.join(file_dir, basename+".{}".format(count)))
-                length += (CHUNK_SIZE + 1)
-                count += 1
+                save_to_file(resp, os.path.join(file_dir, basename + ".{}".format(part)))
+            else:
+                raise ClientError('Failed to download part {} of file {}'.format(part, basename))
+
+        # download large files in chunks is beneficial mostly for retry on failure
+        chunks = math.ceil(file['size'] / CHUNK_SIZE)
+        if parallel:
+            # create separate n threads, default as cores * 5
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures_map = {executor.submit(download_file_part, i): i for i in range(chunks)}
+                for future in concurrent.futures.as_completed(futures_map):
+                    i = futures_map[future]
+                    try:
+                        future.result(60)
+                    except concurrent.futures.TimeoutError:
+                        raise ClientError('Timeout error: failed to download part {} of file {}'.format(i, basename))
+        else:
+            for i in range(chunks):
+                download_file_part(i)
 
         # merge chunks together
         with open(os.path.join(file_dir, basename), 'wb') as final:
-            for i in range(count):
-                with open(os.path.join(directory, file['path'] + ".{}".format(i)), 'rb') as chunk:
+            for i in range(chunks):
+                file_part = os.path.join(directory, file['path'] + ".{}".format(i))
+                with open(file_part, 'rb') as chunk:
                     shutil.copyfileobj(chunk, final)
-                os.remove(os.path.join(directory, file['path'] + ".{}".format(i)))
+                os.remove(file_part)
 
     def delete_project(self, project_path):
         """
@@ -553,3 +623,45 @@ class MerginClient:
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         request = urllib.request.Request(url, method="DELETE")
         self._do_request(request)
+
+    def _upload_file(self, transaction, project_dir, file_meta, parallel=True):
+        """
+        Upload file in open upload transaction.
+
+        :param transaction: transaction uuid
+        :type transaction: String
+        :param project_dir: local project directory
+        :type project_dir: String
+        :param file_meta: metadata for file to upload
+        :type file_meta: Dict
+        :param parallel: Use multi-thread approach to upload file chunks in parallel requests, defaults to True
+        :type parallel: Boolean
+        :raises ClientError: raise on data integrity check failure
+        """
+        headers = {"Content-Type": "application/octet-stream"}
+        file_path = os.path.join(project_dir, file_meta["path"])
+
+        def upload_chunk(chunk_id, data):
+            checksum = hashlib.sha1()
+            checksum.update(data)
+            size = len(data)
+            resp = self.post("/v1/project/push/chunk/{}/{}".format(transaction, chunk_id), data, headers)
+            data = json.load(resp)
+            if not (data['size'] == size and data['checksum'] == checksum.hexdigest()):
+                self.post("/v1/project/push/cancel/{}".format(transaction))
+                raise ClientError("Mismatch between uploaded file chunk {} and local one".format(chunk))
+
+        with open(file_path, 'rb') as file:
+            if parallel:
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    futures_map = {executor.submit(upload_chunk, chunk, file.read(UPLOAD_CHUNK_SIZE)): chunk for chunk in file_meta["chunks"]}
+                    for future in concurrent.futures.as_completed(futures_map):
+                        chunk = futures_map[future]
+                        try:
+                            future.result(60)
+                        except concurrent.futures.TimeoutError:
+                            raise ClientError('Timeout error: failed to upload chunk {}'.format(chunk))
+            else:
+                for chunk in file_meta["chunks"]:
+                    data = file.read(UPLOAD_CHUNK_SIZE)
+                    upload_chunk(chunk, data)

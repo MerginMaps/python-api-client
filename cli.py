@@ -93,14 +93,14 @@ def init(project, directory, public):
 @cli.command()
 @click.argument('project')
 @click.argument('directory', type=click.Path(), required=False)
-def download(project, directory):
+@click.option('--parallel/--no-parallel', default=True, help='Download by sending parallel requests')
+def download(project, directory, parallel):
     """Download last version of mergin project"""
-
     c = _init_client()
     directory = directory or os.path.basename(project)
     click.echo('Downloading into {}'.format(directory))
     try:
-        c.download_project(project, directory)
+        c.download_project(project, directory, parallel)
         click.echo('Done')
     except Exception as e:
         click.secho(str(e), fg='red')
@@ -108,6 +108,7 @@ def download(project, directory):
 
 def num_version(name):
     return int(name.lstrip("v"))
+
 
 @cli.command()
 def status():
@@ -162,12 +163,13 @@ def status():
 
 
 @cli.command()
-def push():
+@click.option('--parallel/--no-parallel', default=True, help='Upload by sending parallel requests')
+def push(parallel):
     """Upload local changes into Mergin repository"""
 
     c = _init_client()
     try:
-        c.push_project(os.getcwd())
+        c.push_project(os.getcwd(), parallel)
         click.echo('Done')
     except InvalidProject:
         click.echo('Invalid project directory')
@@ -176,12 +178,13 @@ def push():
 
 
 @cli.command()
-def pull():
+@click.option('--parallel/--no-parallel', default=True, help='Download by sending parallel requests')
+def pull(parallel):
     """Fetch changes from Mergin repository"""
 
     c = _init_client()
     try:
-        c.pull_project(os.getcwd())
+        c.pull_project(os.getcwd(), parallel)
         click.echo('Done')
     except InvalidProject:
         click.secho('Invalid project directory', fg='red')
