@@ -13,6 +13,20 @@ from datetime import datetime, timezone
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 CHUNK_SIZE = 10 * 1024 * 1024
+IGNORE_EXT = re.compile(r'({})$'.format(
+    '|'.join(re.escape(x) for x in ['-shm', '-wal', '~', 'pyc', 'swap'])
+))
+IGNORE_FILES = ['.DS_Store', '.directory']
+
+
+def ignore_file(filename):
+    name, ext = os.path.splitext(filename)
+    if ext and IGNORE_EXT.search(ext):
+        return True
+    if filename in IGNORE_FILES:
+        return True
+    return False
+
 
 try:
     import dateutil.parser
@@ -54,16 +68,17 @@ def list_project_directory(directory):
     for root, dirs, files in os.walk(directory, topdown=True):
         dirs[:] = [d for d in dirs if d not in excluded_dirs]
         for file in files:
-            abs_path = os.path.abspath(os.path.join(root, file))
-            rel_path = os.path.relpath(abs_path, start=prefix)
-            # we need posix path
-            proj_path = '/'.join(rel_path.split(os.path.sep))
-            proj_files.append({
-                "path": proj_path,
-                "checksum": generate_checksum(abs_path),
-                "size": os.path.getsize(abs_path),
-                "mtime": datetime.fromtimestamp(os.path.getmtime(abs_path), tzlocal())
-            })
+            if not ignore_file(file):
+                abs_path = os.path.abspath(os.path.join(root, file))
+                rel_path = os.path.relpath(abs_path, start=prefix)
+                # we need posix path
+                proj_path = '/'.join(rel_path.split(os.path.sep))
+                proj_files.append({
+                    "path": proj_path,
+                    "checksum": generate_checksum(abs_path),
+                    "size": os.path.getsize(abs_path),
+                    "mtime": datetime.fromtimestamp(os.path.getmtime(abs_path), tzlocal())
+                })
     return proj_files
 
 
