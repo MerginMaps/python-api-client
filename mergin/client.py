@@ -175,6 +175,18 @@ class MerginClient:
         if login and password:
             self.login(login, password)
 
+        # Try to load geodiff lib
+        print("trying to load geodiff lib")
+        self.geodiff = None
+        lib = os.environ.get("GEODIFFLIB", None)
+        if lib is not None:
+            try:
+                import pygeodiff
+            except:
+                print("geodiff lib not found")
+                pass
+            self.geodiff = pygeodiff.GeoDiff(lib)
+
     def _do_request(self, request):
         if self._auth_session:
             delta = self._auth_session["expire"] - datetime.now(timezone.utc)
@@ -408,6 +420,30 @@ class MerginClient:
         upload_files = changes["added"] + changes["updated"]
         for f in upload_files:
             f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["size"] / CHUNK_SIZE))]
+            if f["path"].endswith(".gpkg") and self.geodiff is not None:  # TODO: Also sqlite3
+
+                # server_info
+                file_on_server = next(item for item in server_info["files"] if item["path"] == f["path"])
+                basefile = os.path.join(".mergin", f["path"])
+
+                if os.path.isfile(basefile) is False or file_on_server["checksum"] != generate_checksum(basefile) or "diff" not in f:
+                    # Download the file from the server
+                    self._download_file(project_path, server_version, f,
+                                        os.path.join(directory, ".mergin"))
+
+                # Calculate changeset
+                changeset = os.path.join(".mergin", f"changeset_{f['path']}")
+                self.geodiff.create_changeset(basefile, f["path"], changeset)
+
+                # Add changeset file info in diff section
+                f["diff"] = {"path": changeset,
+                             "checksum": generate_checksum(changeset),
+                             "size": os.path.getsize(changeset)}
+                f["checksum"] = generate_checksum(basefile)
+                f["size"] = os.path.getsize(basefile)
+
+                # Calculate chunks of the changeset file
+                f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["diff"]["size"] / CHUNK_SIZE))]
 
         data = {
             "version": local_info.get("version"),
@@ -420,7 +456,13 @@ class MerginClient:
         if upload_files:
             headers = {"Content-Type": "application/octet-stream"}
             for f in upload_files:
-                with open(os.path.join(directory, f["path"]), 'rb') as file:
+                print(f"in for: {f}")
+                # Check if there is a changeset file to upload
+                file_path = f["path"]
+                if "diff" in f:
+                    file_path = f["diff"]["path"]
+
+                with open(os.path.join(directory, file_path), 'rb') as file:
                     for chunk in f["chunks"]:
                         data = file.read(CHUNK_SIZE)
                         checksum = hashlib.sha1()
@@ -441,6 +483,8 @@ class MerginClient:
         local_info["files"] = info["files"]
         local_info["version"] = info["version"]
         save_project_file(directory, local_info)
+
+        # TODO: Replace basefile in .mergin with the last one
 
     def pull_project(self, directory):
         """
