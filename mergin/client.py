@@ -176,14 +176,13 @@ class MerginClient:
             self.login(login, password)
 
         # Try to load geodiff lib
-        print("trying to load geodiff lib")
         self.geodiff = None
         lib = os.environ.get("GEODIFFLIB", None)
         if lib is not None:
             try:
                 import pygeodiff
             except:
-                print("geodiff lib not found")
+                # GeoDiff lib not found
                 pass
             self.geodiff = pygeodiff.GeoDiff(lib)
 
