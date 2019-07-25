@@ -456,7 +456,6 @@ class MerginClient:
         if upload_files:
             headers = {"Content-Type": "application/octet-stream"}
             for f in upload_files:
-                print(f"in for: {f}")
                 # Check if there is a changeset file to upload
                 file_path = f["path"]
                 if "diff" in f:
