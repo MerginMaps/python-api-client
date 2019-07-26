@@ -308,7 +308,7 @@ class MerginClient:
         self.post("/v1/project/%s" % namespace, params, {"Content-Type": "application/json"})
         data = {
             "name": "%s/%s" % (namespace, project_name),
-            "version": "v0",
+            "version": "v1",
             "files": []
         }
         save_project_file(directory, data)
@@ -385,7 +385,7 @@ class MerginClient:
         os.makedirs(directory)
 
         project_info = self.project_info(project_path)
-        version = project_info['version'] if project_info['version'] else 'v0'
+        version = project_info['version'] if project_info['version'] else 'v1'
 
         for file in project_info['files']:
             self._download_file(project_path, version, file, directory)
@@ -407,8 +407,8 @@ class MerginClient:
         local_info = inspect_project(directory)
         project_path = local_info["name"]
         server_info = self.project_info(project_path)
-        server_version = server_info["version"] if server_info["version"] else "v0"
-        if local_info.get("version", "v0") != server_version:
+        server_version = server_info["version"] if server_info["version"] else "v1"
+        if local_info.get("version", "v1") != server_version:
             raise ClientError("Update your local repository")
 
         files = list_project_directory(directory)
@@ -556,7 +556,7 @@ class MerginClient:
             move_file(local_path(file["path"]), local_path(file["new_path"]))
 
         local_info["files"] = server_info["files"]
-        local_info["version"] = server_info["version"] if server_info["version"] else 'v0'
+        local_info["version"] = server_info["version"] if server_info["version"] else 'v1'
         save_project_file(directory, local_info)
 
     def _download_file(self, project_path, project_version, file, directory):
