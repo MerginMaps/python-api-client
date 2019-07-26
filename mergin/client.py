@@ -540,7 +540,11 @@ class MerginClient:
         if fetch_files:
             temp_dir = os.path.join(directory, '.mergin', 'fetch_{}-{}'.format(local_info["version"], server_info["version"]))
             for file in fetch_files:
-                self._download_file(project_path, server_info['version'], file, temp_dir)
+                if self.geodiff:  # TODO: verify if diff file exists on server
+                    self._download_and_apply_diff_file(project_path, server_info['version'],
+                                                       file, temp_dir, directory)
+                else:
+                    self._download_file(project_path, server_info['version'], file, temp_dir)
                 src = os.path.join(temp_dir, file["path"])
                 dest = local_path(file["path"])
                 backup_if_conflict(file["path"], file["checksum"])
@@ -558,6 +562,53 @@ class MerginClient:
         local_info["files"] = server_info["files"]
         local_info["version"] = server_info["version"] if server_info["version"] else 'v1'
         save_project_file(directory, local_info)
+
+    def _download_and_apply_diff_file(self, project_path, project_version, file, directory, project_directory):
+        """
+        Helper to download single project file changeset from server in chunks.
+
+        :param project_path: Project's full name (<namespace>/<name>)
+        :type project_path: String
+        :param project_version: Version of the project (v<n>)
+        :type project_version: String
+        :param file: File metadata item from Project['files']
+        :type file: dict
+        :param directory: Project's directory
+        :type directory: String
+        :param diff: Ask for diff file instead of full one
+        :type diff: bool
+        """
+        # TODO: complete and verify docstring
+
+        query_params = {
+            "file": file['path'],
+            "version": project_version,
+            "diff": True
+        }
+        file_dir = os.path.dirname(os.path.normpath(os.path.join(directory, file['path'])))
+        basename = os.path.basename(file['path'])
+        length = 0
+        count = 0
+        while length < file['size']:
+            range_header = {"Range": "bytes={}-{}".format(length, length + CHUNK_SIZE)}
+            resp = self.get("/v1/project/raw/{}".format(project_path), data=query_params, headers=range_header)
+            if resp.status in [200, 206]:
+                save_to_file(resp, os.path.join(file_dir, basename+".{}".format(count)))
+                length += (CHUNK_SIZE + 1)
+                count += 1
+
+        # merge chunks together
+        with open(os.path.join(file_dir, f"changeset_{file['path']}"), 'wb') as final:
+            for i in range(count):
+                with open(os.path.join(directory, file['path'] + ".{}".format(i)), 'rb') as chunk:
+                    shutil.copyfileobj(chunk, final)
+                os.remove(os.path.join(directory, file['path'] + ".{}".format(i)))
+
+        # Apply diff file
+        self.geodiff.apply_changeset(
+            os.path.join(project_directory, file["path"]),
+            os.path.join(file_dir, file['path']),
+            os.path.join(file_dir, f"changeset_{file['path']}"))
 
     def _download_file(self, project_path, project_version, file, directory):
         """
