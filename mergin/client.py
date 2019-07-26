@@ -422,27 +422,36 @@ class MerginClient:
             if f["path"].endswith(".gpkg") and self.geodiff is not None:  # TODO: Also sqlite3
 
                 # server_info
-                file_on_server = next(item for item in server_info["files"] if item["path"] == f["path"])
-                basefile = os.path.join(".mergin", f["path"])
+                file_on_server = next((item for item in server_info["files"] if item["path"] == f["path"]), None)
 
-                if os.path.isfile(basefile) is False or file_on_server["checksum"] != generate_checksum(basefile) or "diff" not in f:
-                    # Download the file from the server
-                    self._download_file(project_path, server_version, f,
-                                        os.path.join(directory, ".mergin"))
+                if file_on_server:
+                    basefile = os.path.join(".mergin", f["path"])
 
-                # Calculate changeset
-                changeset = os.path.join(".mergin", f"changeset_{f['path']}")
-                self.geodiff.create_changeset(basefile, f["path"], changeset)
+                    if os.path.isfile(basefile) is False or file_on_server["checksum"] != generate_checksum(basefile) or "diff" not in f:
+                        # Download the file from the server
+                        self._download_file(project_path, server_version, f,
+                                            os.path.join(directory, ".mergin"))
 
-                # Add changeset file info in diff section
-                f["diff"] = {"path": changeset,
-                             "checksum": generate_checksum(changeset),
-                             "size": os.path.getsize(changeset)}
-                f["checksum"] = generate_checksum(basefile)
-                f["size"] = os.path.getsize(basefile)
+                    # Calculate changeset
+                    changeset = os.path.join(".mergin", f"changeset_{f['path']}")
+                    self.geodiff.create_changeset(
+                        os.path.join(directory, basefile),
+                        os.path.join(directory, f["path"]),
+                        os.path.join(directory, changeset))
 
-                # Calculate chunks of the changeset file
-                f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["diff"]["size"] / CHUNK_SIZE))]
+                    # Add changeset file info in diff section
+                    f["diff"] = {"path": changeset,
+                                 "checksum": generate_checksum(
+                                     os.path.join(directory, changeset)),
+                                 "size": os.path.getsize(
+                                     os.path.join(directory, changeset))}
+                    f["checksum"] = generate_checksum(
+                        os.path.join(directory, basefile))
+                    f["size"] = os.path.getsize(
+                        os.path.join(directory, basefile))
+
+                    # Calculate chunks of the changeset file
+                    f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["diff"]["size"] / CHUNK_SIZE))]
 
         data = {
             "version": local_info.get("version"),
@@ -482,7 +491,11 @@ class MerginClient:
         local_info["version"] = info["version"]
         save_project_file(directory, local_info)
 
-        # TODO: Replace basefile in .mergin with the last one
+        for f in upload_files:
+            if f["path"].endswith(".gpkg"):
+                shutil.copyfile(
+                    os.path.join(directory, f["path"]),
+                    os.path.join(directory, ".mergin", f["path"]))
 
     def pull_project(self, directory):
         """
