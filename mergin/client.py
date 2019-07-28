@@ -563,9 +563,11 @@ class MerginClient:
         local_info["version"] = server_info["version"] if server_info["version"] else 'v1'
         save_project_file(directory, local_info)
 
-    def _download_and_apply_diff_file(self, project_path, project_version, file, directory, project_directory):
+    def _download_and_apply_diff_file(self, project_path, project_version,
+                                      file, directory, project_directory):
         """
-        Helper to download single project file changeset from server in chunks.
+        Helper to download single changeset from server in chunks
+        and apply it to the project file.
 
         :param project_path: Project's full name (<namespace>/<name>)
         :type project_path: String
@@ -573,36 +575,43 @@ class MerginClient:
         :type project_version: String
         :param file: File metadata item from Project['files']
         :type file: dict
-        :param directory: Project's directory
+        :param directory: Pull directory
         :type directory: String
-        :param diff: Ask for diff file instead of full one
-        :type diff: bool
+        :param project_directory: Project's directory
+        :type project_directory: String
         """
-        # TODO: complete and verify docstring
 
         query_params = {
             "file": file['path'],
             "version": project_version,
             "diff": True
         }
-        file_dir = os.path.dirname(os.path.normpath(os.path.join(directory, file['path'])))
+        file_dir = os.path.dirname(
+            os.path.normpath(os.path.join(directory, file['path'])))
         basename = os.path.basename(file['path'])
         length = 0
         count = 0
         while length < file['size']:
-            range_header = {"Range": "bytes={}-{}".format(length, length + CHUNK_SIZE)}
-            resp = self.get("/v1/project/raw/{}".format(project_path), data=query_params, headers=range_header)
+            range_header = {"Range": "bytes={}-{}".format(
+                length, length + CHUNK_SIZE)}
+            resp = self.get("/v1/project/raw/{}".format(project_path),
+                            data=query_params, headers=range_header)
             if resp.status in [200, 206]:
-                save_to_file(resp, os.path.join(file_dir, basename+".{}".format(count)))
+                save_to_file(resp, os.path.join(
+                    file_dir, basename+".{}".format(count)))
                 length += (CHUNK_SIZE + 1)
                 count += 1
 
         # merge chunks together
-        with open(os.path.join(file_dir, f"changeset_{file['path']}"), 'wb') as final:
+        with open(os.path.join(
+                file_dir, f"changeset_{file['path']}"), 'wb') as final:
             for i in range(count):
-                with open(os.path.join(directory, file['path'] + ".{}".format(i)), 'rb') as chunk:
+                with open(os.path.join(
+                        directory,
+                        file['path'] + ".{}".format(i)), 'rb') as chunk:
                     shutil.copyfileobj(chunk, final)
-                os.remove(os.path.join(directory, file['path'] + ".{}".format(i)))
+                os.remove(os.path.join(
+                    directory, file['path'] + ".{}".format(i)))
 
         # Apply diff file
         self.geodiff.apply_changeset(
