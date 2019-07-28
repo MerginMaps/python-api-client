@@ -494,8 +494,9 @@ class MerginClient:
         local_info["version"] = info["version"]
         save_project_file(directory, local_info)
 
+        # Store upladed geo file to be used as base for geodiff in the future
         for f in upload_files:
-            if os.path.splitext(f["path"])[-1] in geodiff_extensions:
+            if os.path.splitext(f["path"])[-1] in geodiff_extensions and self.geodiff:
                 shutil.copyfile(
                     os.path.join(directory, f["path"]),
                     os.path.join(directory, ".mergin", f["path"]))
