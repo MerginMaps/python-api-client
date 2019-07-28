@@ -544,7 +544,7 @@ class MerginClient:
         if fetch_files:
             temp_dir = os.path.join(directory, '.mergin', 'fetch_{}-{}'.format(local_info["version"], server_info["version"]))
             for file in fetch_files:
-                if self.geodiff:  # TODO: verify if diff file exists on server
+                if self.geodiff and "diff" in file:
                     self._download_and_apply_diff_file(project_path, server_info['version'],
                                                        file, temp_dir, directory)
                 else:
