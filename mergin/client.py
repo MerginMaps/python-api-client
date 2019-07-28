@@ -411,6 +411,9 @@ class MerginClient:
         if local_info.get("version", "v1") != server_version:
             raise ClientError("Update your local repository")
 
+        # Extensions supported by geodiff
+        geodiff_extensions = ['.gpkg', '.sqlite3']
+
         files = list_project_directory(directory)
         changes = project_changes(server_info["files"], files)
         if all(len(changes[key]) == 0 for key in changes.keys()):
@@ -419,7 +422,7 @@ class MerginClient:
         upload_files = changes["added"] + changes["updated"]
         for f in upload_files:
             f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["size"] / CHUNK_SIZE))]
-            if f["path"].endswith(".gpkg") and self.geodiff is not None:  # TODO: Also sqlite3
+            if os.path.splitext(f["path"])[-1] in geodiff_extensions and self.geodiff is not None:
 
                 # server_info
                 file_on_server = next((item for item in server_info["files"] if item["path"] == f["path"]), None)
@@ -492,7 +495,7 @@ class MerginClient:
         save_project_file(directory, local_info)
 
         for f in upload_files:
-            if f["path"].endswith(".gpkg"):
+            if os.path.splitext(f["path"])[-1] in geodiff_extensions:
                 shutil.copyfile(
                     os.path.join(directory, f["path"]),
                     os.path.join(directory, ".mergin", f["path"]))
