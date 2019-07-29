@@ -422,7 +422,7 @@ class MerginClient:
         upload_files = changes["added"] + changes["updated"]
         for f in upload_files:
             f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["size"] / CHUNK_SIZE))]
-            if os.path.splitext(f["path"])[-1] in geodiff_extensions and self.geodiff is not None:
+            if os.path.splitext(f["path"])[-1].lower() in geodiff_extensions and self.geodiff is not None:
 
                 # server_info
                 file_on_server = next((item for item in server_info["files"] if item["path"] == f["path"]), None)
@@ -496,7 +496,7 @@ class MerginClient:
 
         # Store upladed geo file to be used as base for geodiff in the future
         for f in upload_files:
-            if os.path.splitext(f["path"])[-1] in geodiff_extensions and self.geodiff:
+            if os.path.splitext(f["path"])[-1].lower() in geodiff_extensions and self.geodiff:
                 shutil.copyfile(
                     os.path.join(directory, f["path"]),
                     os.path.join(directory, ".mergin", f["path"]))
