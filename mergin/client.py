@@ -395,7 +395,7 @@ class MerginClient:
                 for future in concurrent.futures.as_completed(futures_map):
                     file = futures_map[future]
                     try:
-                        future.result(60)
+                        future.result(600)
                     except concurrent.futures.TimeoutError:
                         raise ClientError("Timeout error: failed to download {}".format(file))
         else:
@@ -453,7 +453,7 @@ class MerginClient:
                     for future in concurrent.futures.as_completed(futures_map):
                         file = futures_map[future]
                         try:
-                            future.result(60)
+                            future.result(600)
                         except concurrent.futures.TimeoutError:
                             raise ClientError("Timeout error: failed to upload {}".format(file))
             else:
@@ -520,13 +520,13 @@ class MerginClient:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     futures_map = {}
                     for file in fetch_files:
-                        future = executor.submit(project_path, server_info['version'], file, temp_dir, parallel)
+                        future = executor.submit(self._download_file, project_path, server_info['version'], file, temp_dir, parallel)
                         futures_map[future] = file
 
                     for future in concurrent.futures.as_completed(futures_map):
                         file = futures_map[future]
                         try:
-                            future.result(60)
+                            future.result(600)
                         except concurrent.futures.TimeoutError:
                             raise ClientError("Timeout error: failed to download {}".format(file))
                         src = os.path.join(temp_dir, file["path"])
@@ -595,7 +595,7 @@ class MerginClient:
                 for future in concurrent.futures.as_completed(futures_map):
                     i = futures_map[future]
                     try:
-                        future.result(60)
+                        future.result(300)
                     except concurrent.futures.TimeoutError:
                         raise ClientError('Timeout error: failed to download part {} of file {}'.format(i, basename))
         else:
@@ -657,7 +657,7 @@ class MerginClient:
                     for future in concurrent.futures.as_completed(futures_map):
                         chunk = futures_map[future]
                         try:
-                            future.result(60)
+                            future.result(300)
                         except concurrent.futures.TimeoutError:
                             raise ClientError('Timeout error: failed to upload chunk {}'.format(chunk))
             else:
