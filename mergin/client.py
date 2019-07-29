@@ -623,6 +623,9 @@ class MerginClient:
             os.path.join(file_dir, file['path']),
             os.path.join(file_dir, f"changeset_{file['path']}"))
 
+        # Remove diff file
+        os.remove(os.path.join(file_dir, f"changeset_{file['path']}"))
+
     def _download_file(self, project_path, project_version, file, directory):
         """
         Helper to download single project file from server in chunks.
