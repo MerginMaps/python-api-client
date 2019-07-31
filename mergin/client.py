@@ -271,22 +271,22 @@ class MerginClient:
         }
         return session
 
-    def create_project(self, project_name, directory, is_public=False):
+    def create_project(self, project_name, directory=None, is_public=False):
         """
-        Create new project repository on Mergin server from given directory.
+        Create new project repository on Mergin server, optionally initialized from given local directory.
 
-        :param project_name: Project's name
+        :param project_name: Project name
         :type project_name: String
 
-        :param directory: Project's directory
+        :param directory: Local project directory, defaults to None
         :type directory: String
 
-        :param is_public: Flag for public/private project
+        :param is_public: Flag for public/private project, defaults to False
         :type directory: Boolean
         """
         if not self._user_info:
             raise Exception("Authentication required")
-        if not os.path.exists(directory):
+        if directory and not os.path.exists(directory):
             raise Exception("Project directory does not exists")
 
         params = {
@@ -300,9 +300,10 @@ class MerginClient:
             "version": "v0",
             "files": []
         }
-        save_project_file(directory, data)
-        if len(os.listdir(directory)) > 1:
-            self.push_project(directory)
+        if directory:
+            save_project_file(directory, data)
+            if len(os.listdir(directory)) > 1:
+                self.push_project(directory)
 
     def projects_list(self, tags=None, user=None, flag=None, q=None):
         """

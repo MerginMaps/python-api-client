@@ -73,17 +73,18 @@ def login(url, login, password):
 
 
 @cli.command()
-@click.argument('directory', type=click.Path(exists=True))
+@click.argument('project')
+@click.argument('directory', type=click.Path(exists=True), required=False)
 @click.option('--public', is_flag=True, default=False, help='Public project, visible to everyone')
-def init(directory, public):
+def init(project, directory, public):
     """Initialize new project from existing DIRECTORY name"""
 
-    directory = os.path.abspath(directory)
-    project_name = os.path.basename(directory)
+    if directory:
+        directory = os.path.abspath(directory)
     c = _init_client()
 
     try:
-        c.create_project(project_name, directory, is_public=public)
+        c.create_project(project, directory, is_public=public)
         click.echo('Done')
     except Exception as e:
         click.secho(str(e), fg='red')
