@@ -6,3 +6,6 @@ dist
 *build
 *.whl
 .idea
+.coverage
+htmlcov
+.pytest_cache

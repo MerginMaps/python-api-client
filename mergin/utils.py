@@ -29,8 +29,7 @@ def save_to_file(stream, path):
     :param path: destination file path
     """
     directory = os.path.abspath(os.path.dirname(path))
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+    os.makedirs(directory, exist_ok=True)
 
     with open(path, 'wb') as output:
         writer = io.BufferedWriter(output, buffer_size=32768)
@@ -42,10 +41,10 @@ def save_to_file(stream, path):
                 writer.flush()
                 break
 
+
 def move_file(src, dest):
     dest_dir = os.path.dirname(dest)
-    if not os.path.exists(dest_dir):
-        os.makedirs(dest_dir)
+    os.makedirs(dest_dir, exist_ok=True)
     os.rename(src, dest)
 
 

@@ -36,7 +36,7 @@ def ignore_file(filename):
 try:
     import dateutil.parser
     from dateutil.tz import tzlocal
-except ImportError:
+except ImportError:  # pragma: no cover
     # this is to import all dependencies shipped with package (e.g. to use in qgis-plugin)
     deps_dir = os.path.join(this_dir, 'deps')
     if os.path.exists(deps_dir):
@@ -151,7 +151,7 @@ def decode_token_data(token):
         data += "=" * (-len(data) % 4)
         decoded = zlib.decompress(base64.urlsafe_b64decode(data))
         return json.loads(decoded)
-    except (IndexError, TypeError, ValueError):
+    except (IndexError, TypeError, ValueError, zlib.error):
         raise ValueError("Invalid token data")
 
 
@@ -278,7 +278,8 @@ class MerginClient:
 
     def create_project(self, project_name, directory=None, is_public=False):
         """
-        Create new project repository on Mergin server, optionally initialized from given local directory.
+        Create new project repository in user namespace on Mergin server.
+        Optionally initialized from given local directory.
 
         :param project_name: Project name
         :type project_name: String
@@ -423,7 +424,8 @@ class MerginClient:
         project_path = local_info["name"]
         server_info = self.project_info(project_path)
         server_version = server_info["version"] if server_info["version"] else "v0"
-        if local_info.get("version", "v0") != server_version:
+        local_version = local_info.get("version", "v0")
+        if local_version != server_version:
             raise ClientError("Update your local repository")
 
         files = list_project_directory(directory)
@@ -436,7 +438,7 @@ class MerginClient:
             f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["size"] / UPLOAD_CHUNK_SIZE))]
 
         data = {
-            "version": local_info.get("version"),
+            "version": local_version,
             "changes": changes
         }
         resp = self.post("/v1/project/push/%s" % project_path, data, {"Content-Type": "application/json"})
