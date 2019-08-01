@@ -1,5 +1,9 @@
 # Changelog
 
+## 2019.4.1
+- Improved push/pull speed using parallel requests
+- Added possibility to create blank mergin project
+
 ## 2019.4
 
 - Added filters for listing projects (owner, shared, query)
