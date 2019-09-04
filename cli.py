@@ -13,10 +13,8 @@ import click
 
 from mergin import (
     MerginClient,
-    InvalidProject,
-    list_project_directory,
-    project_changes,
-    inspect_project
+    MerginProject,
+    InvalidProject
 )
 
 
@@ -115,7 +113,8 @@ def status():
     """Show all changes in project files - upstream and local"""
 
     try:
-        project_info = inspect_project(os.getcwd())
+        mp = MerginProject(os.getcwd())
+        project_info = mp.metadata
     except InvalidProject:
         click.secho('Invalid project directory', fg='red')
         return
@@ -124,7 +123,6 @@ def status():
     c = _init_client()
 
     local_version = num_version(project_info["version"])
-    local_files = list_project_directory(os.getcwd())
 
     try:
         versions = c.project_versions(project_name)
@@ -139,20 +137,20 @@ def status():
 
         # TODO: insufficient API, files could be included in versions,
         # or we should be able to request project_info at specific version
-        server_files = c.project_info(project_name)["files"]
+        server_files = c.project_info(project_name, since=local_version)["files"]
 
         # changes between current files and last version on server
         # changes = project_changes(local_files, server_files)
 
         # changes between versions on server
-        changes = project_changes(project_info["files"], server_files)
+        changes = mp.get_pull_changes(server_files)
 
         click.echo()
         click.secho("### Changes:", fg="magenta")
         pretty_diff(changes)
         click.echo()
 
-    changes = project_changes(project_info["files"], local_files)
+    changes = mp.get_push_changes()
     changes_count = get_changes_count(changes)
     if changes_count:
         click.secho("### Local changes: {}".format(changes_count), fg="magenta")
