@@ -14,6 +14,7 @@ For using mergin client with its dependencies packaged locally run:
     mkdir -p mergin/deps
     pip wheel -r mergin_client.egg-info/requires.txt -w mergin/deps
 
+Build and add [geodiff](https://github.com/lutraconsulting/geodiff) lib (libgeodiff.so) and pygeodiff wheel to mergin/deps.
 
 ## Tests
 For running test do:
@@ -22,6 +23,7 @@ For running test do:
     export TEST_MERGIN_URL=<url> # testing server
     export TEST_API_USERNAME=<username>
     export TEST_API_PASSWORD=<pwd>
+    export GEODIFFLIB=<path to libgeodiff.so>  # usually in mergin/deps/
     pipenv run pytest --cov-report html --cov=mergin test/
 
 

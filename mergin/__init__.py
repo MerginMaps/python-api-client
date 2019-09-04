@@ -1,8 +1,6 @@
 from .client import (
     MerginClient,
+    MerginProject,
     ClientError,
-    InvalidProject,
-    list_project_directory,
-    project_changes,
-    inspect_project
+    InvalidProject
 )

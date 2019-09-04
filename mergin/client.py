@@ -9,34 +9,20 @@ import urllib.request
 import uuid
 import math
 import hashlib
+import copy
 from datetime import datetime, timezone
 import concurrent.futures
 
+from .utils import save_to_file, generate_checksum, move_file, DateTimeEncoder, int_version, find
+
 this_dir = os.path.dirname(os.path.realpath(__file__))
-
-CHUNK_SIZE = 100 * 1024 * 1024
-# there is an upper limit for chunk size on server, ideally should be requested from there once implemented
-UPLOAD_CHUNK_SIZE = 10 * 1024 * 1024
-
-IGNORE_EXT = re.compile(r'({})$'.format(
-    '|'.join(re.escape(x) for x in ['-shm', '-wal', '~', 'pyc', 'swap'])
-))
-IGNORE_FILES = ['.DS_Store', '.directory']
-
-
-def ignore_file(filename):
-    name, ext = os.path.splitext(filename)
-    if ext and IGNORE_EXT.search(ext):
-        return True
-    if filename in IGNORE_FILES:
-        return True
-    return False
-
+GEODIFFLIB = os.path.join(os.path.dirname(os.path.realpath(__file__)), "deps/libgeodiff.so")
 
 try:
     import dateutil.parser
     from dateutil.tz import tzlocal
-except ImportError:  # pragma: no cover
+    import pygeodiff
+except ImportError:
     # this is to import all dependencies shipped with package (e.g. to use in qgis-plugin)
     deps_dir = os.path.join(this_dir, 'deps')
     if os.path.exists(deps_dir):
@@ -46,99 +32,446 @@ except ImportError:  # pragma: no cover
 
         import dateutil.parser
         from dateutil.tz import tzlocal
+        import pygeodiff
 
-from .utils import save_to_file, generate_checksum, move_file, DateTimeEncoder
+CHUNK_SIZE = 100 * 1024 * 1024
+# there is an upper limit for chunk size on server, ideally should be requested from there once implemented
+UPLOAD_CHUNK_SIZE = 10 * 1024 * 1024
 
 
 class InvalidProject(Exception):
     pass
 
+
 class ClientError(Exception):
     pass
 
 
-def find(items, fn):
-    for item in items:
-        if fn(item):
-            return item
+class SyncError(Exception):
+    pass
 
 
-# TODO: maybe following functions (or some of them) could be
-# encapsulated in the new MerginProject class
+class MerginProject:
+    """ Base class for Mergin local projects.
 
-def list_project_directory(directory):
-    prefix = os.path.abspath(directory) # .rstrip(os.path.sep)
-    proj_files = []
-    excluded_dirs = ['.mergin']
-    for root, dirs, files in os.walk(directory, topdown=True):
-        dirs[:] = [d for d in dirs if d not in excluded_dirs]
-        for file in files:
-            if not ignore_file(file):
+    Linked to existing local directory, with project metadata (mergin.json) and backups located in .mergin directory.
+    """
+    def __init__(self, directory):
+        self.dir = os.path.abspath(directory)
+        if not os.path.exists(self.dir):
+            raise InvalidProject('Project directory does not exist')
+        
+        try:
+            lib = os.environ.get("GEODIFFLIB", GEODIFFLIB)
+            self.geodiff = pygeodiff.GeoDiff(lib)
+        except OSError:
+            self.geodiff = None
+
+        self.meta_dir = os.path.join(self.dir, '.mergin')
+        if not os.path.exists(self.meta_dir):
+            os.mkdir(self.meta_dir)
+
+    def fpath(self, file, other_dir=None):
+        """
+        Helper function to get absolute path of project file. Defaults to project dir but
+        alternative dir get be provided (mostly meta or temp). Also making sure that parent dirs to file exist.
+
+        :param file: relative file path in project (posix)
+        :type file: str
+        :param other_dir: alternative base directory for file, defaults to None
+        :type other_dir: str
+        :returns: file's absolute path
+        :rtype: str
+        """
+        root = other_dir or self.dir
+        abs_path = os.path.abspath(os.path.join(root, file))
+        f_dir = os.path.dirname(abs_path)
+        os.makedirs(f_dir, exist_ok=True)
+        return abs_path
+
+    def fpath_meta(self, file):
+        """ Helper function to get absolute path of file in meta dir. """
+        return self.fpath(file, self.meta_dir)
+
+    @property
+    def metadata(self):
+        if not os.path.exists(self.fpath_meta('mergin.json')):
+            raise InvalidProject('Project metadata has not been created yet')
+        with open(self.fpath_meta('mergin.json'), 'r') as file:
+            return json.load(file)
+
+    @metadata.setter
+    def metadata(self, data):
+        with open(self.fpath_meta('mergin.json'), 'w') as file:
+            json.dump(data, file, indent=2)
+
+    def is_versioned_file(self, file):
+        """ Check if file is compatible with geodiff lib and hence suitable for versioning.
+
+        :param file: file path
+        :type file: str
+        :returns: if file is compatible with geodiff lib
+        :rtype: bool
+        """
+        if not self.geodiff:
+            return False
+        diff_extensions = ['.gpkg', '.sqlite']
+        f_extension = os.path.splitext(file)[1]
+        return f_extension in diff_extensions
+
+    def ignore_file(self, file):
+        """
+        Helper function for blacklisting certain types of files.
+
+        :param file: file path in project
+        :type file: str
+        :returns: whether file should be ignored
+        :rtype: bool
+        """
+        ignore_ext = re.compile(r'({})$'.format('|'.join(re.escape(x) for x in ['-shm', '-wal', '~', 'pyc', 'swap'])))
+        ignore_files = ['.DS_Store', '.directory']
+        name, ext = os.path.splitext(file)
+        if ext and ignore_ext.search(ext):
+            return True
+        if file in ignore_files:
+            return True
+        return False
+
+    def inspect_files(self):
+        """
+        Inspect files in project directory and return metadata.
+
+        :returns: metadata for files in project directory in server required format
+        :rtype: list[dict]
+        """
+        files_meta = []
+        for root, dirs, files in os.walk(self.dir, topdown=True):
+            dirs[:] = [d for d in dirs if d not in ['.mergin']]
+            for file in files:
+                if self.ignore_file(file):
+                    continue
                 abs_path = os.path.abspath(os.path.join(root, file))
-                rel_path = os.path.relpath(abs_path, start=prefix)
-                # we need posix path
-                proj_path = '/'.join(rel_path.split(os.path.sep))
-                proj_files.append({
+                rel_path = os.path.relpath(abs_path, start=self.dir)
+                proj_path = '/'.join(rel_path.split(os.path.sep))  # we need posix path
+                files_meta.append({
                     "path": proj_path,
                     "checksum": generate_checksum(abs_path),
                     "size": os.path.getsize(abs_path),
                     "mtime": datetime.fromtimestamp(os.path.getmtime(abs_path), tzlocal())
                 })
-    return proj_files
+        return files_meta
 
+    def compare_file_sets(self, origin, current):
+        """
+        Helper function to calculate difference between two sets of files metadata using file names and checksums.
 
-def project_changes(origin, current):
-    origin_map = {f["path"]: f for f in origin}
-    current_map = {f["path"]: f for f in current}
-    removed = [f for f in origin if f["path"] not in current_map]
-    added = [f for f in current if f["path"] not in origin_map]
+        :Example:
 
-    # updated = list(filter(
-    #     lambda f: f["path"] in origin_map and f["checksum"] != origin_map[f["path"]]["checksum"],
-    #     current
-    # ))
-    updated = []
-    for f in current:
-        path = f["path"]
-        if path in origin_map and f["checksum"] != origin_map[path]["checksum"]:
+        >>> origin = [{'checksum': '08b0e8caddafe74bf5c11a45f65cedf974210fed', 'path': 'base.gpkg', 'size': 2793, 'mtime': '2019-08-26T11:08:34.051221+02:00'}]
+        >>> current = [{'checksum': 'c9a4fd2afd513a97aba19d450396a4c9df8b2ba4', 'path': 'test.qgs', 'size': 31980, 'mtime': '2019-08-26T11:09:30.051221+02:00'}]
+        >>> self.compare_file_sets(origin, current)
+        {"added": [{'checksum': 'c9a4fd2afd513a97aba19d450396a4c9df8b2ba4', 'path': 'test.qgs', 'size': 31980, 'mtime': '2019-08-26T11:09:30.051221+02:00'}], "removed": [[{'checksum': '08b0e8caddafe74bf5c11a45f65cedf974210fed', 'path': 'base.gpkg', 'size': 2793, 'mtime': '2019-08-26T11:08:34.051221+02:00'}]], "renamed": [], "updated": []}
+
+        :param origin: origin set of files metadata
+        :type origin: list[dict]
+        :param current: current set of files metadata to be compared against origin
+        :type current: list[dict]
+        :returns: changes between two sets with change type
+        :rtype: dict[str, list[dict]]'
+        """
+        origin_map = {f["path"]: f for f in origin}
+        current_map = {f["path"]: f for f in current}
+        removed = [f for f in origin if f["path"] not in current_map]
+
+        added = []
+        for f in current:
+            if f["path"] in origin_map:
+                continue
+            added.append(f)
+
+        moved = []
+        for rf in removed:
+            match = find(
+                current,
+                lambda f: f["checksum"] == rf["checksum"] and f["size"] == rf["size"] and all(
+                    f["path"] != mf["path"] for mf in moved)
+            )
+            if match:
+                moved.append({**rf, "new_path": match["path"]})
+
+        added = [f for f in added if all(f["path"] != mf["new_path"] for mf in moved)]
+        removed = [f for f in removed if all(f["path"] != mf["path"] for mf in moved)]
+
+        updated = []
+        for f in current:
+            path = f["path"]
+            if path not in origin_map:
+                continue
+            if f["checksum"] == origin_map[path]["checksum"]:
+                continue
+            f["origin_checksum"] = origin_map[path]["checksum"]
             updated.append(f)
 
-    moved = []
-    for rf in removed:
-        match = find(
-            current,
-            lambda f: f["checksum"] == rf["checksum"] and f["size"] == rf["size"] and all(f["path"] != mf["path"] for mf in moved)
-        )
-        if match:
-            moved.append({**rf, "new_path": match["path"]})
+        return {
+            "renamed": moved,
+            "added": added,
+            "removed": removed,
+            "updated": updated
+        }
 
-    added = [f for f in added if all(f["path"] != mf["new_path"] for mf in moved)]
-    removed = [f for f in removed if all(f["path"] != mf["path"] for mf in moved)]
+    def get_pull_changes(self, server_files):
+        """
+        Calculate changes needed to be pulled from server.
 
-    return {
-        "renamed": moved,
-        "added": added,
-        "removed": removed,
-        "updated": updated
-    }
+        Calculate diffs between local files metadata and server's ones. Because simple metadata like file size or
+        checksum are not enough to determine geodiff files changes, evaluate also their history (provided by server).
+        For small files ask for full versions of geodiff files, otherwise determine list of diffs needed to update file.
 
-def inspect_project(directory):
-    meta_dir = os.path.join(directory, '.mergin')
-    info_file = os.path.join(meta_dir, 'mergin.json')
-    if not os.path.exists(meta_dir) or not os.path.exists(info_file):
-        raise InvalidProject(directory)
+        .. seealso:: self.compare_file_sets
 
-    with open(info_file, 'r') as f:
-        return json.load(f)
+        :param server_files: list of server files' metadata (see also self.inspect_files())
+        :type server_files: list[dict]
+        :returns: changes metadata for files to be pulled from server
+        :rtype: dict
+        """
+        changes = self.compare_file_sets(self.metadata['files'], server_files)
+        if not self.geodiff:
+            return changes
 
-def save_project_file(project_directory, data):
-    meta_dir = os.path.join(project_directory, '.mergin')
-    if not os.path.exists(meta_dir):
-        os.makedirs(meta_dir)
+        size_limit = int(os.environ.get('DIFFS_LIMIT_SIZE', 1024 * 1024)) # with smaller values than limit download full file instead of diffs
+        not_updated = []
+        for file in changes['updated']:
+            # for small geodiff files it does not make sense to download diff and then apply it (slow)
+            if not self.is_versioned_file(file["path"]):
+                continue
 
-    project_file = os.path.join(meta_dir, 'mergin.json')
-    with open(project_file, 'w') as f:
-        json.dump(data, f, indent=2)
+            diffs = []
+            diffs_size = 0
+            is_updated = False
+            # need to track geodiff file history to see if there were any changes
+            for k, v in file['history'].items():
+                if int_version(k) <= int_version(self.metadata['version']):
+                    continue  # ignore history of no interest
+                is_updated = True
+                if 'diff' in v:
+                    diffs.append(v['diff']['path'])
+                    diffs_size += v['diff']['size']
+                else:
+                    diffs = []
+                    break  # we found force update in history, does not make sense to download diffs
+
+            if is_updated:
+                if diffs and file['size'] > size_limit and diffs_size < file['size']/2:
+                    file['diffs'] = diffs
+            else:
+                not_updated.append(file)
+
+        changes['updated'] = [f for f in changes['updated'] if f not in not_updated]
+        return changes
+
+    def get_push_changes(self):
+        """
+        Calculate changes needed to be pushed to server.
+
+        Calculate diffs between local files metadata and actual files in project directory. Because simple metadata like
+        file size or checksum are not enough to determine geodiff files changes, geodiff tool is used to determine change
+        of file content and update corresponding metadata.
+
+        .. seealso:: self.compare_file_sets
+
+        :returns: changes metadata for files to be pushed to server
+        :rtype: dict
+        """
+        changes = self.compare_file_sets(self.metadata['files'], self.inspect_files())
+        for file in changes['added'] + changes['updated']:
+            file['chunks'] = [str(uuid.uuid4()) for i in range(math.ceil(file["size"] / UPLOAD_CHUNK_SIZE))]
+
+        if not self.geodiff:
+            return changes
+
+        # need to check for for real changes in geodiff files using geodiff tool (comparing checksum is not enough)
+        not_updated = []
+        for file in changes['updated']:
+            path = file["path"]
+            if not self.is_versioned_file(path):
+                continue
+
+            current_file = self.fpath(path)
+            origin_file = self.fpath(path, self.meta_dir)
+            diff_id = str(uuid.uuid4())
+            diff_name = path + '-diff-' + diff_id
+            diff_file = self.fpath_meta(diff_name)
+            try:
+                self.geodiff.create_changeset(origin_file, current_file, diff_file)
+                if self.geodiff.list_changes(diff_file):
+                    diff_size = os.path.getsize(diff_file)
+                    file['checksum'] = file['origin_checksum']  # need to match basefile on server
+                    file['chunks'] = [str(uuid.uuid4()) for i in range(math.ceil(diff_size / UPLOAD_CHUNK_SIZE))]
+                    file['mtime'] = datetime.fromtimestamp(os.path.getmtime(current_file), tzlocal())
+                    file['diff'] = {
+                        "path": diff_name,
+                        "checksum": generate_checksum(diff_file),
+                        "size": diff_size,
+                        'mtime': datetime.fromtimestamp(os.path.getmtime(diff_file), tzlocal())
+                    }
+                else:
+                    not_updated.append(file)
+            except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
+                pass  # we do force update
+
+        changes['updated'] = [f for f in changes['updated'] if f not in not_updated]
+        return changes
+
+    def apply_pull_changes(self, changes, temp_dir):
+        """
+        Apply changes pulled from server.
+
+        Update project files according to file changes. Apply changes to geodiff basefiles as well
+        so they are up to date with server. In case of conflicts create backups from locally modified versions.
+
+        .. seealso:: self.pull_changes
+
+        :param changes: metadata for pulled files
+        :type changes: dict[str, list[dict]]
+        :param temp_dir: directory with downloaded files from server
+        :type temp_dir: str
+        :returns: files where conflicts were found
+        :rtype: list[str]
+        """
+        conflicts = []
+        local_changes = self.get_push_changes()
+        modified = {}
+        for f in local_changes["added"] + local_changes["updated"]:
+            modified.update({f['path']: f})
+        for f in local_changes["renamed"]:
+            modified.update({f['new_path']: f})
+
+        local_files_map = {}
+        for f in self.inspect_files():
+            local_files_map.update({f['path']: f})
+
+        for k, v in changes.items():
+            for item in v:
+                path = item['path'] if k != 'renamed' else item['new_path']
+                src = self.fpath(path, temp_dir) if k != 'renamed' else self.fpath(item["path"])
+                dest = self.fpath(path)
+                basefile = self.fpath_meta(path)
+
+                # special care is needed for geodiff files
+                if self.geodiff and k == 'updated':
+                    if path in modified:
+                        server_diff = self.fpath(f'{path}-server_diff', temp_dir)  # single origin diff from 'diffs' for use in rebase
+                        rebased_diff = self.fpath(f'{path}-rebased', temp_dir)
+                        patchedfile = self.fpath(f'{path}-patched', temp_dir)  # patched server version with local changes
+                        changeset = self.fpath(f'{path}-local_diff', temp_dir)  # final changeset to be potentially committed
+                        try:
+                            self.geodiff.create_changeset(basefile, src, server_diff)
+                            self.geodiff.create_rebased_changeset(basefile, dest, server_diff, rebased_diff)
+                            self.geodiff.apply_changeset(src, patchedfile, rebased_diff)
+                            self.geodiff.create_changeset(src, patchedfile, changeset)
+                            shutil.copy(src, basefile)
+                            shutil.copy(patchedfile, dest)
+                        except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
+                            # it would not be possible to commit local changes, create new conflict file instead
+                            conflict = self.backup_file(path)
+                            conflicts.append(conflict)
+                            shutil.copy(src, dest)
+                            shutil.copy(src, basefile)
+                    else:
+                        # just use already updated tmp_basefile to update project file and its basefile
+                        shutil.copy(src, dest)
+                        shutil.copy(src, basefile)
+                else:
+                    # backup if needed
+                    if path in modified and item['checksum'] != local_files_map[path]['checksum']:
+                        conflict = self.backup_file(path)
+                        conflicts.append(conflict)
+
+                    if k == 'removed':
+                        os.remove(dest)
+                        if self.is_versioned_file(path):
+                            os.remove(basefile)
+                    elif k == 'renamed':
+                        move_file(src, dest)
+                        if self.is_versioned_file(path):
+                            move_file(self.fpath_meta(item["path"]), basefile)
+                    else:
+                        shutil.copy(src, dest)
+                        if self.is_versioned_file(path):
+                            shutil.copy(src, basefile)
+
+        return conflicts
+
+    def apply_push_changes(self, changes):
+        """
+        For geodiff files update basefiles according to changes pushed to server.
+
+        :param changes: metadata for pulled files
+        :type changes: dict[str, list[dict]]
+        """
+        if not self.geodiff:
+            return
+        for k, v in changes.items():
+            for item in v:
+                path = item['path'] if k != 'renamed' else item['new_path']
+                if not self.is_versioned_file(path):
+                    continue
+
+                basefile = self.fpath_meta(path)
+                if k == 'renamed':
+                    move_file(self.fpath_meta(item["path"]), basefile)
+                elif k == 'removed':
+                    os.remove(basefile)
+                else:
+                    shutil.copy(self.fpath(path), basefile)
+
+    def backup_file(self, file):
+        """
+        Create backup file next to its origin.
+
+        :param file: path of file in project
+        :type file: str
+        :returns: path to backupfile
+        :rtype: str
+        """
+        src = self.fpath(file)
+        if not os.path.exists(src):
+            return
+        backup_path = self.fpath(f'{file}_conflict_copy')
+        index = 2
+        while os.path.exists(backup_path):
+            backup_path = self.fpath(f'{file}_conflict_copy{index}')
+            index += 1
+        shutil.copy(src, backup_path)
+        return backup_path
+
+    def apply_diffs(self, basefile, diffs):
+        """
+        Helper function to update content of geodiff file using list of diffs.
+
+        :param basefile: abs path to file to be updated
+        :type basefile: str
+        :param diffs: list of abs paths to geodiff changeset files
+        :type diffs: list[str]
+        :returns:  abs path of created patched file
+        :rtype: str
+        """
+        if not self.is_versioned_file(basefile):
+            return
+
+        patchedfile = None
+        for index, diff in enumerate(diffs):
+            patchedfile = f'{basefile}-patched-{index}'
+            try:
+                self.geodiff.apply_changeset(basefile, patchedfile, diff)
+            except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
+                return
+            previous = f'{basefile}-patched-{index-1}'
+            if os.path.exists(previous):
+                os.remove(previous)
+            basefile = patchedfile
+        return patchedfile
+
 
 def decode_token_data(token):
     token_prefix = "Bearer ."
@@ -307,8 +640,9 @@ class MerginClient:
             "files": []
         }
         if directory:
-            save_project_file(directory, data)
-            if len(os.listdir(directory)) > 1:
+            mp = MerginProject(directory)
+            mp.metadata = data
+            if mp.inspect_files():
                 self.push_project(directory)
 
     def projects_list(self, tags=None, user=None, flag=None, q=None):
@@ -342,16 +676,18 @@ class MerginClient:
         projects = json.load(resp)
         return projects
 
-    def project_info(self, project_path):
+    def project_info(self, project_path, since=None):
         """
         Fetch info about project.
 
         :param project_path: Project's full name (<namespace>/<name>)
         :type project_path: String
-
+        :param since: Version to track history of geodiff files from
+        :type since: String
         :rtype: Dict
         """
-        resp = self.get("/v1/project/{}".format(project_path))
+        params = {'since': since} if since else {}
+        resp = self.get("/v1/project/{}".format(project_path), params)
         return json.load(resp)
 
     def project_versions(self, project_path):
@@ -382,6 +718,7 @@ class MerginClient:
         if os.path.exists(directory):
             raise Exception("Project directory already exists")
         os.makedirs(directory)
+        mp = MerginProject(directory)
 
         project_info = self.project_info(project_path)
         version = project_info['version'] if project_info['version'] else 'v0'
@@ -391,25 +728,31 @@ class MerginClient:
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 futures_map = {}
                 for file in project_info['files']:
-                    future = executor.submit(self._download_file, project_path, version, file, directory, parallel)
+                    file['version'] = version
+                    future = executor.submit(self._download_file, project_path, file, directory, parallel)
                     futures_map[future] = file
 
                 for future in concurrent.futures.as_completed(futures_map):
                     file = futures_map[future]
                     try:
-                        future.result(600)
+                        f_downloaded = future.result(600)
+                        # create local backups, so called basefiles
+                        if mp.is_versioned_file(file['path']):
+                            shutil.copy(mp.fpath(f_downloaded), mp.fpath_meta(f_downloaded))
                     except concurrent.futures.TimeoutError:
                         raise ClientError("Timeout error: failed to download {}".format(file))
         else:
             for file in project_info['files']:
-                    self._download_file(project_path, version, file, directory, parallel)
+                file['version'] = version
+                f_downloaded = self._download_file(project_path, file, directory, parallel)
+                if mp.is_versioned_file(file['path']):
+                    shutil.copy(mp.fpath(f_downloaded), mp.fpath_meta(f_downloaded))
 
-        data = {
+        mp.metadata = {
             "name": project_path,
             "version": version,
             "files": project_info["files"]
         }
-        save_project_file(directory, data)
 
     def push_project(self, directory, parallel=True):
         """
@@ -420,37 +763,51 @@ class MerginClient:
         :param parallel: Use multi-thread approach to upload files in parallel requests, defaults to True
         :type parallel: Boolean
         """
-        local_info = inspect_project(directory)
-        project_path = local_info["name"]
+        mp = MerginProject(directory)
+        project_path = mp.metadata["name"]
+        local_version = mp.metadata["version"]
         server_info = self.project_info(project_path)
         server_version = server_info["version"] if server_info["version"] else "v0"
-        local_version = local_info.get("version", "v0")
         if local_version != server_version:
             raise ClientError("Update your local repository")
 
-        files = list_project_directory(directory)
-        changes = project_changes(server_info["files"], files)
-        if all(len(changes[key]) == 0 for key in changes.keys()):
+        changes = mp.get_push_changes()
+        if not sum(len(v) for v in changes.values()):
             return
-
-        upload_files = changes["added"] + changes["updated"]
-        for f in upload_files:
-            f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["size"] / UPLOAD_CHUNK_SIZE))]
-
+        # drop internal info from being sent to server
+        for item in changes['updated']:
+            item.pop('origin_checksum', None)
         data = {
             "version": local_version,
             "changes": changes
         }
-        resp = self.post("/v1/project/push/%s" % project_path, data, {"Content-Type": "application/json"})
+        server_resp = self._push_changes(mp, data, parallel)
+        if 'error' in server_resp:
+            #TODO would be good to get some detailed info from server so user could decide what to do with it
+            # e.g. diff conflicts, basefiles issues, or any other failure
+            raise ClientError(server_resp['error'])
+
+        mp.metadata = {
+            'name': project_path,
+            'version': server_resp['version'],
+            'files': server_resp["files"]
+        }
+        mp.apply_push_changes(changes)
+
+    def _push_changes(self, mp, data, parallel):
+        project = mp.metadata['name']
+        resp = self.post(f'/v1/project/push/{project}', data, {"Content-Type": "application/json"})
         info = json.load(resp)
 
+        upload_files = data['changes']["added"] + data['changes']["updated"]
         # upload files' chunks and close transaction
         if upload_files:
             if parallel:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     futures_map = {}
                     for file in upload_files:
-                        future = executor.submit(self._upload_file, info["transaction"], directory, file, parallel)
+                        file['location'] = mp.fpath_meta(file['diff']['path']) if 'diff' in file else mp.fpath(file['path'])
+                        future = executor.submit(self._upload_file, info["transaction"], file, parallel)
                         futures_map[future] = file
 
                     for future in concurrent.futures.as_completed(futures_map):
@@ -461,18 +818,18 @@ class MerginClient:
                             raise ClientError("Timeout error: failed to upload {}".format(file))
             else:
                 for file in upload_files:
-                    self._upload_file(info["transaction"], directory, file, parallel)
+                    file['location'] = mp.fpath_meta(file['diff']['path']) if 'diff' in file else mp.fpath(file['path'])
+                    self._upload_file(info["transaction"], file, parallel)
 
             try:
                 resp = self.post("/v1/project/push/finish/%s" % info["transaction"])
                 info = json.load(resp)
-            except ClientError:
+            except ClientError as err:
                 self.post("/v1/project/push/cancel/%s" % info["transaction"])
-                raise
-
-        local_info["files"] = info["files"]
-        local_info["version"] = info["version"]
-        save_project_file(directory, local_info)
+                # server returns various error messages with filename or something generic
+                # it would be better if it returned list of failed files (and reasons) whenever possible
+                return {'error': str(err)}
+        return info
 
     def pull_project(self, directory, parallel=True):
         """
@@ -483,88 +840,90 @@ class MerginClient:
         :param parallel: Use multi-thread approach to fetch files in parallel requests, defaults to True
         :type parallel: Boolean
         """
+        mp = MerginProject(directory)
+        project_path = mp.metadata["name"]
+        local_version = mp.metadata["version"]
+        server_info = self.project_info(project_path, since=local_version)
+        if local_version == server_info["version"]:
+            return  # Project is up to date
 
-        local_info = inspect_project(directory)
-        project_path = local_info["name"]
-        server_info = self.project_info(project_path)
-
-        if local_info["version"] == server_info["version"]:
-            return # Project is up to date
-
-        files = list_project_directory(directory)
-        local_changes = project_changes(files, local_info["files"])
-        pull_changes = project_changes(local_info["files"], server_info["files"])
-
-        def local_path(path):
-            return os.path.join(directory, path)
-
-        locally_modified = list(
-            [f["path"] for f in local_changes["added"] + local_changes["updated"]] + \
-            [f["new_path"] for f in local_changes["renamed"]]
-        )
-
-        def backup_if_conflict(path, checksum):
-            if path in locally_modified:
-                current_file = find(files, lambda f: f["path"] == path)
-                if current_file["checksum"] != checksum:
-                    backup_path = local_path("{}_conflict_copy".format(path))
-                    index = 2
-                    while os.path.exists(backup_path):
-                        backup_path = local_path("{}_conflict_copy{}".format(path, index))
-                        index += 1
-                    # it is unnecessary to copy conflicted file, it would be better to simply rename it
-                    shutil.copy(local_path(path), backup_path)
-
-        fetch_files = pull_changes["added"] + pull_changes["updated"]
-        if fetch_files:
-            temp_dir = os.path.join(directory, '.mergin', 'fetch_{}-{}'.format(local_info["version"], server_info["version"]))
-            # sending parallel requests is good for projects with a lot of small files
-            if parallel:
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    futures_map = {}
-                    for file in fetch_files:
-                        future = executor.submit(self._download_file, project_path, server_info['version'], file, temp_dir, parallel)
-                        futures_map[future] = file
-
-                    for future in concurrent.futures.as_completed(futures_map):
-                        file = futures_map[future]
-                        try:
-                            future.result(600)
-                        except concurrent.futures.TimeoutError:
-                            raise ClientError("Timeout error: failed to download {}".format(file))
-                        src = os.path.join(temp_dir, file["path"])
-                        dest = local_path(file["path"])
-                        backup_if_conflict(file["path"], file["checksum"])
-                        move_file(src, dest)
+        temp_dir = mp.fpath_meta(f'fetch_{local_version}-{server_info["version"]}')
+        os.makedirs(temp_dir, exist_ok=True)
+        pull_changes = mp.get_pull_changes(server_info["files"])
+        fetch_files = []
+        for f in pull_changes["added"]:
+            f['version'] = server_info['version']
+            fetch_files.append(f)
+        # extend fetch files download list with various version of diff files (if needed)
+        for f in pull_changes["updated"]:
+            if 'diffs' in f:
+                for diff in f['diffs']:
+                    diff_file = copy.deepcopy(f)
+                    for k, v in f['history'].items():
+                        if 'diff' not in v:
+                            continue
+                        if diff == v['diff']['path']:
+                            diff_file['version'] = k
+                            diff_file['diff'] = v['diff']
+                    fetch_files.append(diff_file)
             else:
+                f['version'] = server_info['version']
+                fetch_files.append(f)
+
+        # sending parallel requests is good for projects with a lot of small files
+        if parallel:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures_map = {}
                 for file in fetch_files:
-                    self._download_file(project_path, server_info['version'], file, temp_dir, parallel)
-                    src = os.path.join(temp_dir, file["path"])
-                    dest = local_path(file["path"])
-                    backup_if_conflict(file["path"], file["checksum"])
-                    move_file(src, dest)
-            shutil.rmtree(temp_dir)
+                    diff_only = 'diffs' in file
+                    future = executor.submit(self._download_file, project_path, file, temp_dir, parallel, diff_only)
+                    futures_map[future] = file
 
-        for file in pull_changes["removed"]:
-            backup_if_conflict(file["path"], file["checksum"])
-            os.remove(local_path(file["path"]))
+                for future in concurrent.futures.as_completed(futures_map):
+                    file = futures_map[future]
+                    try:
+                        future.result(600)
+                    except concurrent.futures.TimeoutError:
+                        raise ClientError("Timeout error: failed to download {}".format(file))
+        else:
+            for file in fetch_files:
+                # TODO check it does not fail, do some retry on ClientError
+                diff_only = 'diffs' in file
+                self._download_file(project_path, file, temp_dir, parallel, diff_only)
 
-        for file in pull_changes["renamed"]:
-            backup_if_conflict(file["new_path"], file["checksum"])
-            move_file(local_path(file["path"]), local_path(file["new_path"]))
+        # make sure we can update geodiff reference files (aka. basefiles) with diffs or
+        # download their full versions so we have them up-to-date for applying changes
+        for file in pull_changes['updated']:
+            if 'diffs' not in file:
+                continue
+            file['version'] = server_info['version']
+            basefile = mp.fpath_meta(file['path'])
+            if not os.path.exists(basefile):
+                self._download_file(project_path, file, temp_dir, parallel, diff_only=False)
 
-        local_info["files"] = server_info["files"]
-        local_info["version"] = server_info["version"] if server_info["version"] else 'v0'
-        save_project_file(directory, local_info)
+            diffs = [mp.fpath(f, temp_dir) for f in file['diffs']]
+            patched_reference = mp.apply_diffs(basefile, diffs)
+            if not patched_reference:
+                self._download_file(project_path, file, temp_dir, parallel, diff_only=False)
 
-    def _download_file(self, project_path, project_version, file, directory, parallel=True):
+            move_file(patched_reference, mp.fpath(file["path"], temp_dir))
+
+        conflicts = mp.apply_pull_changes(pull_changes, temp_dir)
+        mp.metadata = {
+            'name': project_path,
+            'version': server_info['version'] if server_info['version'] else 'v0',
+            'files': server_info['files']
+        }
+        
+        shutil.rmtree(temp_dir)
+        return conflicts
+
+    def _download_file(self, project_path, file, directory, parallel=True, diff_only=False):
         """
         Helper to download single project file from server in chunks.
 
         :param project_path: Project's full name (<namespace>/<name>)
         :type project_path: String
-        :param project_version: Version of the project (v<n>)
-        :type project_version: String
         :param file: File metadata item from Project['files']
         :type file: dict
         :param directory: Project's directory
@@ -574,10 +933,11 @@ class MerginClient:
         """
         query_params = {
             "file": file['path'],
-            "version": project_version
+            "version": file['version'],
+            "diff": diff_only
         }
         file_dir = os.path.dirname(os.path.normpath(os.path.join(directory, file['path'])))
-        basename = os.path.basename(file['path'])
+        basename = os.path.basename(file['diff']['path']) if diff_only else os.path.basename(file['path'])
 
         def download_file_part(part):
             """Callback to get a part of file using request to server with Range header."""
@@ -608,10 +968,12 @@ class MerginClient:
         # merge chunks together
         with open(os.path.join(file_dir, basename), 'wb') as final:
             for i in range(chunks):
-                file_part = os.path.join(directory, file['path'] + ".{}".format(i))
+                file_part = os.path.join(file_dir, basename + ".{}".format(i))
                 with open(file_part, 'rb') as chunk:
                     shutil.copyfileobj(chunk, final)
                 os.remove(file_part)
+
+        return file['path']
 
     def delete_project(self, project_path):
         """
@@ -626,7 +988,7 @@ class MerginClient:
         request = urllib.request.Request(url, method="DELETE")
         self._do_request(request)
 
-    def _upload_file(self, transaction, project_dir, file_meta, parallel=True):
+    def _upload_file(self, transaction, file_meta, parallel=True):
         """
         Upload file in open upload transaction.
 
@@ -641,7 +1003,6 @@ class MerginClient:
         :raises ClientError: raise on data integrity check failure
         """
         headers = {"Content-Type": "application/octet-stream"}
-        file_path = os.path.join(project_dir, file_meta["path"])
 
         def upload_chunk(chunk_id, data):
             checksum = hashlib.sha1()
@@ -653,7 +1014,7 @@ class MerginClient:
                 self.post("/v1/project/push/cancel/{}".format(transaction))
                 raise ClientError("Mismatch between uploaded file chunk {} and local one".format(chunk))
 
-        with open(file_path, 'rb') as file:
+        with open(file_meta['location'], 'rb') as file:
             if parallel:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     futures_map = {executor.submit(upload_chunk, chunk, file.read(UPLOAD_CHUNK_SIZE)): chunk for chunk in file_meta["chunks"]}

@@ -2,6 +2,7 @@ import os
 import io
 import json
 import hashlib
+import re
 from datetime import datetime
 
 
@@ -54,3 +55,14 @@ class DateTimeEncoder(json.JSONEncoder):
             return obj.isoformat()
 
         return super().default(obj)
+
+
+def find(items, fn):
+    for item in items:
+        if fn(item):
+            return item
+
+
+def int_version(version):
+    """ Convert v<n> format of version to integer representation. """
+    return int(version.lstrip('v')) if re.match(r'v\d', version) else None
