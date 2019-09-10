@@ -64,6 +64,9 @@ def cli():
 def login(url, login, password):
     """Fetch new authentication token"""
     c = MerginClient(url)
+    if not c.is_server_compatible():
+        click.secho(str('This client version is incompatible with server, try to upgrade'), fg='red')
+        return
     session = c.login(login, password)
     print('export MERGIN_URL="%s"' % url)
     print('export MERGIN_AUTH="%s"' % session['token'])
@@ -186,17 +189,6 @@ def pull(parallel):
         click.echo('Done')
     except InvalidProject:
         click.secho('Invalid project directory', fg='red')
-
-
-@cli.command()
-def version():
-    """Check and display server version"""
-    c = _init_client()
-    serv_ver = c.server_version()
-    ok = c.check_version()
-    click.echo("Server version: %s" % serv_ver)
-    if not ok:
-        click.secho("Server doesn't meet the minimum required version: %s" % c.min_server_version, fg='yellow')
 
 
 @cli.command()
