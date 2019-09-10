@@ -489,8 +489,6 @@ def decode_token_data(token):
 
 
 class MerginClient:
-    min_server_version = '2019.3-22'
-
     def __init__(self, url, auth_token=None, login=None, password=None):
         self.url = url
 
@@ -546,41 +544,53 @@ class MerginClient:
         request = urllib.request.Request(url, data, headers, method="POST")
         return self._do_request(request)
 
-    def server_version(self):
+    def is_server_compatible(self):
         """
-        Return version of the server
+        Test whether version of the server meets the required set of endpoints.
 
-        rtype: String
-        """
-        resp = self.get("/ping")
-        try:
-            data = json.load(resp)
-            return data["version"]
-        except:
-            raise ClientError("Unknown server")
-
-    def check_version(self):
-        """
-        Test whether version of the server meets the minimum required value
-
+        :returns: client compatible with server
         rtype: Boolean
         """
-        server_version = self.server_version()
+        resp = self.get("/ping")
+        data = json.load(resp)
+        if 'endpoints' not in data:
+            return False
+        endpoints = data['endpoints']
 
-        if server_version == "dev":
-            return True
+        client_endpoints = {
+            "data_sync": {
+                "GET": ["/project/raw/{namespace}/{project_name}"],
+                "POST": [
+                    "/project/push/cancel/{transaction_id}",
+                    "/project/push/finish/{transaction_id}",
+                    "/project/push/{namespace}/{project_name}",
+                   # "/project/push/chunk/{transaction_id}/{chunk_id}" # issue in server
+                ]
+            },
+            "project": {
+                "DELETE": ["/project/{namespace}/{project_name}"],
+                "GET": [
+                    "/project",
+                    "/project/{namespace}/{project_name}",
+                    "/project/version/{namespace}/{project_name}"
+                ],
+                "POST": ["/project/{namespace}"]
+            },
+            "user": {
+                "POST": ["/auth/login"]
+            }
+        }
 
-        def parse_version(string):
-            m = re.match("^(\d+).(\d+)-(\d+)", string)
-            if m:
-                return list(map(int, m.groups()))
-
-        try:
-            s1, s2, s3 = parse_version(server_version)
-            m1, m2, m3 = parse_version(self.min_server_version)
-            return s1 > m1 or (s1 == m1 and (s2 > m2 or (s2 == m2 and s3 >= m3)))
-        except (TypeError, ValueError):
-            raise ClientError("Unknown server version: %s" % server_version)
+        for k, v in client_endpoints.items():
+            if k not in endpoints:
+                return False
+            for method, url_list in v.items():
+                if method not in endpoints[k]:
+                    return False
+                for url in url_list:
+                    if url not in endpoints[k][method]:
+                        return False
+        return True
 
     def login(self, login, password):
         """
