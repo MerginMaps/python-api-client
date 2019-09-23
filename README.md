@@ -14,7 +14,6 @@ For using mergin client with its dependencies packaged locally run:
     mkdir -p mergin/deps
     pip wheel -r mergin_client.egg-info/requires.txt -w mergin/deps
 
-Build and add [geodiff](https://github.com/lutraconsulting/geodiff) lib (libgeodiff.so) and pygeodiff wheel to mergin/deps.
 
 ## Tests
 For running test do:

@@ -16,7 +16,6 @@ import concurrent.futures
 from .utils import save_to_file, generate_checksum, move_file, DateTimeEncoder, int_version, find
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
-GEODIFFLIB = os.path.join(os.path.dirname(os.path.realpath(__file__)), "deps/libgeodiff.so")
 
 try:
     import dateutil.parser
@@ -60,13 +59,8 @@ class MerginProject:
         self.dir = os.path.abspath(directory)
         if not os.path.exists(self.dir):
             raise InvalidProject('Project directory does not exist')
-        
-        try:
-            lib = os.environ.get("GEODIFFLIB", GEODIFFLIB)
-            self.geodiff = pygeodiff.GeoDiff(lib)
-        except OSError:
-            self.geodiff = None
 
+        self.geodiff = pygeodiff.GeoDiff() if os.environ.get('GEODIFF_ENABLED', 'True').lower() == 'true' else None
         self.meta_dir = os.path.join(self.dir, '.mergin')
         if not os.path.exists(self.meta_dir):
             os.mkdir(self.meta_dir)
