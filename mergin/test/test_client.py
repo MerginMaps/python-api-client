@@ -10,7 +10,6 @@ API_USER = os.environ.get('TEST_API_USERNAME')
 USER_PWD = os.environ.get('TEST_API_PASSWORD')
 TMP_DIR = tempfile.gettempdir()
 TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'test_data')
-GEODIFFLIB = os.environ.get("GEODIFFLIB", '../deps/libgeodiff.so')
 
 
 @pytest.fixture(scope='function')
@@ -197,10 +196,7 @@ diff_test_scenarios = [
 @pytest.mark.parametrize("diffs_limit, push_geodiff_enabled, pull_geodiff_enabled", diff_test_scenarios)
 def test_sync_diff(mc, diffs_limit, push_geodiff_enabled, pull_geodiff_enabled):
     def toggle_geodiff(enabled):
-        if enabled:
-            os.environ['GEODIFFLIB'] = GEODIFFLIB
-        else:
-            os.environ['GEODIFFLIB'] = 'libgeodiff'  # invalid path causing failure
+        os.environ['GEODIFF_ENABLED'] = str(enabled)
 
     test_project = f'test_sync_diff_{diffs_limit}_{int(push_geodiff_enabled)}_{int(pull_geodiff_enabled)}'
     project = API_USER + '/' + test_project
