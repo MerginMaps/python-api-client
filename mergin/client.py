@@ -416,8 +416,19 @@ class MerginProject:
                     move_file(self.fpath_meta(item["path"]), basefile)
                 elif k == 'removed':
                     os.remove(basefile)
-                else:
+                elif k == 'added':
                     shutil.copy(self.fpath(path), basefile)
+                elif k == 'updated':
+                    # better to apply diff to previous basefile to avoid issues with geodiff tmp files
+                    changeset = self.fpath_meta(item['diff']['path'])
+                    patchedfile = self.apply_diffs(basefile, [changeset])
+                    if patchedfile:
+                        move_file(patchedfile, basefile)
+                    else:
+                        # in case of local sync issues it is safier to remove basefile, next time it will be downloaded from server
+                        os.remove(basefile)
+                else:
+                    pass
 
     def backup_file(self, file):
         """
