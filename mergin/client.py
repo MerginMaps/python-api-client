@@ -297,7 +297,7 @@ class MerginProject:
             diff_file = self.fpath_meta(diff_name)
             try:
                 self.geodiff.create_changeset(origin_file, current_file, diff_file)
-                if self.geodiff.list_changes(diff_file):
+                if self.geodiff.has_changes(diff_file):
                     diff_size = os.path.getsize(diff_file)
                     file['checksum'] = file['origin_checksum']  # need to match basefile on server
                     file['chunks'] = [str(uuid.uuid4()) for i in range(math.ceil(diff_size / UPLOAD_CHUNK_SIZE))]
@@ -352,7 +352,7 @@ class MerginProject:
                 basefile = self.fpath_meta(path)
 
                 # special care is needed for geodiff files
-                if self.geodiff and k == 'updated':
+                if self.is_versioned_file(path) and k == 'updated':
                     if path in modified:
                         server_diff = self.fpath(f'{path}-server_diff', temp_dir)  # single origin diff from 'diffs' for use in rebase
                         rebased_diff = self.fpath(f'{path}-rebased', temp_dir)

@@ -227,7 +227,7 @@ def test_sync_diff(mc, diffs_limit, push_geodiff_enabled, pull_geodiff_enabled):
     mc.push_project(project_dir)
     if push_geodiff_enabled:
         mp.geodiff.create_changeset(mp.fpath(f_updated), mp.fpath_meta(f_updated), mp.fpath_meta('push_diff'))
-        assert not mp.geodiff.list_changes(mp.fpath_meta('push_diff'))
+        assert not mp.geodiff.has_changes(mp.fpath_meta('push_diff'))
     else:
         assert not os.path.exists(mp.fpath_meta(f_updated))
     # step 2) base.gpkg updated to inserted_1_A_mod (modified 2 features)
@@ -262,7 +262,7 @@ def test_sync_diff(mc, diffs_limit, push_geodiff_enabled, pull_geodiff_enabled):
     mc.pull_project(project_dir_2)
     if pull_geodiff_enabled:
         mp2.geodiff.create_changeset(mp.fpath(f_updated), mp2.fpath(f_updated), mp2.fpath_meta('diff'))
-        assert not mp2.geodiff.list_changes(mp2.fpath_meta('diff'))
+        assert not mp2.geodiff.has_changes(mp2.fpath_meta('diff'))
     else:
         server_file_checksum = next((f['checksum'] for f in project_info['files'] if f['path'] == f_updated), '')
         assert server_file_checksum == generate_checksum(mp2.fpath(f_updated))
@@ -285,6 +285,6 @@ def test_sync_diff(mc, diffs_limit, push_geodiff_enabled, pull_geodiff_enabled):
     mc.pull_project(project_dir)
     if pull_geodiff_enabled:
         mp3.geodiff.create_changeset(mp.fpath(f_updated), mp3.fpath(f_updated), mp.fpath_meta('diff'))
-        assert not mp3.geodiff.list_changes(mp.fpath_meta('diff'))
+        assert not mp3.geodiff.has_changes(mp.fpath_meta('diff'))
     else:
         assert os.path.exists(mp.fpath('base.gpkg_conflict_copy'))
