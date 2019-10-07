@@ -22,7 +22,6 @@ For running test do:
     export TEST_MERGIN_URL=<url> # testing server
     export TEST_API_USERNAME=<username>
     export TEST_API_PASSWORD=<pwd>
-    export GEODIFFLIB=<path to libgeodiff.so>  # usually in mergin/deps/
     pipenv run pytest --cov-report html --cov=mergin test/
 
 

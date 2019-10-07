@@ -117,50 +117,16 @@ def status():
 
     try:
         mp = MerginProject(os.getcwd())
-        project_info = mp.metadata
     except InvalidProject:
         click.secho('Invalid project directory', fg='red')
         return
 
-    project_name = project_info["name"]
     c = _init_client()
-
-    local_version = num_version(project_info["version"])
-
-    try:
-        versions = c.project_versions(project_name)
-    except Exception as e:
-        click.secho(str(e), fg='red')
-        return
-
-    click.echo("Current version: {}".format(project_info["version"]))
-    new_versions = [v for v in versions if num_version(v["name"]) > local_version]
-    if new_versions:
-        click.secho("### Available updates: {}".format(len(new_versions)), fg="magenta")
-
-        # TODO: insufficient API, files could be included in versions,
-        # or we should be able to request project_info at specific version
-        server_files = c.project_info(project_name, since=local_version)["files"]
-
-        # changes between current files and last version on server
-        # changes = project_changes(local_files, server_files)
-
-        # changes between versions on server
-        changes = mp.get_pull_changes(server_files)
-
-        click.echo()
-        click.secho("### Changes:", fg="magenta")
-        pretty_diff(changes)
-        click.echo()
-
-    changes = mp.get_push_changes()
-    changes_count = get_changes_count(changes)
-    if changes_count:
-        click.secho("### Local changes: {}".format(changes_count), fg="magenta")
-        pretty_diff(changes)
-    else:
-        click.secho("No local changes!", fg="magenta")
-    # TODO: show conflicts
+    pull_changes, push_changes = c.project_status(os.getcwd())
+    click.secho("### Server changes:", fg="magenta")
+    pretty_diff(pull_changes)
+    click.secho("### Local changes:", fg="magenta")
+    pretty_diff(push_changes)
 
 
 @cli.command()

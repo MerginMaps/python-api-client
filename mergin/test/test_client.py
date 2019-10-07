@@ -129,6 +129,14 @@ def test_push_pull_changes(mc, parallel):
     with open(os.path.join(project_dir, f_updated), 'w') as f:
         f.write('Modified')
 
+    # check changes before applied
+    pull_changes, push_changes = mc.project_status(project_dir)
+    assert not sum(len(v) for v in pull_changes.values())
+    assert next((f for f in push_changes['added'] if f['path'] == f_added), None)
+    assert next((f for f in push_changes['removed'] if f['path'] == f_removed), None)
+    assert next((f for f in push_changes['updated'] if f['path'] == f_updated), None)
+    assert next((f for f in push_changes['renamed'] if f['path'] == f_renamed), None)
+
     mc.push_project(project_dir, parallel=parallel)
     project_info = mc.project_info(project)
     assert project_info['version'] == 'v2'
@@ -153,6 +161,14 @@ def test_push_pull_changes(mc, parallel):
     # not at latest server version
     with pytest.raises(ClientError, match='Update your local repository'):
         mc.push_project(project_dir_2)
+
+    # check changes in project_dir_2 before applied
+    pull_changes, push_changes = mc.project_status(project_dir_2)
+    assert next((f for f in pull_changes['added'] if f['path'] == f_added), None)
+    assert next((f for f in pull_changes['removed'] if f['path'] == f_removed), None)
+    assert next((f for f in pull_changes['updated'] if f['path'] == f_updated), None)
+    assert next((f for f in pull_changes['renamed'] if f['path'] == f_renamed), None)
+    assert next((f for f in push_changes['updated'] if f['path'] == f_updated), None)
 
     mc.pull_project(project_dir_2, parallel=parallel)
     assert os.path.exists(os.path.join(project_dir_2, f_added))
@@ -222,7 +238,6 @@ def test_sync_diff(mc, diffs_limit, push_geodiff_enabled, pull_geodiff_enabled):
     # step 1) base.gpkg updated to inserted_1_A (inserted A feature)
     if push_geodiff_enabled:
         shutil.move(mp.fpath(f_updated), mp.fpath_meta(f_updated))  # make local copy for changeset calculation
-        pass
     shutil.copy(mp.fpath('inserted_1_A.gpkg'), mp.fpath(f_updated))
     mc.push_project(project_dir)
     if push_geodiff_enabled:
