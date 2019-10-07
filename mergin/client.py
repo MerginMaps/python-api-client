@@ -1043,3 +1043,20 @@ class MerginClient:
                 for chunk in file_meta["chunks"]:
                     data = file.read(UPLOAD_CHUNK_SIZE)
                     upload_chunk(chunk, data)
+
+    def project_status(self, directory):
+        """
+        Get project status, e.g. server and local changes.
+
+        :param directory: Project's directory
+        :type directory: String
+        :returns: changes metadata for files modified on server, and for those modified locally
+        :rtype: dict, dict
+        """
+        mp = MerginProject(directory)
+        project_path = mp.metadata["name"]
+        local_version = mp.metadata["version"]
+        server_info = self.project_info(project_path, since=local_version)
+        pull_changes = mp.get_pull_changes(server_info["files"])
+        push_changes = mp.get_push_changes()
+        return pull_changes, push_changes
