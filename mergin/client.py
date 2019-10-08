@@ -20,7 +20,6 @@ this_dir = os.path.dirname(os.path.realpath(__file__))
 try:
     import dateutil.parser
     from dateutil.tz import tzlocal
-    import pygeodiff
 except ImportError:
     # this is to import all dependencies shipped with package (e.g. to use in qgis-plugin)
     deps_dir = os.path.join(this_dir, 'deps')
@@ -31,7 +30,11 @@ except ImportError:
 
         import dateutil.parser
         from dateutil.tz import tzlocal
-        import pygeodiff
+
+try:
+    from .deps import pygeodiff
+except ImportError:
+    os.environ['GEODIFF_ENABLED'] = 'False'
 
 CHUNK_SIZE = 100 * 1024 * 1024
 # there is an upper limit for chunk size on server, ideally should be requested from there once implemented
@@ -60,7 +63,15 @@ class MerginProject:
         if not os.path.exists(self.dir):
             raise InvalidProject('Project directory does not exist')
 
-        self.geodiff = pygeodiff.GeoDiff() if os.environ.get('GEODIFF_ENABLED', 'True').lower() == 'true' else None
+        # make sure we can load correct pygeodiff
+        if os.environ.get('GEODIFF_ENABLED', 'True').lower() == 'true':
+            try:
+                self.geodiff = pygeodiff.GeoDiff()
+            except pygeodiff.geodifflib.GeoDiffLibVersionError:
+                self.geodiff = None
+        else:
+            self.geodiff = None
+
         self.meta_dir = os.path.join(self.dir, '.mergin')
         if not os.path.exists(self.meta_dir):
             os.mkdir(self.meta_dir)
