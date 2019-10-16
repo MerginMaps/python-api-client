@@ -365,25 +365,31 @@ class MerginProject:
                 # special care is needed for geodiff files
                 if self.is_versioned_file(path) and k == 'updated':
                     if path in modified:
+                        f_server_backup = self.fpath(f'{path}-server_backup', temp_dir)
                         server_diff = self.fpath(f'{path}-server_diff', temp_dir)  # single origin diff from 'diffs' for use in rebase
                         rebased_diff = self.fpath(f'{path}-rebased', temp_dir)
-                        patchedfile = self.fpath(f'{path}-patched', temp_dir)  # patched server version with local changes
-                        changeset = self.fpath(f'{path}-local_diff', temp_dir)  # final changeset to be potentially committed
+                        shutil.copy(src, f_server_backup)  # temporary backup of file pulled from server for test and recovery
                         try:
                             self.geodiff.create_changeset(basefile, src, server_diff)
                             self.geodiff.create_rebased_changeset(basefile, dest, server_diff, rebased_diff)
-                            self.geodiff.apply_changeset(src, patchedfile, rebased_diff)
-                            self.geodiff.create_changeset(src, patchedfile, changeset)
-                            shutil.copy(src, basefile)
-                            shutil.copy(patchedfile, dest)
+                            # update file with rebased_diff to contain both server and local changes
+                            self.geodiff.apply_changeset(src, rebased_diff)
+                            # try to create final changeset to be potentially committed in push
+                            changeset = self.fpath(f'{path}-local_diff', temp_dir)
+                            self.geodiff.create_changeset(f_server_backup, src, changeset)
+                            # we are happy with rebase, prepare 'live' versions of files
+                            shutil.copy(f_server_backup, basefile)
+                            shutil.copy(src, dest)
                         except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
-                            # it would not be possible to commit local changes, create new conflict file instead
+                            # it would not be possible to commit local changes
+                            # local changes will end up in new conflict file
+                            # for original file server wins
                             conflict = self.backup_file(path)
                             conflicts.append(conflict)
-                            shutil.copy(src, dest)
-                            shutil.copy(src, basefile)
+                            shutil.copy(f_server_backup, dest)
+                            shutil.copy(f_server_backup, basefile)
                     else:
-                        # just use already updated tmp_basefile to update project file and its basefile
+                        # just use server version of file to update both project file and its basefile
                         shutil.copy(src, dest)
                         shutil.copy(src, basefile)
                 else:
@@ -432,10 +438,8 @@ class MerginProject:
                 elif k == 'updated':
                     # better to apply diff to previous basefile to avoid issues with geodiff tmp files
                     changeset = self.fpath_meta(item['diff']['path'])
-                    patchedfile = self.apply_diffs(basefile, [changeset])
-                    if patchedfile:
-                        move_file(patchedfile, basefile)
-                    else:
+                    patch_error = self.apply_diffs(basefile, [changeset])
+                    if patch_error:
                         # in case of local sync issues it is safier to remove basefile, next time it will be downloaded from server
                         os.remove(basefile)
                 else:
@@ -464,29 +468,26 @@ class MerginProject:
     def apply_diffs(self, basefile, diffs):
         """
         Helper function to update content of geodiff file using list of diffs.
+        Input file will be overwritten (make sure to create backup if needed).
 
         :param basefile: abs path to file to be updated
         :type basefile: str
         :param diffs: list of abs paths to geodiff changeset files
         :type diffs: list[str]
-        :returns:  abs path of created patched file
+        :returns: error message if diffs were not successfully applied or None
         :rtype: str
         """
+        error = None
         if not self.is_versioned_file(basefile):
-            return
+            return error
 
-        patchedfile = None
         for index, diff in enumerate(diffs):
-            patchedfile = f'{basefile}-patched-{index}'
             try:
-                self.geodiff.apply_changeset(basefile, patchedfile, diff)
-            except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
-                return
-            previous = f'{basefile}-patched-{index-1}'
-            if os.path.exists(previous):
-                os.remove(previous)
-            basefile = patchedfile
-        return patchedfile
+                self.geodiff.apply_changeset(basefile, diff)
+            except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as e:
+                error = str(e)
+                break
+        return error
 
 
 def decode_token_data(token):
@@ -924,15 +925,16 @@ class MerginClient:
                 continue
             file['version'] = server_info['version']
             basefile = mp.fpath_meta(file['path'])
-            if not os.path.exists(basefile):
+            server_file = mp.fpath(file["path"], temp_dir)
+            if os.path.exists(basefile):
+                shutil.copy(basefile, server_file)
+                diffs = [mp.fpath(f, temp_dir) for f in file['diffs']]
+                patch_error = mp.apply_diffs(server_file, diffs)
+                if patch_error:
+                    # we can't use diffs, overwrite with full version of file fetched from server
+                    self._download_file(project_path, file, temp_dir, parallel, diff_only=False)
+            else:
                 self._download_file(project_path, file, temp_dir, parallel, diff_only=False)
-
-            diffs = [mp.fpath(f, temp_dir) for f in file['diffs']]
-            patched_reference = mp.apply_diffs(basefile, diffs)
-            if not patched_reference:
-                self._download_file(project_path, file, temp_dir, parallel, diff_only=False)
-
-            move_file(patched_reference, mp.fpath(file["path"], temp_dir))
 
         conflicts = mp.apply_pull_changes(pull_changes, temp_dir)
         mp.metadata = {
