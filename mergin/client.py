@@ -363,31 +363,45 @@ class MerginProject:
                 basefile = self.fpath_meta(path)
 
                 # special care is needed for geodiff files
+                # 'src' here is server version of file and 'dest' is locally modified
                 if self.is_versioned_file(path) and k == 'updated':
                     if path in modified:
+                        server_diff = self.fpath(f'{path}-server_diff', temp_dir)  # diff between server file and local basefile
+                        local_diff = self.fpath(f'{path}-local_diff', temp_dir)
+
+                        # temporary backup of file pulled from server for recovery
                         f_server_backup = self.fpath(f'{path}-server_backup', temp_dir)
-                        server_diff = self.fpath(f'{path}-server_diff', temp_dir)  # single origin diff from 'diffs' for use in rebase
-                        rebased_diff = self.fpath(f'{path}-rebased', temp_dir)
-                        shutil.copy(src, f_server_backup)  # temporary backup of file pulled from server for test and recovery
+                        shutil.copy(src, f_server_backup)
+
+                        # create temp backup (ideally with geodiff) of locally modified file if needed later
+                        f_conflict_file = self.fpath(f'{path}-local_backup', temp_dir)
+                        try:
+                            self.geodiff.create_changeset(basefile, dest, local_diff)
+                            shutil.copy(basefile, f_conflict_file)
+                            self.geodiff.apply_changeset(f_conflict_file, local_diff)
+                        except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
+                            # FIXME hard copy can lead to data loss if changes from -wal file were not flushed !!!
+                            shutil.copy(dest, f_conflict_file)
+
+                        # try to do rebase magic
                         try:
                             self.geodiff.create_changeset(basefile, src, server_diff)
-                            self.geodiff.create_rebased_changeset(basefile, dest, server_diff, rebased_diff)
-                            # update file with rebased_diff to contain both server and local changes
-                            self.geodiff.apply_changeset(src, rebased_diff)
-                            # try to create final changeset to be potentially committed in push
-                            changeset = self.fpath(f'{path}-local_diff', temp_dir)
-                            self.geodiff.create_changeset(f_server_backup, src, changeset)
-                            # we are happy with rebase, prepare 'live' versions of files
-                            shutil.copy(f_server_backup, basefile)
-                            shutil.copy(src, dest)
-                        except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
-                            # it would not be possible to commit local changes
-                            # local changes will end up in new conflict file
-                            # for original file server wins
+                            self.geodiff.rebase(basefile, src, dest)
+                            # make sure basefile is in the same state as remote server file (for calc of push changes)
+                            self.geodiff.apply_changeset(basefile, server_diff)
+                        except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as err:
+                            # it would not be possible to commit local changes, they need to end up in new conflict file
+                            shutil.copy(f_conflict_file, dest)  # revert file
                             conflict = self.backup_file(path)
                             conflicts.append(conflict)
-                            shutil.copy(f_server_backup, dest)
+                            # original file synced with server
                             shutil.copy(f_server_backup, basefile)
+                            shutil.copy(f_server_backup, dest)
+                            # changes in -wal have been already applied in conflict file or LOST (see above)
+                            if os.path.exists(f'{dest}-wal'):
+                                os.remove(f'{dest}-wal')
+                            if os.path.exists(f'{dest}-shm'):
+                                os.remove(f'{dest}-shm')
                     else:
                         # just use server version of file to update both project file and its basefile
                         shutil.copy(src, dest)

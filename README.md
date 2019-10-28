@@ -5,13 +5,14 @@ Repo for [mergin](https://public.cloudmergin.com/) client and basic utils.
 ## Development
 Python 3.6+ required. Create `mergin/deps` folder where [geodiff](https://github.com/lutraconsulting/geodiff) lib is supposed to be and install dependencies:
     
-    mkdir -p mergin/deps
+    rm -r mergin/deps
+    mkdir mergin/deps
     pipenv install --dev --three
     pipenv run pip install -r <(pipenv lock -r | grep pygeodiff) --target mergin/deps
 
 For using mergin client with its dependencies packaged locally run:
 
-    pip install wheel
+    pip install wheel 
     python3 setup.py sdist bdist_wheel
     mkdir -p mergin/deps
     pip wheel -r mergin_client.egg-info/requires.txt -w mergin/deps

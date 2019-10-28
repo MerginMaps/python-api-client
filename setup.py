@@ -18,7 +18,7 @@ setup(
     platforms='any',
     install_requires=[
         'python-dateutil==2.6.0',
-        'pygeodiff==0.6.0'
+        'pygeodiff==0.7.4'
     ],
 
     test_suite='nose.collector',
