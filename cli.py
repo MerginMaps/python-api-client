@@ -22,6 +22,7 @@ def get_changes_count(diff):
     attrs = ["added", "removed", "updated", "renamed"]
     return sum([len(diff[attr]) for attr in attrs])
 
+
 def pretty_diff(diff):
     added = diff["added"]
     removed = diff["removed"]
@@ -44,6 +45,13 @@ def pretty_diff(diff):
     if updated:
         click.secho("\n>>> Modified:", fg="cyan")
         click.secho("\n".join("M " + f["path"] for f in updated), fg="yellow")
+
+
+def pretty_summary(summary):
+    for k, v in summary.items():
+        click.secho("Details " + k)
+        click.secho("".join("layer name - " + d["table"] + ": inserted: " + str(d["insert"]) + ", modified: " +
+                            str(d["update"]) + ", deleted: " + str(d["delete"]) + "\n" for d in v['geodiff_summary'] if d["table"] != "gpkg_contents"))
 
 
 def _init_client():
@@ -122,11 +130,13 @@ def status():
         return
 
     c = _init_client()
-    pull_changes, push_changes = c.project_status(os.getcwd())
+    pull_changes, push_changes, push_changes_summary = c.project_status(os.getcwd())
     click.secho("### Server changes:", fg="magenta")
     pretty_diff(pull_changes)
     click.secho("### Local changes:", fg="magenta")
     pretty_diff(push_changes)
+    click.secho("### Local changes summary ###")
+    pretty_summary(push_changes_summary)
 
 
 @cli.command()

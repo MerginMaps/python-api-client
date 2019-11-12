@@ -321,10 +321,24 @@ class MerginProject:
                     }
                 else:
                     not_updated.append(file)
-            except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
+            except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as e:
                 pass  # we do force update
 
         changes['updated'] = [f for f in changes['updated'] if f not in not_updated]
+        return changes
+
+    def get_list_of_push_changes(self, push_changes):
+        i = 0
+        changes = {}
+        for file in push_changes["updated"]:
+            if "diff" in file:
+                changeset_path = file["diff"]["path"]
+                changeset = self.fpath(changeset_path,  self.meta_dir)
+                result_file = self.fpath("change_list" + str(i), self.meta_dir)
+                self.geodiff.list_changes_summary(changeset, result_file)
+                change = open(result_file, "r").read()
+                changes[file["path"]] = json.loads(change)
+                i += 1
         return changes
 
     def apply_pull_changes(self, changes, temp_dir):
@@ -1085,5 +1099,8 @@ class MerginClient:
         local_version = mp.metadata["version"]
         server_info = self.project_info(project_path, since=local_version)
         pull_changes = mp.get_pull_changes(server_info["files"])
+
         push_changes = mp.get_push_changes()
-        return pull_changes, push_changes
+        push_changes_summary = mp.get_list_of_push_changes(push_changes)
+
+        return pull_changes, push_changes, push_changes_summary
