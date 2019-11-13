@@ -130,7 +130,7 @@ def test_push_pull_changes(mc, parallel):
         f.write('Modified')
 
     # check changes before applied
-    pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
+    pull_changes, push_changes, _ = mc.project_status(project_dir)
     assert not sum(len(v) for v in pull_changes.values())
     assert next((f for f in push_changes['added'] if f['path'] == f_added), None)
     assert next((f for f in push_changes['removed'] if f['path'] == f_removed), None)
@@ -163,7 +163,7 @@ def test_push_pull_changes(mc, parallel):
         mc.push_project(project_dir_2)
 
     # check changes in project_dir_2 before applied
-    pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir_2)
+    pull_changes, push_changes, _ = mc.project_status(project_dir_2)
     assert next((f for f in pull_changes['added'] if f['path'] == f_added), None)
     assert next((f for f in pull_changes['removed'] if f['path'] == f_removed), None)
     assert next((f for f in pull_changes['updated'] if f['path'] == f_updated), None)
@@ -315,8 +315,6 @@ def test_list_of_push_changes(mc):
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
 
     cleanup(mc, project, [project_dir])
-    # create remote project
-    toggle_geodiff(True)
     shutil.copytree(TEST_DATA_DIR, project_dir)
     mc.create_project(test_project, project_dir)
 

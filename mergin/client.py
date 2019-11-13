@@ -328,17 +328,19 @@ class MerginProject:
         return changes
 
     def get_list_of_push_changes(self, push_changes):
-        i = 0
         changes = {}
-        for file in push_changes["updated"]:
+        for idx, file in enumerate(push_changes["updated"]):
             if "diff" in file:
                 changeset_path = file["diff"]["path"]
-                changeset = self.fpath(changeset_path,  self.meta_dir)
-                result_file = self.fpath("change_list" + str(i), self.meta_dir)
-                self.geodiff.list_changes_summary(changeset, result_file)
-                change = open(result_file, "r").read()
-                changes[file["path"]] = json.loads(change)
-                i += 1
+                changeset = self.fpath_meta(changeset_path)
+                result_file = self.fpath("change_list" + str(idx), self.meta_dir)
+                try:
+                    self.geodiff.list_changes_summary(changeset, result_file)
+                    change = open(result_file, "r").read()
+                    changes[file["path"]] = json.loads(change)
+                    os.remove(result_file)
+                except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
+                    pass
         return changes
 
     def apply_pull_changes(self, changes, temp_dir):
