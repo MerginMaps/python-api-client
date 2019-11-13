@@ -12,6 +12,10 @@ TMP_DIR = tempfile.gettempdir()
 TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'test_data')
 
 
+def toggle_geodiff(enabled):
+    os.environ['GEODIFF_ENABLED'] = str(enabled)
+
+
 @pytest.fixture(scope='function')
 def mc():
     assert SERVER_URL and SERVER_URL.rstrip('/') != 'https://public.cloudmergin.com' and API_USER and USER_PWD
@@ -211,8 +215,6 @@ diff_test_scenarios = [
 
 @pytest.mark.parametrize("diffs_limit, push_geodiff_enabled, pull_geodiff_enabled", diff_test_scenarios)
 def test_sync_diff(mc, diffs_limit, push_geodiff_enabled, pull_geodiff_enabled):
-    def toggle_geodiff(enabled):
-        os.environ['GEODIFF_ENABLED'] = str(enabled)
 
     test_project = f'test_sync_diff_{diffs_limit}_{int(push_geodiff_enabled)}_{int(pull_geodiff_enabled)}'
     project = API_USER + '/' + test_project
@@ -307,8 +309,6 @@ def test_sync_diff(mc, diffs_limit, push_geodiff_enabled, pull_geodiff_enabled):
 
 def test_list_of_push_changes(mc):
     PUSH_CHANGES_SUMMARY = "{'base.gpkg': {'geodiff_summary': [{'table': 'gpkg_contents', 'insert': 0, 'update': 1, 'delete': 0}, {'table': 'simple', 'insert': 1, 'update': 0, 'delete': 0}]}}"
-    def toggle_geodiff(enabled):
-        os.environ['GEODIFF_ENABLED'] = str(enabled)
 
     test_project = 'test_list_of_push_changes'
     project = API_USER + '/' + test_project
@@ -316,6 +316,7 @@ def test_list_of_push_changes(mc):
 
     cleanup(mc, project, [project_dir])
     shutil.copytree(TEST_DATA_DIR, project_dir)
+    toggle_geodiff(True)
     mc.create_project(test_project, project_dir)
 
     f_updated = 'base.gpkg'
