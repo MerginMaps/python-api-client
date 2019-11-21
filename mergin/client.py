@@ -52,7 +52,6 @@ class ClientError(Exception):
 class SyncError(Exception):
     pass
 
-
 class MerginProject:
     """ Base class for Mergin local projects.
 
@@ -811,6 +810,19 @@ class MerginClient:
             "files": project_info["files"]
         }
 
+    def enough_storage_available(self, data):
+        user_name = self._user_info["username"]
+        resp = self.get('/v1/user/' + user_name)
+        info = json.load(resp)
+        free_space = int(info["storage_limit"]) - int(info["disk_usage"])
+        upload_files_sizes =[f["size"] for f in data["updated"] + data["added"]]
+        size_to_upload = sum(upload_files_sizes)
+
+        if size_to_upload > free_space:
+            return False, free_space
+
+        return True, free_space
+
     def push_project(self, directory, parallel=True):
         """
         Upload local changes to the repository.
@@ -829,6 +841,11 @@ class MerginClient:
             raise ClientError("Update your local repository")
 
         changes = mp.get_push_changes()
+        enough_free_space, freespace = self.enough_storage_available(changes)
+        if not enough_free_space:
+            freespace = int(freespace/(1024*1024))
+            raise SyncError("Storage limit has been reached. Only " + str(freespace) + "MB left")
+
         if not sum(len(v) for v in changes.values()):
             return
         # drop internal info from being sent to server
