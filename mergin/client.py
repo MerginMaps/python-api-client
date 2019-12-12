@@ -572,7 +572,7 @@ class MerginClient:
 
             if self._auth_session:
                 request.add_header("Authorization", self._auth_session["token"])
-                system_version = None
+                system_version = "Unknown"
                 if platform.system() == "Linux":
                     system_version = distro.linux_distribution()[0]
                 elif platform.system() == "Windows":
