@@ -10,8 +10,11 @@ import uuid
 import math
 import hashlib
 import copy
+import platform
 from datetime import datetime, timezone
 import concurrent.futures
+
+from pip._vendor import distro
 
 from .utils import save_to_file, generate_checksum, move_file, DateTimeEncoder, int_version, find
 
@@ -535,12 +538,13 @@ def decode_token_data(token):
 
 
 class MerginClient:
-    def __init__(self, url, auth_token=None, login=None, password=None):
+    def __init__(self, url, auth_token=None, login=None, password=None, plugin_version=None):
         self.url = url
 
         self._auth_params = None
         self._auth_session = None
         self._user_info = None
+        self.client_version = plugin_version if plugin_version is not None else "Python-client/--"
         if auth_token:
             token_data = decode_token_data(auth_token)
             self._auth_session = {
@@ -568,6 +572,14 @@ class MerginClient:
 
             if self._auth_session:
                 request.add_header("Authorization", self._auth_session["token"])
+                system_version = "Unknown"
+                if platform.system() == "Linux":
+                    system_version = distro.linux_distribution()[0]
+                elif platform.system() == "Windows":
+                    system_version =  platform.win32_ver()[0]
+                elif platform.system() == "Mac":
+                    system_version = platform.mac_ver()[0]
+                request.add_header("User-Agent", f"{self.client_version} ({platform.system()}/{system_version})")
         try:
             return self.opener.open(request)
         except urllib.error.HTTPError as e:
