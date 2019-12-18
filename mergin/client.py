@@ -1027,11 +1027,8 @@ class MerginClient:
         basename = os.path.basename(file['diff']['path']) if diff_only else os.path.basename(file['path'])
 
         if file['size'] == 0:
-            directory = os.path.abspath(file_dir)
-            os.makedirs(directory, exist_ok=True)
-            print(os.path.join(file_dir, basename))
-            with open(os.path.join(file_dir, basename), 'w'):
-                pass
+            os.makedirs(file_dir, exist_ok=True)
+            open(os.path.join(file_dir, basename), 'w').close()
             return file["path"]
 
         def download_file_part(part):
