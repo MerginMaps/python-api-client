@@ -1026,6 +1026,11 @@ class MerginClient:
         file_dir = os.path.dirname(os.path.normpath(os.path.join(directory, file['path'])))
         basename = os.path.basename(file['diff']['path']) if diff_only else os.path.basename(file['path'])
 
+        if file['size'] == 0:
+            os.makedirs(file_dir, exist_ok=True)
+            open(os.path.join(file_dir, basename), 'w').close()
+            return file["path"]
+
         def download_file_part(part):
             """Callback to get a part of file using request to server with Range header."""
             start = part * (1 + CHUNK_SIZE)
