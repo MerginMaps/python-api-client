@@ -338,8 +338,9 @@ class MerginProject:
                 result_file = self.fpath("change_list" + str(idx), self.meta_dir)
                 try:
                     self.geodiff.list_changes_summary(changeset, result_file)
-                    change = open(result_file, "r").read()
-                    changes[file["path"]] = json.loads(change)
+                    with open(result_file, 'r') as f:
+                        change = f.read()
+                        changes[file["path"]] = json.loads(change)
                     os.remove(result_file)
                 except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
                     pass
