@@ -469,6 +469,9 @@ class MerginProject:
                 elif k == 'added':
                     shutil.copy(self.fpath(path), basefile)
                 elif k == 'updated':
+                    if "diff" not in item:
+                        print("eobsahuje diff " + item["path"])
+                        continue
                     # better to apply diff to previous basefile to avoid issues with geodiff tmp files
                     changeset = self.fpath_meta(item['diff']['path'])
                     patch_error = self.apply_diffs(basefile, [changeset])
