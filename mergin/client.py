@@ -11,13 +11,12 @@ import math
 import hashlib
 import copy
 import platform
-import sqlite3
 from datetime import datetime, timezone
 import concurrent.futures
 
 from pip._vendor import distro
 
-from .utils import save_to_file, generate_checksum, move_file, DateTimeEncoder, int_version, find
+from .utils import save_to_file, generate_checksum, move_file, DateTimeEncoder, int_version, find, do_sqlite_checkpoint
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -144,21 +143,6 @@ class MerginProject:
         if file in ignore_files:
             return True
         return False
-
-    """
-    function to do checkpoint over the geopackage file which was not able to do diff file
-    """
-    def do_sqlite_checkpoint(self, file):
-        absolute_path = self.fpath(file["path"])
-        if ".gpkg" in file["path"] and os.path.exists(f'{absolute_path}-wal') and os.path.exists(f'{absolute_path}-shm'):
-            conn = sqlite3.connect(file["path"])
-            cursor = conn.cursor()
-            cursor.execute("PRAGMA wal_checkpoint=FULL")
-            cursor.execute("VACUUM")
-            conn.commit()
-            conn.close()
-            file["checksum"] = generate_checksum(file["path"])
-            return file
 
     def inspect_files(self):
         """
@@ -485,6 +469,7 @@ class MerginProject:
                 elif k == 'added':
                     shutil.copy(self.fpath(path), basefile)
                 elif k == 'updated':
+                    # in case for geopackage cannot be created diff
                     if "diff" not in item:
                         continue
                     # better to apply diff to previous basefile to avoid issues with geodiff tmp files
@@ -913,7 +898,8 @@ class MerginClient:
                     for file in upload_files:
                         # do checkpoint to push changes from wal file to gpkg if there is no diff
                         if "diff" not in file and mp.is_versioned_file(file["path"]):
-                            mp.do_sqlite_checkpoint(file)
+                            do_sqlite_checkpoint(mp.fpath(file["path"]))
+                            file["checksum"] = generate_checksum(mp.fpath(file["path"]))
                         file['location'] = mp.fpath_meta(file['diff']['path']) if 'diff' in file else mp.fpath(file['path'])
                         future = executor.submit(self._upload_file, info["transaction"], file, parallel)
                         futures_map[future] = file
@@ -928,7 +914,8 @@ class MerginClient:
                 for file in upload_files:
                     # do checkpoint to push changes from wal file to gpkg if there is no diff
                     if "diff" not in file and mp.is_versioned_file(file["path"]):
-                        mp.do_sqlite_checkpoint(file)
+                        do_sqlite_checkpoint(mp.fpath(file["path"]))
+                        file["checksum"] = generate_checksum(mp.fpath(file["path"]))
                     file['location'] = mp.fpath_meta(file['diff']['path']) if 'diff' in file else mp.fpath(file['path'])
                     self._upload_file(info["transaction"], file, parallel)
 
