@@ -10,6 +10,7 @@ API_USER = os.environ.get('TEST_API_USERNAME')
 USER_PWD = os.environ.get('TEST_API_PASSWORD')
 TMP_DIR = tempfile.gettempdir()
 TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'test_data')
+CHANGED_SCHEMA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'modified_schema')
 
 
 def toggle_geodiff(enabled):
@@ -132,6 +133,11 @@ def test_push_pull_changes(mc, parallel):
     f_updated = 'test3.txt'
     with open(os.path.join(project_dir, f_updated), 'w') as f:
         f.write('Modified')
+    src_files = os.listdir(CHANGED_SCHEMA_DIR)
+    for file_name in src_files:
+        full_file_name = os.path.join(CHANGED_SCHEMA_DIR, file_name)
+        if os.path.isfile(full_file_name):
+            shutil.copy(full_file_name, project_dir)
 
     # check changes before applied
     pull_changes, push_changes, _ = mc.project_status(project_dir)
