@@ -3,6 +3,7 @@ import io
 import json
 import hashlib
 import re
+import sqlite3
 from datetime import datetime
 
 
@@ -66,3 +67,16 @@ def find(items, fn):
 def int_version(version):
     """ Convert v<n> format of version to integer representation. """
     return int(version.lstrip('v')) if re.match(r'v\d', version) else None
+
+
+def do_sqlite_checkpoint(path):
+    """
+    function to do checkpoint over the geopackage file which was not able to do diff file
+    """
+    if ".gpkg" in path and os.path.exists(f'{path}-wal') and os.path.exists(f'{path}-shm'):
+        conn = sqlite3.connect(path)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA wal_checkpoint=FULL")
+        cursor.execute("VACUUM")
+        conn.commit()
+        conn.close()
