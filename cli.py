@@ -16,6 +16,7 @@ from mergin import (
     MerginProject,
     InvalidProject
 )
+from mergin.client_pull import download_project_async, download_project_is_running, download_project_finalize, download_project_cancel
 
 
 def get_changes_count(diff):
@@ -111,6 +112,39 @@ def download(project, directory, parallel):
     try:
         c.download_project(project, directory, parallel)
         click.echo('Done')
+    except Exception as e:
+        print("EXCEPTION!!!", type(e))
+        click.secho(str(e), fg='red')
+
+
+@cli.command()
+@click.argument('project')
+@click.argument('directory', type=click.Path(), required=False)
+def download2(project, directory):
+    """Download last version of mergin project"""
+    
+    c = _init_client()
+    directory = directory or os.path.basename(project)
+
+    click.echo('Downloading into {}'.format(directory))
+    try:
+        job = download_project_async(c, project, directory)
+
+        import time
+        with click.progressbar(length=job.total_size) as bar:
+            last_transferred_size = 0
+            while download_project_is_running(job):
+                time.sleep(1/10)  # 100ms
+                new_transferred_size = job.transferred_size
+                bar.update(new_transferred_size - last_transferred_size)  # the update() needs increment only
+                last_transferred_size = new_transferred_size
+
+        download_project_finalize(job)
+
+        click.echo('Done')
+    except KeyboardInterrupt:
+        print("Cancelling...")
+        download_project_cancel(job)
     except Exception as e:
         click.secho(str(e), fg='red')
 
