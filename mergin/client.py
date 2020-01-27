@@ -53,7 +53,10 @@ class ClientError(Exception):
 
 
 class SyncError(Exception):
-    pass
+    def __init__(self, msg, detail=""):
+        super().__init__(msg)
+        self.detail = detail
+
 
 class MerginProject:
     """ Base class for Mergin local projects.
@@ -705,12 +708,16 @@ class MerginClient:
             "public": is_public
         }
         namespace = self._user_info["username"]
-        self.post("/v1/project/%s" % namespace, params, {"Content-Type": "application/json"})
-        data = {
-            "name": "%s/%s" % (namespace, project_name),
-            "version": "v0",
-            "files": []
-        }
+        try:
+            self.post("/v1/project/%s" % namespace, params, {"Content-Type": "application/json"})
+            data = {
+                "name": "%s/%s" % (namespace, project_name),
+                "version": "v0",
+                "files": []
+            }
+        except Exception as e:
+            detail = f"Namespace: {namespace}, project name: {project_name}"
+            raise SyncError(str(e), detail)
         if directory:
             mp = MerginProject(directory)
             mp.metadata = data

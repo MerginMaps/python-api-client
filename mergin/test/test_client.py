@@ -2,7 +2,7 @@ import os
 import tempfile
 import shutil
 import pytest
-from ..client import MerginClient, ClientError, MerginProject
+from ..client import MerginClient, ClientError, MerginProject, SyncError
 from ..utils import generate_checksum
 
 SERVER_URL = os.environ.get('TEST_MERGIN_URL')
@@ -53,7 +53,7 @@ def test_create_delete_project(mc):
     assert any(p for p in projects if p['name'] == test_project and p['namespace'] == API_USER)
 
     # try again
-    with pytest.raises(ClientError, match=f'Project {test_project} already exists'):
+    with pytest.raises(SyncError, match=f'Project {test_project} already exists'):
         mc.create_project(test_project)
 
     # remove project
