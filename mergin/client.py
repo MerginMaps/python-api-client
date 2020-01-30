@@ -572,7 +572,7 @@ class MerginClient:
             self.opener = urllib.request.build_opener()
         else:
             cafile = os.path.join(this_dir, 'cert.pem')
-            if not os.path.exists(default_cafile):
+            if not os.path.exists(cafile):
                 raise Exception("missing " + cafile)
             ctx = ssl.SSLContext()
             ctx.load_verify_locations(cafile)
