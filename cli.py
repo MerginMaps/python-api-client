@@ -17,6 +17,7 @@ from mergin import (
     InvalidProject
 )
 from mergin.client_pull import download_project_async, download_project_is_running, download_project_finalize, download_project_cancel
+from mergin.client_push import push_project_async, push_project_is_running, push_project_finalize, push_project_cancel
 
 
 def get_changes_count(diff):
@@ -98,6 +99,20 @@ def init(project, directory, public):
         click.echo('Done')
     except Exception as e:
         click.secho(str(e), fg='red')
+
+
+@cli.command()
+@click.option('--flag', help="What kind of projects (e.g. 'created' for just my projects,"
+              "'shared' for projects shared with me. No flag means returns all public projects.")
+def list_projects(flag):
+    """List projects on the server"""
+    filter_str = "(filter flag={})".format(flag) if flag is not None else "(all public)"
+    click.echo('List of projects {}:'.format(filter_str))
+    c = _init_client()
+    projects_list = c.projects_list(flag=flag)
+    for project in projects_list:
+        full_name = "{} / {}".format(project["namespace"], project["name"])
+        click.echo("  {:40}\t{:6.1f} MB\t{}".format(full_name, project["disk_usage"]/(1024*1024), project['version']))
 
 
 @cli.command()
@@ -184,6 +199,38 @@ def push(parallel):
         click.echo('Done')
     except InvalidProject:
         click.echo('Invalid project directory')
+    except Exception as e:
+        click.secho(str(e), fg='red')
+
+
+@cli.command()
+def push2():
+    """Upload local changes into Mergin repository"""
+
+    c = _init_client()
+    directory = os.getcwd()
+
+    try:
+        job = push_project_async(c, directory)
+
+        if job is not None:   # if job is none, we don't upload any files, and the transaction is finished already
+            import time
+            with click.progressbar(length=job.total_size) as bar:
+                last_transferred_size = 0
+                while push_project_is_running(job):
+                    time.sleep(1/10)  # 100ms
+                    new_transferred_size = job.transferred_size
+                    bar.update(new_transferred_size - last_transferred_size)  # the update() needs increment only
+                    last_transferred_size = new_transferred_size
+
+            push_project_finalize(job)
+
+        click.echo('Done')
+    except InvalidProject:
+        click.echo('Invalid project directory')
+    except KeyboardInterrupt:
+        print("Cancelling...")
+        push_project_cancel(job)
     except Exception as e:
         click.secho(str(e), fg='red')
 
