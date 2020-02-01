@@ -17,6 +17,7 @@ from mergin import (
     InvalidProject
 )
 from mergin.client_pull import download_project_async, download_project_is_running, download_project_finalize, download_project_cancel
+from mergin.client_pull import pull_project_async, pull_project_is_running, pull_project_finalize, pull_project_cancel
 from mergin.client_push import push_project_async, push_project_is_running, push_project_finalize, push_project_cancel
 
 
@@ -246,6 +247,41 @@ def pull(parallel):
         click.echo('Done')
     except InvalidProject:
         click.secho('Invalid project directory', fg='red')
+
+
+@cli.command()
+def pull2():
+    """Fetch changes from Mergin repository"""
+
+    c = _init_client()
+    directory = os.getcwd()
+
+    try:
+        job = pull_project_async(c, directory)
+
+        if job is None:
+            click.echo('Project is up to date')
+            return
+
+        import time
+        with click.progressbar(length=job.total_size) as bar:
+            last_transferred_size = 0
+            while pull_project_is_running(job):
+                time.sleep(1/10)  # 100ms
+                new_transferred_size = job.transferred_size
+                bar.update(new_transferred_size - last_transferred_size)  # the update() needs increment only
+                last_transferred_size = new_transferred_size
+
+        pull_project_finalize(job)
+
+        click.echo('Done')
+    except InvalidProject:
+        click.echo('Invalid project directory')
+    except KeyboardInterrupt:
+        print("Cancelling...")
+        pull_project_cancel(job)
+    #except Exception as e:
+    #    click.secho(str(e), fg='red')
 
 
 @cli.command()
