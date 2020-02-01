@@ -245,6 +245,183 @@ class DownloadQueueItem:
             raise ClientError('Failed to download part {} of file {}'.format(part, basename))
 
 
+class PullJob:
+    def __init__(self, project_path, pull_changes, total_size, version, files_to_merge, download_queue_items, temp_dir, mp, project_info):
+        self.project_path = project_path
+        self.pull_changes = pull_changes    # dictionary with changes (dict[str, list[dict]] - keys: "added", "updated", ...)
+        self.total_size = total_size      # size of data to download (in bytes)
+        self.transferred_size = 0
+        self.version = version
+        self.files_to_merge = files_to_merge   # list of tuples (file dict, download items)
+        self.download_queue_items = download_queue_items
+        self.temp_dir = temp_dir            # full path to temporary directory where we store downloaded files
+        #self.directory = directory    # project's directory
+        self.mp = mp   # MerginProject instance
+        self.is_cancelled = False
+        self.project_info = project_info   # parsed JSON with project info returned from the server
+
+
+def pull_project_async(mc, directory):
+    """
+    Starts project pull in background and returns handle to the pending job.
+    Using that object it is possible to watch progress or cancel the ongoing work.
+    """
+
+    mp = MerginProject(directory)
+    project_path = mp.metadata["name"]
+    local_version = mp.metadata["version"]
+    server_info = mc.project_info(project_path, since=local_version)
+    if local_version == server_info["version"]:
+        return  # Project is up to date
+
+    server_version = server_info["version"]
+    temp_dir = mp.fpath_meta(f'fetch_{local_version}-{server_version}')
+    os.makedirs(temp_dir, exist_ok=True)
+    pull_changes = mp.get_pull_changes(server_info["files"])
+    fetch_files = []
+    for f in pull_changes["added"]:
+        f['version'] = server_version
+        fetch_files.append(f)
+    # extend fetch files download list with various version of diff files (if needed)
+    for f in pull_changes["updated"]:
+        if 'diffs' in f:
+            for diff in f['diffs']:
+                diff_file = copy.deepcopy(f)
+                for k, v in f['history'].items():
+                    if 'diff' not in v:
+                        continue
+                    if diff == v['diff']['path']:
+                        diff_file['version'] = k
+                        diff_file['diff'] = v['diff']
+                fetch_files.append(diff_file)
+        else:
+            f['version'] = server_version
+            fetch_files.append(f)
+
+    files_to_merge = []   # list of tuples: (file dict, list of DownloadQueueItem)
+
+    for file in fetch_files:
+        # TODO check it does not fail, do some retry on ClientError
+        diff_only = 'diffs' in file
+        items = _download_items(file, temp_dir, diff_only)
+        files_to_merge.append( (file, items) )
+
+    # make sure we can update geodiff reference files (aka. basefiles) with diffs or
+    # download their full versions so we have them up-to-date for applying changes
+    for file in pull_changes['updated']:
+        if 'diffs' not in file:
+            continue
+        file['version'] = server_version
+        basefile = mp.fpath_meta(file['path'])
+        server_file = mp.fpath(file["path"], temp_dir)
+        if os.path.exists(basefile):
+            shutil.copy(basefile, server_file)
+            diffs = [mp.fpath(f, temp_dir) for f in file['diffs']]
+            patch_error = mp.apply_diffs(server_file, diffs)
+            if patch_error:
+                # we can't use diffs, overwrite with full version of file fetched from server
+                items = _download_items(file, temp_dir, diff_only=False)
+                files_to_merge.append( (file, items) )
+        else:
+            items = _download_items(file, temp_dir, diff_only=False)
+            files_to_merge.append( (file, items) )
+
+    # make a single list of items to download
+    total_size = 0
+    download_list = []
+    for file, items in files_to_merge:
+        download_list.extend(items)
+        for item in items:
+            total_size += item.size
+
+    job = PullJob(project_path, pull_changes, total_size, server_version, files_to_merge, download_list, temp_dir, mp, server_info)
+
+    # start download
+    job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+    job.futures = []
+    for item in download_list:
+        future = job.executor.submit(_do_download, item, mc, project_path, job)
+        job.futures.append(future)
+    
+    return job
+
+
+def _merge_downloaded_chunks(directory, file, chunks):
+    """
+    Takes a number of chunk files of format /file_dir/basename.0 /file_dir/basename.1 ...
+    And merges them into a single file /file_dir/basename (+ removes the chunk files)
+    """
+    diff_only = 'diffs' in file
+    file_dir = os.path.dirname(os.path.normpath(os.path.join(directory, file['path'])))
+    basename = os.path.basename(file['diff']['path']) if diff_only else os.path.basename(file['path'])
+
+    with open(os.path.join(file_dir, basename), 'wb') as final:
+        for i in range(chunks):
+            file_part = os.path.join(file_dir, basename + ".{}".format(i))
+            with open(file_part, 'rb') as chunk:
+                shutil.copyfileobj(chunk, final)
+            os.remove(file_part)
+
+
+def pull_project_wait(job):
+    """ blocks until all download tasks are finished """
+    
+    concurrent.futures.wait(job.futures)
+
+    # handling of exceptions
+    for future in job.futures:
+        if future.exception() is not None:
+            raise future.exception()
+
+
+def pull_project_is_running(job):
+    """ Returns true/false depending on whether we have some pending downloads """
+    for future in job.futures:
+        if future.running():
+            return True
+    return False
+
+
+def pull_project_cancel(job):
+    """
+    To be called (from main thread) to cancel a job that has downloads in progress.
+    Returns once all background tasks have exited (may block for a bit of time).
+    """
+    
+    # set job as cancelled
+    job.is_cancelled = True
+
+    job.executor.shutdown(wait=True)
+
+
+def pull_project_finalize(job):
+    """
+    To be called when pull in the background is finished and we need to do the finalization (merge chunks etc.)
+    
+    This probably should not be called from a worker thread (e.g. directly from a handler when download is complete)
+    """
+    
+    job.executor.shutdown(wait=True)
+    
+    assert job.transferred_size == job.total_size
+    
+    # merge downloaded chunks
+    for file, items in job.files_to_merge:
+        _merge_downloaded_chunks(job.temp_dir, file, len(items))
+
+    conflicts = job.mp.apply_pull_changes(job.pull_changes, job.temp_dir)
+    job.mp.metadata = {
+        'name': job.project_path,
+        'version': job.version,
+        'files': job.project_info['files']
+    }
+    
+    shutil.rmtree(job.temp_dir)
+    return conflicts
+
+
+
+
 if __name__ == '__main__':
     auth_token = 'Bearer XXXX_replace_XXXX'
     mc = MerginClient("https://public.cloudmergin.com/", auth_token)
