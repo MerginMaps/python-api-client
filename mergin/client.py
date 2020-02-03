@@ -567,8 +567,8 @@ class MerginClient:
         # see https://github.com/lutraconsulting/qgis-mergin-plugin/issues/70
         # remove when https://github.com/qgis/QGIS-Mac-Packager/issues/32
         # is fixed.
-        default_cafile = ssl.get_default_verify_paths().openssl_cafile
-        if os.path.exists(default_cafile):
+        default_capath = ssl.get_default_verify_paths().openssl_capath
+        if os.path.exists(default_capath):
             self.opener = urllib.request.build_opener()
         else:
             cafile = os.path.join(this_dir, 'cert.pem')
