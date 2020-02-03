@@ -29,5 +29,6 @@ setup(
         'License :: MIT License',
         'Operating System :: OS Independent',
         'Programming Language :: Python :: 3'
-    ]
+    ],
+    package_data={'mergin': ['cert.pem']}
 )

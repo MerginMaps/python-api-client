@@ -13,6 +13,7 @@ import copy
 import platform
 from datetime import datetime, timezone
 import concurrent.futures
+import ssl
 
 from pip._vendor import distro
 
@@ -562,7 +563,21 @@ class MerginClient:
                 "username": token_data["username"]
             }
 
-        self.opener = urllib.request.build_opener()
+        # fix for wrong macos installation of python certificates,
+        # see https://github.com/lutraconsulting/qgis-mergin-plugin/issues/70
+        # remove when https://github.com/qgis/QGIS-Mac-Packager/issues/32
+        # is fixed.
+        default_capath = ssl.get_default_verify_paths().openssl_capath
+        if os.path.exists(default_capath):
+            self.opener = urllib.request.build_opener()
+        else:
+            cafile = os.path.join(this_dir, 'cert.pem')
+            if not os.path.exists(cafile):
+                raise Exception("missing " + cafile)
+            ctx = ssl.SSLContext()
+            ctx.load_verify_locations(cafile)
+            https_handler = urllib.request.HTTPSHandler(context=ctx)
+            self.opener = urllib.request.build_opener(https_handler)
         urllib.request.install_opener(self.opener)
 
         if login and password:
