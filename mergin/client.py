@@ -1,56 +1,27 @@
 import os
-import re
 import json
 import zlib
 import base64
 import shutil
 import urllib.parse
 import urllib.request
-import uuid
 import math
 import hashlib
 import copy
 import platform
 from datetime import datetime, timezone
+import dateutil.parser
 import concurrent.futures
 import ssl
 
 from pip._vendor import distro
 
-from .utils import save_to_file, generate_checksum, move_file, DateTimeEncoder, int_version, find, do_sqlite_checkpoint
-
-this_dir = os.path.dirname(os.path.realpath(__file__))
-
-try:
-    import dateutil.parser
-    from dateutil.tz import tzlocal
-except ImportError:
-    # this is to import all dependencies shipped with package (e.g. to use in qgis-plugin)
-    deps_dir = os.path.join(this_dir, 'deps')
-    if os.path.exists(deps_dir):
-        import sys
-        for f in os.listdir(os.path.join(deps_dir)):
-            sys.path.append(os.path.join(deps_dir, f))
-
-        import dateutil.parser
-        from dateutil.tz import tzlocal
-
-try:
-    from .deps import pygeodiff
-except ImportError:
-    os.environ['GEODIFF_ENABLED'] = 'False'
-
-CHUNK_SIZE = 100 * 1024 * 1024
-# there is an upper limit for chunk size on server, ideally should be requested from there once implemented
-UPLOAD_CHUNK_SIZE = 10 * 1024 * 1024
-
-
-class InvalidProject(Exception):
-    pass
-
-
-class ClientError(Exception):
-    pass
+from .common import CHUNK_SIZE, UPLOAD_CHUNK_SIZE, ClientError
+from .merginproject import MerginProject
+from .client_pull import download_project_async, download_project_wait, download_project_finalize
+from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
+from .client_push import push_project_async, push_project_wait, push_project_finalize
+from .utils import save_to_file, generate_checksum, DateTimeEncoder, do_sqlite_checkpoint
 
 
 class LoginError(Exception):
@@ -849,6 +820,11 @@ class MerginClient:
         return json.load(resp)
 
     def download_project(self, project_path, directory, parallel=True):
+        job = download_project_async(self, project_path, directory)
+        download_project_wait(job)
+        download_project_finalize(job)
+
+    def download_project_old(self, project_path, directory, parallel=True):
         """
         Download latest version of project into given directory.
 
@@ -914,6 +890,13 @@ class MerginClient:
         return True, free_space
 
     def push_project(self, directory, parallel=True):
+        job = push_project_async(self, directory)
+        if job is None:
+            return   # there is nothing to push (or we only deleted some files)
+        push_project_wait(job)
+        push_project_finalize(job)
+
+    def push_project_old(self, directory, parallel=True):
         """
         Upload local changes to the repository.
 
@@ -996,6 +979,13 @@ class MerginClient:
         return info
 
     def pull_project(self, directory, parallel=True):
+        job = pull_project_async(self, directory)
+        if job is None:
+            return   # project is up to date
+        pull_project_wait(job)
+        return pull_project_finalize(job)
+
+    def pull_project_old(self, directory, parallel=True):
         """
         Fetch and apply changes from repository.
 
