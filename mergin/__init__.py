@@ -1,6 +1,5 @@
-from .client import (
-    MerginClient,
-    MerginProject,
-    ClientError,
-    InvalidProject
-)
+from . import common
+
+from .client import MerginClient
+from .common import ClientError
+from .merginproject import MerginProject, InvalidProject

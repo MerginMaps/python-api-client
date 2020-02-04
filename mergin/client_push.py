@@ -14,7 +14,9 @@ import hashlib
 import concurrent.futures
 import threading
 
-from .client import UPLOAD_CHUNK_SIZE, ClientError, MerginProject
+from .common import UPLOAD_CHUNK_SIZE, ClientError
+from .merginproject import MerginProject
+from .utils import generate_checksum, do_sqlite_checkpoint
 
 
 class UploadJob:
