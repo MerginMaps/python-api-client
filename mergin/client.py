@@ -53,6 +53,10 @@ class ClientError(Exception):
     pass
 
 
+class LoginError(Exception):
+    pass
+
+
 class SyncError(Exception):
     def __init__(self, msg, detail=""):
         super().__init__(msg)
@@ -581,8 +585,22 @@ class MerginClient:
         urllib.request.install_opener(self.opener)
 
         if login and password:
-            self.login(login, password)
+            params = {
+                "login": login,
+                "password": password
+            }
+            self._auth_params = params
+            if not self._auth_session:
+                self.login(login, password)
 
+    def _check_token(f):
+        def wrapper(self, *args):
+            if (not self._auth_session or self._auth_session['expire'] < datetime.now(timezone.utc)) and self._auth_params:
+                self.login(self._auth_params['login'], self._auth_params['password'])
+            return f(self, *args)
+        return wrapper
+
+    @_check_token
     def _do_request(self, request):
         if self._auth_session:
             delta = self._auth_session["expire"] - datetime.now(timezone.utc)
@@ -686,10 +704,19 @@ class MerginClient:
             "login": login,
             "password": password
         }
-        self._auth_params = params
-        resp = self.post("/v1/auth/login", params, {"Content-Type": "application/json"})
-        data = json.load(resp)
-        session = data["session"]
+        try:
+            self._auth_params = params
+            url = urllib.parse.urljoin(self.url, urllib.parse.quote("/v1/auth/login"))
+            data = json.dumps(self._auth_params, cls=DateTimeEncoder).encode("utf-8")
+            request = urllib.request.Request(url, data, {"Content-Type": "application/json"}, method="POST")
+            resp = self.opener.open(request)
+            data = json.load(resp)
+            session = data["session"]
+        except urllib.error.HTTPError as e:
+            if e.headers.get("Content-Type", "") == "application/problem+json":
+                info = json.load(e)
+                raise LoginError(info.get("detail"))
+            raise LoginError(e.read().decode("utf-8"))
         self._auth_session = {
             "token": "Bearer %s" % session["token"],
             "expire": dateutil.parser.parse(session["expire"])
@@ -1154,7 +1181,6 @@ class MerginClient:
                 for chunk in file_meta["chunks"]:
                     data = file.read(UPLOAD_CHUNK_SIZE)
                     upload_chunk(chunk, data)
-
     def project_status(self, directory):
         """
         Get project status, e.g. server and local changes.

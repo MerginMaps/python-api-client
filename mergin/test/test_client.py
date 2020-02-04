@@ -1,8 +1,9 @@
 import os
 import tempfile
 import shutil
+import dateutil.parser
 import pytest
-from ..client import MerginClient, ClientError, MerginProject, SyncError
+from ..client import MerginClient, ClientError, MerginProject, SyncError, LoginError
 from ..utils import generate_checksum
 
 SERVER_URL = os.environ.get('TEST_MERGIN_URL')
@@ -41,7 +42,7 @@ def test_login(mc):
     with pytest.raises(ValueError, match='Invalid token data'):
         MerginClient(mc.url, auth_token='Bearer .jas646kgfa')
 
-    with pytest.raises(ClientError, match='Invalid username or password'):
+    with pytest.raises(LoginError, match='Invalid username or password'):
         mc.login('foo', 'bar')
 
 
@@ -329,7 +330,7 @@ def test_list_of_push_changes(mc):
     mp = MerginProject(project_dir)
 
     shutil.copy(mp.fpath('inserted_1_A.gpkg'), mp.fpath(f_updated))
-
+    mc._auth_session["expire"] = dateutil.parser.parse("2020-02-04 12:11:31.490222+00:00")
     pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
     assert str(push_changes_summary) == PUSH_CHANGES_SUMMARY
 
