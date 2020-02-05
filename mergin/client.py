@@ -585,11 +585,10 @@ class MerginClient:
         urllib.request.install_opener(self.opener)
 
         if login and password:
-            params = {
+            self._auth_params = {
                 "login": login,
                 "password": password
             }
-            self._auth_params = params
             if not self._auth_session:
                 self.login(login, password)
 
