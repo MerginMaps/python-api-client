@@ -3,6 +3,8 @@ import tempfile
 import shutil
 from datetime import datetime, timedelta
 import pytest
+import pytz
+
 from ..client import MerginClient, ClientError, MerginProject, SyncError, LoginError
 from ..utils import generate_checksum
 
@@ -330,15 +332,13 @@ def test_list_of_push_changes(mc):
     mp = MerginProject(project_dir)
 
     shutil.copy(mp.fpath('inserted_1_A.gpkg'), mp.fpath(f_updated))
-    mc._auth_session["expire"] =  datetime.utcnow() - timedelta(days=1)
+    mc._auth_session["expire"] = datetime.now().replace(tzinfo=pytz.utc) - timedelta(days=1)
     pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
     assert str(push_changes_summary) == PUSH_CHANGES_SUMMARY
 
-    mc._auth_session["expire"] = datetime.utcnow() - timedelta(days=1)
+    mc._auth_session["expire"] = datetime.now().replace(tzinfo=pytz.utc) - timedelta(days=1)
     mc._auth_params = None
-    try:
+    with pytest.raises(ClientError, match="You don't have the permission to access the requested resource. It is either read-protected or not readable by the server."):
         mc.project_status(project_dir)
-    except ClientError as e:
-        assert str(e) == "You don't have the permission to access the requested resource. It is either read-protected or not readable by the server."
 
 
