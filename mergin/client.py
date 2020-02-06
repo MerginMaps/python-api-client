@@ -1125,6 +1125,10 @@ class MerginClient:
                     shutil.copyfileobj(chunk, final)
                 os.remove(file_part)
 
+        if os.path.getsize(os.path.join(file_dir, basename)) != file['size']:
+            os.remove(os.path.join(file_dir, basename))
+            raise ClientError(f'Download of file {basename} failed. Please try it again.')
+
         return file['path']
 
     def delete_project(self, project_path):
