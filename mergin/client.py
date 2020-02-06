@@ -165,6 +165,9 @@ class MerginProject:
             for file in files:
                 if self.ignore_file(file):
                     continue
+                if "gpkg" in file:
+                    do_sqlite_checkpoint(os.path.join(root, file))
+
                 abs_path = os.path.abspath(os.path.join(root, file))
                 rel_path = os.path.relpath(abs_path, start=self.dir)
                 proj_path = '/'.join(rel_path.split(os.path.sep))  # we need posix path
@@ -298,6 +301,12 @@ class MerginProject:
         :rtype: dict
         """
         changes = self.compare_file_sets(self.metadata['files'], self.inspect_files())
+        # do checkpoint to push changes from wal file to gpkg if new file
+        for file in changes['added']:
+            if ".gpkg" in file["path"]:
+                do_sqlite_checkpoint(self.fpath(file["path"]))
+                file["checksum"] = generate_checksum(self.fpath(file["path"]))
+
         for file in changes['added'] + changes['updated']:
             file['chunks'] = [str(uuid.uuid4()) for i in range(math.ceil(file["size"] / UPLOAD_CHUNK_SIZE))]
 
@@ -332,7 +341,11 @@ class MerginProject:
                 else:
                     not_updated.append(file)
             except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as e:
-                pass  # we do force update
+                # do checkpoint to push changes from wal file to gpkg if create changeset failed
+                do_sqlite_checkpoint(self.fpath(file["path"]))
+                file["checksum"] = generate_checksum(self.fpath(file["path"]))
+                file["size"] = os.path.getsize(self.fpath(file["path"]))
+                file['chunks'] = [str(uuid.uuid4()) for i in range(math.ceil(file["size"] / UPLOAD_CHUNK_SIZE))]
 
         changes['updated'] = [f for f in changes['updated'] if f not in not_updated]
         return changes
@@ -944,10 +957,6 @@ class MerginClient:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     futures_map = {}
                     for file in upload_files:
-                        # do checkpoint to push changes from wal file to gpkg if there is no diff
-                        if "diff" not in file and mp.is_versioned_file(file["path"]):
-                            do_sqlite_checkpoint(mp.fpath(file["path"]))
-                            file["checksum"] = generate_checksum(mp.fpath(file["path"]))
                         file['location'] = mp.fpath_meta(file['diff']['path']) if 'diff' in file else mp.fpath(file['path'])
                         future = executor.submit(self._upload_file, info["transaction"], file, parallel)
                         futures_map[future] = file
@@ -960,10 +969,6 @@ class MerginClient:
                             raise ClientError("Timeout error: failed to upload {}".format(file))
             else:
                 for file in upload_files:
-                    # do checkpoint to push changes from wal file to gpkg if there is no diff
-                    if "diff" not in file and mp.is_versioned_file(file["path"]):
-                        do_sqlite_checkpoint(mp.fpath(file["path"]))
-                        file["checksum"] = generate_checksum(mp.fpath(file["path"]))
                     file['location'] = mp.fpath_meta(file['diff']['path']) if 'diff' in file else mp.fpath(file['path'])
                     self._upload_file(info["transaction"], file, parallel)
 
