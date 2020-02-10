@@ -136,11 +136,6 @@ def test_push_pull_changes(mc, parallel):
     f_updated = 'test3.txt'
     with open(os.path.join(project_dir, f_updated), 'w') as f:
         f.write('Modified')
-    src_files = os.listdir(CHANGED_SCHEMA_DIR)
-    for file_name in src_files:
-        full_file_name = os.path.join(CHANGED_SCHEMA_DIR, file_name)
-        if os.path.isfile(full_file_name):
-            shutil.copy(full_file_name, project_dir)
 
     # check changes before applied
     pull_changes, push_changes, _ = mc.project_status(project_dir)
@@ -342,3 +337,33 @@ def test_list_of_push_changes(mc):
         mc.project_status(project_dir)
 
 
+def test_force_gpkg_update(mc):
+    test_project = 'test_force_update'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
+
+    cleanup(mc, project, [project_dir])
+    # create remote project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project(test_project, project_dir)
+
+    # test push changes with force gpkg file upload:
+    mp = MerginProject(project_dir)
+    f_updated = 'base.gpkg'
+    checksum = generate_checksum(mp.fpath(f_updated))
+
+    # base.gpkg updated to modified_schema (inserted new column)
+    shutil.move(mp.fpath(f_updated), mp.fpath_meta(f_updated))  # make local copy for changeset calculation (which will fail)
+    shutil.copy(os.path.join(CHANGED_SCHEMA_DIR, 'modified_schema.gpkg'), mp.fpath(f_updated))
+    shutil.copy(os.path.join(CHANGED_SCHEMA_DIR, 'modified_schema.gpkg-wal'), mp.fpath(f_updated + '-wal'))
+    mc.push_project(project_dir)
+    # by this point local file has been updated (changes committed from wal)
+    updated_checksum = generate_checksum(mp.fpath(f_updated))
+    assert checksum != updated_checksum
+
+    # check project after push
+    project_info = mc.project_info(project)
+    assert project_info['version'] == 'v2'
+    f_remote = next((f for f in project_info['files'] if f['path'] == f_updated), None)
+    assert f_remote['checksum'] == updated_checksum
+    assert 'diff' not in f_remote
