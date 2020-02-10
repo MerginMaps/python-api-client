@@ -134,6 +134,22 @@ class MerginProject:
         f_extension = os.path.splitext(file)[1]
         return f_extension in diff_extensions
 
+    def is_gpkg_open(self, path):
+        """
+        Check whether geopackage file is open (and wal file exists)
+
+        :param path: absolute path of file on disk
+        :type path: str
+        :returns: whether file is open
+        :rtype: bool
+        """
+        f_extension = os.path.splitext(path)[1]
+        if f_extension != '.gpkg':
+            return False
+        if os.path.exists(f'{path}-wal') and os.path.exists(f'{path}-shm'):
+            return True
+        return False
+
     def ignore_file(self, file):
         """
         Helper function for blacklisting certain types of files.
@@ -165,8 +181,6 @@ class MerginProject:
             for file in files:
                 if self.ignore_file(file):
                     continue
-                if "gpkg" in file:
-                    do_sqlite_checkpoint(os.path.join(root, file))
 
                 abs_path = os.path.abspath(os.path.join(root, file))
                 rel_path = os.path.relpath(abs_path, start=self.dir)
@@ -225,7 +239,8 @@ class MerginProject:
             path = f["path"]
             if path not in origin_map:
                 continue
-            if f["checksum"] == origin_map[path]["checksum"]:
+            # with open WAL files we don't know yet, better to mark file as updated
+            if not self.is_gpkg_open(self.fpath(path)) and f["checksum"] == origin_map[path]["checksum"]:
                 continue
             f["origin_checksum"] = origin_map[path]["checksum"]
             updated.append(f)
@@ -301,13 +316,12 @@ class MerginProject:
         :rtype: dict
         """
         changes = self.compare_file_sets(self.metadata['files'], self.inspect_files())
-        # do checkpoint to push changes from wal file to gpkg if new file
-        for file in changes['added']:
-            if ".gpkg" in file["path"]:
-                do_sqlite_checkpoint(self.fpath(file["path"]))
-                file["checksum"] = generate_checksum(self.fpath(file["path"]))
-
+        # do checkpoint to push changes from wal file to gpkg
         for file in changes['added'] + changes['updated']:
+            size, checksum = do_sqlite_checkpoint(self.fpath(file["path"]))
+            if size and checksum:
+                file["size"] = size
+                file["checksum"] = checksum
             file['chunks'] = [str(uuid.uuid4()) for i in range(math.ceil(file["size"] / UPLOAD_CHUNK_SIZE))]
 
         if not self.geodiff:
@@ -320,8 +334,9 @@ class MerginProject:
             if not self.is_versioned_file(path):
                 continue
 
+            # we use geodiff to check if we can push only diff files
             current_file = self.fpath(path)
-            origin_file = self.fpath(path, self.meta_dir)
+            origin_file = self.fpath_meta(path)
             diff_id = str(uuid.uuid4())
             diff_name = path + '-diff-' + diff_id
             diff_file = self.fpath_meta(diff_name)
@@ -341,11 +356,8 @@ class MerginProject:
                 else:
                     not_updated.append(file)
             except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as e:
-                # do checkpoint to push changes from wal file to gpkg if create changeset failed
-                do_sqlite_checkpoint(self.fpath(file["path"]))
-                file["checksum"] = generate_checksum(self.fpath(file["path"]))
-                file["size"] = os.path.getsize(self.fpath(file["path"]))
-                file['chunks'] = [str(uuid.uuid4()) for i in range(math.ceil(file["size"] / UPLOAD_CHUNK_SIZE))]
+                # changes from wal file already committed
+                pass
 
         changes['updated'] = [f for f in changes['updated'] if f not in not_updated]
         return changes
@@ -490,15 +502,16 @@ class MerginProject:
                 elif k == 'added':
                     shutil.copy(self.fpath(path), basefile)
                 elif k == 'updated':
-                    # in case for geopackage cannot be created diff
+                    # in case for geopackage cannot be created diff (e.g. forced update with committed changes from wal file)
                     if "diff" not in item:
-                        continue
-                    # better to apply diff to previous basefile to avoid issues with geodiff tmp files
-                    changeset = self.fpath_meta(item['diff']['path'])
-                    patch_error = self.apply_diffs(basefile, [changeset])
-                    if patch_error:
-                        # in case of local sync issues it is safier to remove basefile, next time it will be downloaded from server
-                        os.remove(basefile)
+                        shutil.copy(self.fpath(path), basefile)
+                    else:
+                        # better to apply diff to previous basefile to avoid issues with geodiff tmp files
+                        changeset = self.fpath_meta(item['diff']['path'])
+                        patch_error = self.apply_diffs(basefile, [changeset])
+                        if patch_error:
+                            # in case of local sync issues it is safier to remove basefile, next time it will be downloaded from server
+                            os.remove(basefile)
                 else:
                     pass
 
@@ -1090,6 +1103,7 @@ class MerginClient:
         }
         file_dir = os.path.dirname(os.path.normpath(os.path.join(directory, file['path'])))
         basename = os.path.basename(file['diff']['path']) if diff_only else os.path.basename(file['path'])
+        expected_size = file['diff']['size'] if diff_only else file['size']
 
         if file['size'] == 0:
             os.makedirs(file_dir, exist_ok=True)
@@ -1130,7 +1144,7 @@ class MerginClient:
                     shutil.copyfileobj(chunk, final)
                 os.remove(file_part)
 
-        if os.path.getsize(os.path.join(file_dir, basename)) != file['size']:
+        if os.path.getsize(os.path.join(file_dir, basename)) != expected_size:
             os.remove(os.path.join(file_dir, basename))
             raise ClientError(f'Download of file {basename} failed. Please try it again.')
 
