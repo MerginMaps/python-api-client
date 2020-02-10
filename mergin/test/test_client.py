@@ -356,7 +356,6 @@ def test_force_gpkg_update(mc):
     shutil.move(mp.fpath(f_updated), mp.fpath_meta(f_updated))  # make local copy for changeset calculation (which will fail)
     shutil.copy(os.path.join(CHANGED_SCHEMA_DIR, 'modified_schema.gpkg'), mp.fpath(f_updated))
     shutil.copy(os.path.join(CHANGED_SCHEMA_DIR, 'modified_schema.gpkg-wal'), mp.fpath(f_updated + '-wal'))
-    shutil.copy(os.path.join(CHANGED_SCHEMA_DIR, 'modified_schema.gpkg-shm'), mp.fpath(f_updated + '-shm'))
     mc.push_project(project_dir)
     # by this point local file has been updated (changes committed from wal)
     updated_checksum = generate_checksum(mp.fpath(f_updated))

@@ -80,7 +80,7 @@ def do_sqlite_checkpoint(path):
     """
     new_size = None
     new_checksum = None
-    if ".gpkg" in path and os.path.exists(f'{path}-wal') and os.path.exists(f'{path}-shm'):
+    if ".gpkg" in path and os.path.exists(f'{path}-wal'):
         conn = sqlite3.connect(path)
         cursor = conn.cursor()
         cursor.execute("PRAGMA wal_checkpoint=FULL")

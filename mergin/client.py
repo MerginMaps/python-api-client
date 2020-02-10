@@ -146,7 +146,7 @@ class MerginProject:
         f_extension = os.path.splitext(path)[1]
         if f_extension != '.gpkg':
             return False
-        if os.path.exists(f'{path}-wal') and os.path.exists(f'{path}-shm'):
+        if os.path.exists(f'{path}-wal'):
             return True
         return False
 
