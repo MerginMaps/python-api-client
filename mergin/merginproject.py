@@ -9,7 +9,7 @@ from datetime import datetime
 from dateutil.tz import tzlocal
 
 from .common import UPLOAD_CHUNK_SIZE
-from .utils import generate_checksum, move_file, int_version, find
+from .utils import generate_checksum, move_file, int_version, find, do_sqlite_checkpoint
 
 
 this_dir = os.path.dirname(os.path.realpath(__file__))

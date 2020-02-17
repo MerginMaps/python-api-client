@@ -17,7 +17,7 @@ import shutil
 import concurrent.futures
 import threading
 
-from .common import CHUNK_SIZE
+from .common import CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
 from .utils import save_to_file
 
@@ -213,6 +213,11 @@ class UpdateTask:
                 with open(file_part, 'rb') as chunk:
                     shutil.copyfileobj(chunk, final)
                 os.remove(file_part)
+
+        expected_size = sum(item.size for item in self.download_queue_items)
+        if os.path.getsize(dest_file_path) != expected_size:
+            os.remove(dest_file_path)
+            raise ClientError('Download of file {} failed. Please try it again.'.format(dest_file_path))
 
         if mp.is_versioned_file(self.file_path):
             shutil.copy(mp.fpath(self.file_path), mp.fpath_meta(self.file_path))
@@ -419,6 +424,11 @@ class FileToMerge:
                 with open(item.download_file_path, 'rb') as chunk:
                     shutil.copyfileobj(chunk, final)
                 os.remove(item.download_file_path)
+
+        expected_size = sum(item.size for item in self.downloaded_items)
+        if os.path.getsize(self.dest_file) != expected_size:
+            os.remove(self.dest_file)
+            raise ClientError('Download of file {} failed. Please try it again.'.format(self.dest_file))
 
 
 def pull_project_finalize(job):
