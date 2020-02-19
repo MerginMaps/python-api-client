@@ -134,15 +134,17 @@ def download_project_wait(job):
     
     concurrent.futures.wait(job.futures)
 
-    # handling of exceptions
+
+def download_project_is_running(job):
+    """
+    Returns true/false depending on whether we have some pending downloads.
+
+    It also forwards any exceptions from workers (e.g. some network errors). If an exception
+    is raised, it is advised to call download_project_cancel() to abort the job.
+    """
     for future in job.futures:
         if future.exception() is not None:
             raise future.exception()
-
-
-def download_project_is_running(job):
-    """ Returns true/false depending on whether we have some pending downloads """
-    for future in job.futures:
         if future.running():
             return True
     return False
@@ -151,12 +153,20 @@ def download_project_is_running(job):
 def download_project_finalize(job):
     """
     To be called when download in the background is finished and we need to do the finalization (merge chunks etc.)
-    
-    This probably should not be called from a worker thread (e.g. directly from a handler when download is complete)
+
+    This should not be called from a worker thread (e.g. directly from a handler when download is complete).
+
+    If any of the workers has thrown any exception, it will be re-raised (e.g. some network errors).
+    That also means that the whole job has been aborted.
     """
 
     job.executor.shutdown(wait=True)
-    
+
+    # make sure any exceptions from threads are not lost
+    for future in job.futures:
+        if future.exception() is not None:
+            raise future.exception()
+
     for task in job.update_tasks:
         
         # right now only copy tasks...
@@ -366,15 +376,17 @@ def pull_project_wait(job):
     
     concurrent.futures.wait(job.futures)
 
-    # handling of exceptions
+
+def pull_project_is_running(job):
+    """
+    Returns true/false depending on whether we have some pending downloads
+
+    It also forwards any exceptions from workers (e.g. some network errors). If an exception
+    is raised, it is advised to call pull_project_cancel() to abort the job.
+    """
     for future in job.futures:
         if future.exception() is not None:
             raise future.exception()
-
-
-def pull_project_is_running(job):
-    """ Returns true/false depending on whether we have some pending downloads """
-    for future in job.futures:
         if future.running():
             return True
     return False
@@ -420,11 +432,19 @@ def pull_project_finalize(job):
     """
     To be called when pull in the background is finished and we need to do the finalization (merge chunks etc.)
     
-    This probably should not be called from a worker thread (e.g. directly from a handler when download is complete)
+    This should not be called from a worker thread (e.g. directly from a handler when download is complete)
+
+    If any of the workers has thrown any exception, it will be re-raised (e.g. some network errors).
+    That also means that the whole job has been aborted.
     """
     
     job.executor.shutdown(wait=True)
-    
+
+    # make sure any exceptions from threads are not lost
+    for future in job.futures:
+        if future.exception() is not None:
+            raise future.exception()
+
     # merge downloaded chunks
     for file_to_merge in job.files_to_merge:
         file_to_merge.merge()

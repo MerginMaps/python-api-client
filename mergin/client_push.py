@@ -145,28 +145,44 @@ def push_project_wait(job):
     
     concurrent.futures.wait(job.futures)
 
-    # handling of exceptions
+
+def push_project_is_running(job):
+    """
+    Returns true/false depending on whether we have some pending uploads
+
+    It also forwards any exceptions from workers (e.g. some network errors). If an exception
+    is raised, it is advised to call push_project_cancel() to abort the job.
+    """
     for future in job.futures:
         if future.exception() is not None:
             raise future.exception()
-
-
-def push_project_is_running(job):
-    """ Returns true/false depending on whether we have some pending uploads """
-    for future in job.futures:
         if future.running():
             return True
     return False
 
 
 def push_project_finalize(job):
+    """
+    To be called when push in the background is finished and we need to do the finalization
+
+    This should not be called from a worker thread (e.g. directly from a handler when push is complete).
+
+    If any of the workers has thrown any exception, it will be re-raised (e.g. some network errors).
+    That also means that the whole job has been aborted.
+    """
 
     with_upload_of_files = job.executor is not None
 
     if with_upload_of_files:
         job.executor.shutdown(wait=True)
 
-    assert job.transferred_size == job.total_size
+        # make sure any exceptions from threads are not lost
+        for future in job.futures:
+            if future.exception() is not None:
+                raise future.exception()
+
+    if job.transferred_size != job.total_size:
+        raise ClientError("Upload error: transferred size and expected total size do not match!")
 
     if with_upload_of_files:
         try:
