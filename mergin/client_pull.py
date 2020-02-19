@@ -78,16 +78,13 @@ def _download_items(file, directory, diff_only=False):
 
 def _do_download(item, mc, project_path, job):
     """ runs in worker thread """
-    #print(threading.current_thread(), "downloading", item.file_path)
     if job.is_cancelled:
-        #print(threading.current_thread(), "downloading", item.file_path, "cancelled")
         return
     
     # TODO: make download_blocking / save_to_file cancellable so that we can cancel as soon as possible
 
     item.download_blocking(mc, project_path)
     job.transferred_size += item.size
-    #print(threading.current_thread(), "downloading", item.file_path, "finished")
 
 
 def download_project_async(mc, project_path, directory):
@@ -160,8 +157,6 @@ def download_project_finalize(job):
 
     job.executor.shutdown(wait=True)
     
-    assert job.transferred_size == job.total_size
-
     for task in job.update_tasks:
         
         # right now only copy tasks...
@@ -205,19 +200,10 @@ class UpdateTask:
         basename = os.path.basename(self.file_path)   #file['diff']['path']) if diff_only else os.path.basename(file['path'])
         file_dir = os.path.dirname(os.path.normpath(os.path.join(directory, self.file_path)))
         dest_file_path = os.path.join(file_dir, basename)
-        
-        # merge chunks together (and delete them afterwards)
-        with open(dest_file_path, 'wb') as final:
-            for item in self.download_queue_items:
-                file_part = item.download_file_path
-                with open(file_part, 'rb') as chunk:
-                    shutil.copyfileobj(chunk, final)
-                os.remove(file_part)
 
-        expected_size = sum(item.size for item in self.download_queue_items)
-        if os.path.getsize(dest_file_path) != expected_size:
-            os.remove(dest_file_path)
-            raise ClientError('Download of file {} failed. Please try it again.'.format(dest_file_path))
+        # merge chunks together (and delete them afterwards)
+        file_to_merge = FileToMerge(dest_file_path, self.download_queue_items)
+        file_to_merge.merge()
 
         if mp.is_versioned_file(self.file_path):
             shutil.copy(mp.fpath(self.file_path), mp.fpath_meta(self.file_path))
@@ -267,7 +253,6 @@ class PullJob:
         self.files_to_merge = files_to_merge   # list of FileToMerge instances
         self.download_queue_items = download_queue_items
         self.temp_dir = temp_dir            # full path to temporary directory where we store downloaded files
-        #self.directory = directory    # project's directory
         self.mp = mp   # MerginProject instance
         self.is_cancelled = False
         self.project_info = project_info   # parsed JSON with project info returned from the server
@@ -440,8 +425,6 @@ def pull_project_finalize(job):
     
     job.executor.shutdown(wait=True)
     
-    assert job.transferred_size == job.total_size
-    
     # merge downloaded chunks
     for file_to_merge in job.files_to_merge:
         file_to_merge.merge()
@@ -473,17 +456,3 @@ def pull_project_finalize(job):
     
     shutil.rmtree(job.temp_dir)
     return conflicts
-
-
-
-
-if __name__ == '__main__':
-    auth_token = 'Bearer XXXX_replace_XXXX'
-    from .client import MerginClient
-    mc = MerginClient("https://public.cloudmergin.com/", auth_token)
-    test_dir = "/tmp/_mergin_fibre"
-    shutil.rmtree(test_dir)
-    job = download_project_async(mc, "martin/fibre", test_dir)
-    job.dump()
-    download_project_wait(job)
-    download_project_finalize(job)

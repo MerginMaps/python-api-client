@@ -205,40 +205,8 @@ def push_project_cancel(job):
 
 def _do_upload(item, job):
     """ runs in worker thread """
-    #print(threading.current_thread(), "uploading", item.file_path)
     if job.is_cancelled:
-        #print(threading.current_thread(), "uploading", item.file_path, "cancelled")
         return
     
     item.upload_blocking(job.mc)
     job.transferred_size += item.size
-    #print(threading.current_thread(), "uploading", item.file_path, "finished")
-
-
-if __name__ == '__main__':
-    
-    from .client import MerginClient, MerginProject
-    import shutil
-    
-    decoded = lambda x: "".join(chr(ord(c) ^ 13) for c in x)
-    
-    auth_token = 'Bearer XXXX_replace_XXXX'
-    mc = MerginClient("https://public.cloudmergin.com/", auth_token)
-    
-    # create new project
-    test_dir = "/tmp/_mergin_fibre"
-    project_name = "test_upload_async"
-    print("deleting")
-    mc.delete_project("martin/"+project_name)
-    print("creating")
-    mc.create_project(project_name)
-    print("pushing")
-
-    # initialize so that mergin client can use it
-    mp = MerginProject(test_dir)
-    mp.metadata = { "name": "martin/"+project_name, "version": "v0", "files": [] }
-    
-    job = push_project_async(mc, test_dir)
-    job.dump()
-    push_project_wait(job)
-    push_project_finalize(job)
