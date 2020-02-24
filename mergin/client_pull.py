@@ -143,7 +143,7 @@ def download_project_is_running(job):
     is raised, it is advised to call download_project_cancel() to abort the job.
     """
     for future in job.futures:
-        if future.exception() is not None:
+        if future.done() and future.exception() is not None:
             raise future.exception()
         if future.running():
             return True
@@ -385,7 +385,7 @@ def pull_project_is_running(job):
     is raised, it is advised to call pull_project_cancel() to abort the job.
     """
     for future in job.futures:
-        if future.exception() is not None:
+        if future.done() and future.exception() is not None:
             raise future.exception()
         if future.running():
             return True
