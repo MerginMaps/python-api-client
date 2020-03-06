@@ -271,7 +271,6 @@ class MerginProject:
         if not self.geodiff:
             return changes
 
-        size_limit = int(os.environ.get('DIFFS_LIMIT_SIZE', 1024 * 1024)) # with smaller values than limit download full file instead of diffs
         not_updated = []
         for file in changes['updated']:
             # for small geodiff files it does not make sense to download diff and then apply it (slow)
@@ -294,8 +293,7 @@ class MerginProject:
                     break  # we found force update in history, does not make sense to download diffs
 
             if is_updated:
-                if diffs and file['size'] > size_limit and diffs_size < file['size']/2:
-                    file['diffs'] = diffs
+                file['diffs'] = diffs
             else:
                 not_updated.append(file)
 
@@ -455,9 +453,23 @@ class MerginProject:
                             if os.path.exists(f'{dest}-shm'):
                                 os.remove(f'{dest}-shm')
                     else:
-                        # just use server version of file to update both project file and its basefile
-                        shutil.copy(src, dest)
-                        shutil.copy(src, basefile)
+                        # The local file is not modified -> no rebase needed.
+                        # We just apply the diff between our copy and server to both the local copy and its basefile
+                        try:
+                            server_diff = self.fpath(f'{path}-server_diff', temp_dir)  # diff between server file and local basefile
+                            # TODO: it could happen that basefile does not exist.
+                            # It was either never created (e.g. when pushing without geodiff)
+                            # or it was deleted by mistake(?) by the user. We should detect that
+                            # when starting pull and download it as well
+                            self.geodiff.create_changeset(basefile, src, server_diff)
+                            self.geodiff.apply_changeset(dest, server_diff)
+                            self.geodiff.apply_changeset(basefile, server_diff)
+                        except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
+                            # something bad happened and we have failed to patch our local files - this should not happen if there
+                            # wasn't a schema change or something similar that geodiff can't handle.
+                            # FIXME: this is a last resort and may corrupt data! (we should warn user)
+                            shutil.copy(src, dest)
+                            shutil.copy(src, basefile)
                 else:
                     # backup if needed
                     if path in modified and item['checksum'] != local_files_map[path]['checksum']:
@@ -1011,6 +1023,11 @@ class MerginClient:
         if local_version == server_info["version"]:
             return  # Project is up to date
 
+        # we either download a versioned file using diffs (strongly preferred),
+        # but if we don't have history with diffs (e.g. uploaded without diffs)
+        # then we just download the whole file
+        _pulling_file_with_diffs = lambda f: 'diffs' in f and len(f['diffs']) != 0
+
         temp_dir = mp.fpath_meta(f'fetch_{local_version}-{server_info["version"]}')
         os.makedirs(temp_dir, exist_ok=True)
         pull_changes = mp.get_pull_changes(server_info["files"])
@@ -1020,7 +1037,7 @@ class MerginClient:
             fetch_files.append(f)
         # extend fetch files download list with various version of diff files (if needed)
         for f in pull_changes["updated"]:
-            if 'diffs' in f:
+            if _pulling_file_with_diffs(f):
                 for diff in f['diffs']:
                     diff_file = copy.deepcopy(f)
                     for k, v in f['history'].items():
@@ -1039,7 +1056,7 @@ class MerginClient:
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 futures_map = {}
                 for file in fetch_files:
-                    diff_only = 'diffs' in file
+                    diff_only = _pulling_file_with_diffs(f)
                     future = executor.submit(self._download_file, project_path, file, temp_dir, parallel, diff_only)
                     futures_map[future] = file
 
@@ -1052,13 +1069,13 @@ class MerginClient:
         else:
             for file in fetch_files:
                 # TODO check it does not fail, do some retry on ClientError
-                diff_only = 'diffs' in file
+                diff_only = _pulling_file_with_diffs(f)
                 self._download_file(project_path, file, temp_dir, parallel, diff_only)
 
         # make sure we can update geodiff reference files (aka. basefiles) with diffs or
         # download their full versions so we have them up-to-date for applying changes
         for file in pull_changes['updated']:
-            if 'diffs' not in file:
+            if not _pulling_file_with_diffs(f):
                 continue
             file['version'] = server_info['version']
             basefile = mp.fpath_meta(file['path'])

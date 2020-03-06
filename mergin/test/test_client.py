@@ -209,18 +209,17 @@ def test_ignore_files(mc):
 
 # (diffs size limit, push geodiff enabled, pull geodiff enabled)
 diff_test_scenarios = [
-    (1024, True, True),
-    (1024*1024, True, True),
-    (1024, True, False),
-    (1024, False, True),
-    (1024, False, False),
+    (True, True),
+    (True, False),
+    (False, True),
+    (False, False),
 ]
 
 
-@pytest.mark.parametrize("diffs_limit, push_geodiff_enabled, pull_geodiff_enabled", diff_test_scenarios)
-def test_sync_diff(mc, diffs_limit, push_geodiff_enabled, pull_geodiff_enabled):
+@pytest.mark.parametrize("push_geodiff_enabled, pull_geodiff_enabled", diff_test_scenarios)
+def test_sync_diff(mc, push_geodiff_enabled, pull_geodiff_enabled):
 
-    test_project = f'test_sync_diff_{diffs_limit}_{int(push_geodiff_enabled)}_{int(pull_geodiff_enabled)}'
+    test_project = f'test_sync_diff_push{int(push_geodiff_enabled)}_pull{int(pull_geodiff_enabled)}'
     project = API_USER + '/' + test_project
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
     project_dir_2 = os.path.join(TMP_DIR, test_project + '_2')  # concurrent project dir with no changes
@@ -277,7 +276,6 @@ def test_sync_diff(mc, diffs_limit, push_geodiff_enabled, pull_geodiff_enabled):
         assert not os.path.exists(mp.fpath_meta('renamed.gpkg'))
 
     # pull project in different directory
-    os.environ['DIFFS_LIMIT_SIZE'] = str(diffs_limit)
     toggle_geodiff(pull_geodiff_enabled)
     mp2 = MerginProject(project_dir_2)
     mc.pull_project(project_dir_2)
