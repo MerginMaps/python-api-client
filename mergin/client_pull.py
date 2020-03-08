@@ -294,6 +294,11 @@ def pull_project_async(mc, directory):
     if local_version == server_info["version"]:
         return  # Project is up to date
 
+    # we either download a versioned file using diffs (strongly preferred),
+    # but if we don't have history with diffs (e.g. uploaded without diffs)
+    # then we just download the whole file
+    _pulling_file_with_diffs = lambda f: 'diffs' in f and len(f['diffs']) != 0
+
     server_version = server_info["version"]
     temp_dir = mp.fpath_meta(f'fetch_{local_version}-{server_version}')
     os.makedirs(temp_dir, exist_ok=True)
@@ -304,7 +309,7 @@ def pull_project_async(mc, directory):
         fetch_files.append(f)
     # extend fetch files download list with various version of diff files (if needed)
     for f in pull_changes["updated"]:
-        if 'diffs' in f:
+        if _pulling_file_with_diffs(f):
             for diff in f['diffs']:
                 diff_file = copy.deepcopy(f)
                 for k, v in f['history'].items():
@@ -321,7 +326,7 @@ def pull_project_async(mc, directory):
     files_to_merge = []   # list of FileToMerge instances
 
     for file in fetch_files:
-        diff_only = 'diffs' in file
+        diff_only = _pulling_file_with_diffs(file)
         items = _download_items(file, temp_dir, diff_only)
         
         # figure out destination path for the file
@@ -335,7 +340,7 @@ def pull_project_async(mc, directory):
     # download their full versions so we have them up-to-date for applying changes
     basefiles_to_patch = []  # list of tuples (relative path within project, list of diff files in temp dir to apply)
     for file in pull_changes['updated']:
-        if 'diffs' not in file:
+        if not _pulling_file_with_diffs(file):
             continue  # this is only for diffable files (e.g. geopackages)
 
         basefile = mp.fpath_meta(file['path'])
@@ -347,7 +352,7 @@ def pull_project_async(mc, directory):
             dest_file_path = mp.fpath(file["path"], temp_dir)
             #dest_file_path = os.path.join(os.path.dirname(os.path.normpath(os.path.join(temp_dir, file['path']))), os.path.basename(file['path']))
             files_to_merge.append( FileToMerge(dest_file_path, items) )
-            continue   
+            continue
 
         basefiles_to_patch.append( (file['path'], file['diffs']) )
 

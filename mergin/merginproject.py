@@ -233,7 +233,6 @@ class MerginProject:
         if not self.geodiff:
             return changes
 
-        size_limit = int(os.environ.get('DIFFS_LIMIT_SIZE', 1024 * 1024)) # with smaller values than limit download full file instead of diffs
         not_updated = []
         for file in changes['updated']:
             # for small geodiff files it does not make sense to download diff and then apply it (slow)
@@ -256,8 +255,7 @@ class MerginProject:
                     break  # we found force update in history, does not make sense to download diffs
 
             if is_updated:
-                if diffs and file['size'] > size_limit and diffs_size < file['size']/2:
-                    file['diffs'] = diffs
+                file['diffs'] = diffs
             else:
                 not_updated.append(file)
 
@@ -417,9 +415,23 @@ class MerginProject:
                             if os.path.exists(f'{dest}-shm'):
                                 os.remove(f'{dest}-shm')
                     else:
-                        # just use server version of file to update both project file and its basefile
-                        shutil.copy(src, dest)
-                        shutil.copy(src, basefile)
+                        # The local file is not modified -> no rebase needed.
+                        # We just apply the diff between our copy and server to both the local copy and its basefile
+                        try:
+                            server_diff = self.fpath(f'{path}-server_diff', temp_dir)  # diff between server file and local basefile
+                            # TODO: it could happen that basefile does not exist.
+                            # It was either never created (e.g. when pushing without geodiff)
+                            # or it was deleted by mistake(?) by the user. We should detect that
+                            # when starting pull and download it as well
+                            self.geodiff.create_changeset(basefile, src, server_diff)
+                            self.geodiff.apply_changeset(dest, server_diff)
+                            self.geodiff.apply_changeset(basefile, server_diff)
+                        except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
+                            # something bad happened and we have failed to patch our local files - this should not happen if there
+                            # wasn't a schema change or something similar that geodiff can't handle.
+                            # FIXME: this is a last resort and may corrupt data! (we should warn user)
+                            shutil.copy(src, dest)
+                            shutil.copy(src, basefile)
                 else:
                     # backup if needed
                     if path in modified and item['checksum'] != local_files_map[path]['checksum']:
