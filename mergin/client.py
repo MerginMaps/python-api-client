@@ -1056,7 +1056,7 @@ class MerginClient:
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 futures_map = {}
                 for file in fetch_files:
-                    diff_only = _pulling_file_with_diffs(f)
+                    diff_only = _pulling_file_with_diffs(file)
                     future = executor.submit(self._download_file, project_path, file, temp_dir, parallel, diff_only)
                     futures_map[future] = file
 
@@ -1069,13 +1069,13 @@ class MerginClient:
         else:
             for file in fetch_files:
                 # TODO check it does not fail, do some retry on ClientError
-                diff_only = _pulling_file_with_diffs(f)
+                diff_only = _pulling_file_with_diffs(file)
                 self._download_file(project_path, file, temp_dir, parallel, diff_only)
 
         # make sure we can update geodiff reference files (aka. basefiles) with diffs or
         # download their full versions so we have them up-to-date for applying changes
         for file in pull_changes['updated']:
-            if not _pulling_file_with_diffs(f):
+            if not _pulling_file_with_diffs(file):
                 continue
             file['version'] = server_info['version']
             basefile = mp.fpath_meta(file['path'])
