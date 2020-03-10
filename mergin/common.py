@@ -1,4 +1,6 @@
 
+import os
+
 
 CHUNK_SIZE = 100 * 1024 * 1024
 
@@ -6,8 +8,17 @@ CHUNK_SIZE = 100 * 1024 * 1024
 UPLOAD_CHUNK_SIZE = 10 * 1024 * 1024
 
 
+this_dir = os.path.dirname(os.path.realpath(__file__))
+
+
 class ClientError(Exception):
     pass
+
+
+class SyncError(Exception):
+    def __init__(self, msg, detail=""):
+        super().__init__(msg)
+        self.detail = detail
 
 
 try:

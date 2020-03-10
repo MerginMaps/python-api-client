@@ -2,21 +2,17 @@ import os
 import json
 import zlib
 import base64
-import shutil
 import urllib.parse
 import urllib.request
-import math
-import hashlib
-import copy
+import urllib.error
 import platform
 from datetime import datetime, timezone
 import dateutil.parser
-import concurrent.futures
 import ssl
 
 from pip._vendor import distro
 
-from .common import CHUNK_SIZE, UPLOAD_CHUNK_SIZE, ClientError
+from .common import ClientError, SyncError
 from .merginproject import MerginProject
 from .client_pull import download_project_async, download_project_wait, download_project_finalize
 from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
@@ -24,14 +20,11 @@ from .client_push import push_project_async, push_project_wait, push_project_fin
 from .utils import DateTimeEncoder
 
 
+this_dir = os.path.dirname(os.path.realpath(__file__))
+
+
 class LoginError(Exception):
     pass
-
-
-class SyncError(Exception):
-    def __init__(self, msg, detail=""):
-        super().__init__(msg)
-        self.detail = detail
 
 
 def decode_token_data(token):
