@@ -364,3 +364,30 @@ def test_force_gpkg_update(mc):
     f_remote = next((f for f in project_info['files'] if f['path'] == f_updated), None)
     assert f_remote['checksum'] == updated_checksum
     assert 'diff' not in f_remote
+
+
+def test_new_project_sync(mc):
+    """ Create a new project, download it, add a file and then do sync - it should not fail """
+
+    test_project = 'test_new_project_sync'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
+
+    cleanup(mc, project, [project_dir])
+    # create remote project
+    mc.create_project(test_project)
+
+    # download the project
+    mc.download_project(project, project_dir)
+
+    # add a test file
+    shutil.copy(os.path.join(TEST_DATA_DIR, "test.txt"), project_dir)
+
+    # do a full sync - it should not fail
+    mc.pull_project(project_dir)
+    mc.push_project(project_dir)
+
+    # make sure everything is up-to-date
+    mp = MerginProject(project_dir)
+    local_changes = mp.get_push_changes()
+    assert not local_changes["added"] and not local_changes["removed"] and not local_changes["updated"]

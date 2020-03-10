@@ -475,7 +475,7 @@ def pull_project_finalize(job):
     conflicts = job.mp.apply_pull_changes(job.pull_changes, job.temp_dir)
     job.mp.metadata = {
         'name': job.project_path,
-        'version': job.version,
+        'version': job.version if job.version else "v0",  # for new projects server version is ""
         'files': job.project_info['files']
     }
     
