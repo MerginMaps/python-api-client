@@ -110,8 +110,7 @@ def test_create_remote_project_from_local(mc):
         mc.download_project(project, download_dir)
 
 
-@pytest.mark.parametrize("parallel", [True, False])
-def test_push_pull_changes(mc, parallel):
+def test_push_pull_changes(mc):
     test_project = 'test_push'
     project = API_USER + '/' + test_project
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
@@ -145,7 +144,7 @@ def test_push_pull_changes(mc, parallel):
     assert next((f for f in push_changes['updated'] if f['path'] == f_updated), None)
     assert next((f for f in push_changes['renamed'] if f['path'] == f_renamed), None)
 
-    mc.push_project(project_dir, parallel=parallel)
+    mc.push_project(project_dir)
     project_info = mc.project_info(project)
     assert project_info['version'] == 'v2'
     assert not next((f for f in project_info['files'] if f['path'] == f_removed), None)
@@ -178,7 +177,7 @@ def test_push_pull_changes(mc, parallel):
     assert next((f for f in pull_changes['renamed'] if f['path'] == f_renamed), None)
     assert next((f for f in push_changes['updated'] if f['path'] == f_updated), None)
 
-    mc.pull_project(project_dir_2, parallel=parallel)
+    mc.pull_project(project_dir_2)
     assert os.path.exists(os.path.join(project_dir_2, f_added))
     assert not os.path.exists(os.path.join(project_dir_2, f_removed))
     assert not os.path.exists(os.path.join(project_dir_2, f_renamed))
