@@ -1,5 +1,6 @@
 
 import json
+import logging
 import math
 import os
 import re
@@ -47,6 +48,16 @@ class MerginProject:
         self.meta_dir = os.path.join(self.dir, '.mergin')
         if not os.path.exists(self.meta_dir):
             os.mkdir(self.meta_dir)
+
+        # setup logging into project directory's .mergin/client-log.txt file
+        self.log = logging.getLogger('mergin.' + directory)
+        self.log.setLevel(logging.DEBUG)   # log everything (it would otherwise log just warnings+errors)
+        if not self.log.handlers:
+            # we only need to set the handler once
+            # (otherwise we would get things logged multiple times as loggers are cached)
+            log_handler = logging.FileHandler(os.path.join(self.meta_dir, "client-log.txt"))
+            log_handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
+            self.log.addHandler(log_handler)
 
     def fpath(self, file, other_dir=None):
         """
