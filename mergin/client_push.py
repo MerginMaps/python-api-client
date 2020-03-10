@@ -11,8 +11,8 @@ To finish the upload job, we have to call push_project_finalize(job).
 
 import json
 import hashlib
+import pprint
 import concurrent.futures
-import threading
 
 from .common import UPLOAD_CHUNK_SIZE, ClientError, SyncError
 from .merginproject import MerginProject
@@ -53,7 +53,7 @@ class UploadQueueItem:
         self.chunk_index = chunk_index        # index (starting from zero) of the chunk within the file
         self.transaction_id = transaction_id  # ID of the transaction
     
-    def upload_blocking(self, mc):
+    def upload_blocking(self, mc, mp):
         
         file_handle = open(self.file_path, 'rb')
         file_handle.seek(self.chunk_index * UPLOAD_CHUNK_SIZE)
@@ -61,10 +61,13 @@ class UploadQueueItem:
         
         checksum = hashlib.sha1()
         checksum.update(data)
-        
+
+        mp.log.debug(f"Uploading {self.file_path} part={self.chunk_index}")
+
         headers = {"Content-Type": "application/octet-stream"}
         resp = mc.post("/v1/project/push/chunk/{}/{}".format(self.transaction_id, self.chunk_id), data, headers)
         resp_dict = json.load(resp)
+        mp.log.debug(f"Upload finished: {self.file_path}")
         if not (resp_dict['size'] == len(data) and resp_dict['checksum'] == checksum.hexdigest()):
             mc.post("/v1/project/push/cancel/{}".format(self.transaction_id))
             raise ClientError("Mismatch between uploaded file chunk {} and local one".format(self.chunk_id))
@@ -77,19 +80,31 @@ def push_project_async(mc, directory):
     mp = MerginProject(directory)
     project_path = mp.metadata["name"]
     local_version = mp.metadata["version"]
+
+    mp.log.info(f"--- start push {project_path}")
+
     server_info = mc.project_info(project_path)
     server_version = server_info["version"] if server_info["version"] else "v0"
+
+    mp.log.info(f"got project info. version {server_version}")
+
     if local_version != server_version:
-        raise ClientError("Update your local repository")
+        mp.log.error(f"--- push {project_path} - not up to date (local {local_version} vs server {server_version})")
+        raise ClientError("There is a new version of the project on the server. Please update your local copy." +
+                          f"\n\nLocal version: {local_version}\nServer version: {server_version}")
 
     changes = mp.get_push_changes()
+    mp.log.debug("push changes:\n" + pprint.pformat(changes))
     enough_free_space, freespace = mc.enough_storage_available(changes)
     if not enough_free_space:
         freespace = int(freespace/(1024*1024))
+        mp.log.error(f"--- push {project_path} - not enough space")
         raise SyncError("Storage limit has been reached. Only " + str(freespace) + "MB left")
 
     if not sum(len(v) for v in changes.values()):
+        mp.log.info(f"--- push {project_path} - nothing to do")
         return
+
     # drop internal info from being sent to server
     for item in changes['updated']:
         item.pop('origin_checksum', None)
@@ -107,10 +122,13 @@ def push_project_async(mc, directory):
     job = UploadJob(project_path, changes, transaction_id, mp, mc)
 
     if not upload_files:
+        mp.log.info("not uploading any files")
         job.server_resp = server_resp
         push_project_finalize(job)
         return None   # all done - no pending job
-    
+
+    mp.log.info(f"got transaction ID {transaction_id}")
+
     upload_queue_items = []
     total_size = 0
     # prepare file chunks for upload
@@ -129,7 +147,9 @@ def push_project_async(mc, directory):
 
     job.total_size = total_size
     job.upload_queue_items = upload_queue_items
-    
+
+    mp.log.info(f"will upload {len(upload_queue_items)} items with total size {total_size}")
+
     # start uploads in background
     job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     for item in upload_queue_items:
@@ -186,6 +206,7 @@ def push_project_finalize(job):
 
     if with_upload_of_files:
         try:
+            job.mp.log.info(f"Finishing transaction {job.transaction_id}")
             resp = job.mc.post("/v1/project/push/finish/%s" % job.transaction_id)
             job.server_resp = json.load(resp)
         except ClientError as err:
@@ -193,10 +214,11 @@ def push_project_finalize(job):
             # server returns various error messages with filename or something generic
             # it would be better if it returned list of failed files (and reasons) whenever possible
             return {'error': str(err)}
-    
+
     if 'error' in job.server_resp:
         #TODO would be good to get some detailed info from server so user could decide what to do with it
         # e.g. diff conflicts, basefiles issues, or any other failure
+        job.mp.log.error("push failed. server response: " + job.server_resp['error'])
         raise ClientError(job.server_resp['error'])
 
     job.mp.metadata = {
@@ -205,6 +227,8 @@ def push_project_finalize(job):
         'files': job.server_resp["files"]
     }
     job.mp.apply_push_changes(job.changes)
+
+    job.mp.log.info("--- push finished")
 
 
 def push_project_cancel(job):
@@ -224,5 +248,5 @@ def _do_upload(item, job):
     if job.is_cancelled:
         return
     
-    item.upload_blocking(job.mc)
+    item.upload_blocking(job.mc, job.mp)
     job.transferred_size += item.size

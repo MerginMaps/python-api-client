@@ -12,10 +12,10 @@ To finish the download job, we have to call download_project_finalize(job).
 import copy
 import math
 import os
+import pprint
 import shutil
 
 import concurrent.futures
-import threading
 
 from .common import CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
@@ -76,14 +76,14 @@ def _download_items(file, directory, diff_only=False):
     return items
 
 
-def _do_download(item, mc, project_path, job):
+def _do_download(item, mc, mp, project_path, job):
     """ runs in worker thread """
     if job.is_cancelled:
         return
     
     # TODO: make download_blocking / save_to_file cancellable so that we can cancel as soon as possible
 
-    item.download_blocking(mc, project_path)
+    item.download_blocking(mc, mp, project_path)
     job.transferred_size += item.size
 
 
@@ -99,8 +99,12 @@ def download_project_async(mc, project_path, directory):
     os.makedirs(directory)
     mp = MerginProject(directory)
 
+    mp.log.info(f"--- start download {project_path}")
+
     project_info = mc.project_info(project_path)
     version = project_info['version'] if project_info['version'] else 'v0'
+
+    mp.log.info(f"got project info. version {version}")
 
     # prepare download
     update_tasks = []  # stuff to do at the end of download
@@ -116,6 +120,8 @@ def download_project_async(mc, project_path, directory):
         download_list.extend(task.download_queue_items)
         for item in task.download_queue_items:
             total_size += item.size
+
+    mp.log.info(f"will download {len(update_tasks)} files in {len(download_list)} chunks, total size {total_size}")
     
     job = DownloadJob(project_path, total_size, version, update_tasks, download_list, directory, mp, project_info)
     
@@ -123,7 +129,7 @@ def download_project_async(mc, project_path, directory):
     job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     job.futures = []
     for item in download_list:
-        future = job.executor.submit(_do_download, item, mc, project_path, job)
+        future = job.executor.submit(_do_download, item, mc, mp, project_path, job)
         job.futures.append(future)
 
     return job
@@ -166,6 +172,8 @@ def download_project_finalize(job):
     for future in job.futures:
         if future.exception() is not None:
             raise future.exception()
+
+    job.mp.log.info("--- download finished")
 
     for task in job.update_tasks:
         
@@ -235,9 +243,10 @@ class DownloadQueueItem:
         return "<DownloadQueueItem path={} version={} diff_only={} part_index={} size={} dest={}>".format(
             self.file_path, self.version, self.diff_only, self.part_index, self.size, self.download_file_path)
 
-    def download_blocking(self, mc, project_path):
+    def download_blocking(self, mc, mp, project_path):
         """ Starts download and only returns once the file has been fully downloaded and saved """
 
+        mp.log.debug(f"Downloading {self.file_path} version={self.version} diff={self.diff_only} part={self.part_index}")
         start = self.part_index * (1 + CHUNK_SIZE)
         resp = mc.get("/v1/project/raw/{}".format(project_path), data={
                 "file": self.file_path,
@@ -248,9 +257,11 @@ class DownloadQueueItem:
             }
         )
         if resp.status in [200, 206]:
+            mp.log.debug(f"Download finished: {self.file_path}")
             save_to_file(resp, self.download_file_path)
         else:
-            raise ClientError('Failed to download part {} of file {}'.format(part, basename))
+            mp.log.error(f"Download failed: {self.file_path}")
+            raise ClientError('Failed to download part {} of file {}'.format(self.part_index, self.file_path))
 
 
 class PullJob:
@@ -290,8 +301,16 @@ def pull_project_async(mc, directory):
     mp = MerginProject(directory)
     project_path = mp.metadata["name"]
     local_version = mp.metadata["version"]
+
+    mp.log.info(f"--- start pull {project_path}")
+
     server_info = mc.project_info(project_path, since=local_version)
-    if local_version == server_info["version"]:
+    server_version = server_info["version"]
+
+    mp.log.info(f"got project info. version {server_version}")
+
+    if local_version == server_version:
+        mp.log.info("--- pull - nothing to do (already at server version)")
         return  # Project is up to date
 
     # we either download a versioned file using diffs (strongly preferred),
@@ -299,10 +318,10 @@ def pull_project_async(mc, directory):
     # then we just download the whole file
     _pulling_file_with_diffs = lambda f: 'diffs' in f and len(f['diffs']) != 0
 
-    server_version = server_info["version"]
     temp_dir = mp.fpath_meta(f'fetch_{local_version}-{server_version}')
     os.makedirs(temp_dir, exist_ok=True)
     pull_changes = mp.get_pull_changes(server_info["files"])
+    mp.log.debug("pull changes:\n" + pprint.pformat(pull_changes))
     fetch_files = []
     for f in pull_changes["added"]:
         f['version'] = server_version
@@ -364,13 +383,15 @@ def pull_project_async(mc, directory):
         for item in file_to_merge.downloaded_items:
             total_size += item.size
 
+    mp.log.info(f"will download {len(download_list)} chunks, total size {total_size}")
+
     job = PullJob(project_path, pull_changes, total_size, server_version, files_to_merge, download_list, temp_dir, mp, server_info, basefiles_to_patch)
 
     # start download
     job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     job.futures = []
     for item in download_list:
-        future = job.executor.submit(_do_download, item, mc, project_path, job)
+        future = job.executor.submit(_do_download, item, mc, mp, project_path, job)
         job.futures.append(future)
     
     return job
@@ -450,6 +471,8 @@ def pull_project_finalize(job):
         if future.exception() is not None:
             raise future.exception()
 
+    job.mp.log.info("finalizing pull")
+
     # merge downloaded chunks
     for file_to_merge in job.files_to_merge:
         file_to_merge.merge()
@@ -478,6 +501,8 @@ def pull_project_finalize(job):
         'version': job.version if job.version else "v0",  # for new projects server version is ""
         'files': job.project_info['files']
     }
-    
+
+    job.mp.log.info("--- pull finished")
+
     shutil.rmtree(job.temp_dir)
     return conflicts

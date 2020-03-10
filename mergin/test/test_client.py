@@ -166,7 +166,7 @@ def test_push_pull_changes(mc):
     f_conflict_checksum = generate_checksum(os.path.join(project_dir_2, f_updated))
 
     # not at latest server version
-    with pytest.raises(ClientError, match='Update your local repository'):
+    with pytest.raises(ClientError, match='Please update your local copy'):
         mc.push_project(project_dir_2)
 
     # check changes in project_dir_2 before applied
