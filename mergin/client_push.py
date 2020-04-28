@@ -210,16 +210,17 @@ def push_project_finalize(job):
             resp = job.mc.post("/v1/project/push/finish/%s" % job.transaction_id)
             job.server_resp = json.load(resp)
         except ClientError as err:
-            job.mc.post("/v1/project/push/cancel/%s" % job.transaction_id)
             # server returns various error messages with filename or something generic
             # it would be better if it returned list of failed files (and reasons) whenever possible
-            return {'error': str(err)}
+            job.mp.log.error("--- push finish failed! " + str(err))
 
-    if 'error' in job.server_resp:
-        #TODO would be good to get some detailed info from server so user could decide what to do with it
-        # e.g. diff conflicts, basefiles issues, or any other failure
-        job.mp.log.error("push failed. server response: " + job.server_resp['error'])
-        raise ClientError(job.server_resp['error'])
+            # if push finish fails, the transaction is not killed, so we
+            # need to cancel it so it does not block further uploads
+            job.mp.log.info("canceling the pending transaction...")
+            resp_cancel = job.mc.post("/v1/project/push/cancel/%s" % job.transaction_id)
+            server_resp_cancel = json.load(resp_cancel)
+            job.mp.log.info("cancel response: " + str(server_resp_cancel))
+            raise err
 
     job.mp.metadata = {
         'name': job.project_path,
