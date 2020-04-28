@@ -12,7 +12,7 @@ import ssl
 
 from pip._vendor import distro
 
-from .common import ClientError, SyncError
+from .common import ClientError
 from .merginproject import MerginProject
 from .client_pull import download_project_async, download_project_wait, download_project_finalize
 from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
@@ -218,7 +218,13 @@ class MerginClient:
         }
         return session
 
-    def create_project(self, project_name, directory=None, is_public=False):
+    def username(self):
+        """ Returns user name used in this session or None if not authenticated """
+        if not self._user_info:
+            return None  # not authenticated
+        return self._user_info["username"]
+
+    def create_project(self, project_name, is_public=False):
         """
         Create new project repository in user namespace on Mergin server.
         Optionally initialized from given local directory.
@@ -226,22 +232,17 @@ class MerginClient:
         :param project_name: Project name
         :type project_name: String
 
-        :param directory: Local project directory, defaults to None
-        :type directory: String
-
         :param is_public: Flag for public/private project, defaults to False
         :type directory: Boolean
         """
         if not self._user_info:
             raise Exception("Authentication required")
-        if directory and not os.path.exists(directory):
-            raise Exception("Project directory does not exists")
 
         params = {
             "name": project_name,
             "public": is_public
         }
-        namespace = self._user_info["username"]
+        namespace = self.username()
         try:
             self.post("/v1/project/%s" % namespace, params, {"Content-Type": "application/json"})
             data = {
@@ -251,10 +252,17 @@ class MerginClient:
             }
         except Exception as e:
             detail = f"Namespace: {namespace}, project name: {project_name}"
-            raise SyncError(str(e), detail)
+            raise ClientError(str(e), detail)
+
+    def create_project_and_push(self, project_name, directory, is_public=False):
+        """
+        Convenience method to create project and push the initial version right after that.
+        """
+        self.create_project(project_name, is_public)
         if directory:
             mp = MerginProject(directory)
-            mp.metadata = data
+            full_project_name = "{}/{}".format(self.username(), project_name)
+            mp.metadata = {"name": full_project_name, "version": "v0", "files": []}
             if mp.inspect_files():
                 self.push_project(directory)
 
@@ -330,7 +338,7 @@ class MerginClient:
         download_project_finalize(job)
 
     def enough_storage_available(self, data):
-        user_name = self._user_info["username"]
+        user_name = self.username()
         resp = self.get('/v1/user/' + user_name)
         info = json.load(resp)
         free_space = int(info["storage_limit"]) - int(info["disk_usage"])

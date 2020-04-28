@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import pytest
 import pytz
 
-from ..client import MerginClient, ClientError, MerginProject, SyncError, LoginError
+from ..client import MerginClient, ClientError, MerginProject, LoginError
 from ..utils import generate_checksum
 
 SERVER_URL = os.environ.get('TEST_MERGIN_URL')
@@ -56,7 +56,7 @@ def test_create_delete_project(mc):
     assert any(p for p in projects if p['name'] == test_project and p['namespace'] == API_USER)
 
     # try again
-    with pytest.raises(SyncError, match=f'Project {test_project} already exists'):
+    with pytest.raises(ClientError, match=f'Project {test_project} already exists'):
         mc.create_project(test_project)
 
     # remove project
@@ -80,7 +80,7 @@ def test_create_remote_project_from_local(mc):
     shutil.copytree(TEST_DATA_DIR, project_dir)
 
     # create remote project
-    mc.create_project(test_project, directory=project_dir)
+    mc.create_project_and_push(test_project, directory=project_dir)
 
     # check basic metadata about created project
     project_info = mc.project_info(project)
@@ -119,7 +119,7 @@ def test_push_pull_changes(mc):
     cleanup(mc, project, [project_dir, project_dir_2])
     # create remote project
     shutil.copytree(TEST_DATA_DIR, project_dir)
-    mc.create_project(test_project, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
 
     # make sure we have v1 also in concurrent project dir
     mc.download_project(project, project_dir_2)
@@ -196,7 +196,7 @@ def test_ignore_files(mc):
     # create remote project
     shutil.copytree(TEST_DATA_DIR, project_dir)
     shutil.copy(os.path.join(project_dir, 'test.qgs'), os.path.join(project_dir, 'test.qgs~'))
-    mc.create_project(test_project, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
     project_info = mc.project_info(project)
     assert not next((f for f in project_info['files'] if f['path'] == 'test.qgs~'), None)
 
@@ -228,7 +228,7 @@ def test_sync_diff(mc, push_geodiff_enabled, pull_geodiff_enabled):
     # create remote project
     toggle_geodiff(push_geodiff_enabled)
     shutil.copytree(TEST_DATA_DIR, project_dir)
-    mc.create_project(test_project, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
 
     # make sure we have v1 also in concurrent project dirs
     toggle_geodiff(pull_geodiff_enabled)
@@ -318,7 +318,7 @@ def test_list_of_push_changes(mc):
     cleanup(mc, project, [project_dir])
     shutil.copytree(TEST_DATA_DIR, project_dir)
     toggle_geodiff(True)
-    mc.create_project(test_project, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
 
     f_updated = 'base.gpkg'
     mp = MerginProject(project_dir)
@@ -342,7 +342,7 @@ def test_force_gpkg_update(mc):
     cleanup(mc, project, [project_dir])
     # create remote project
     shutil.copytree(TEST_DATA_DIR, project_dir)
-    mc.create_project(test_project, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
 
     # test push changes with force gpkg file upload:
     mp = MerginProject(project_dir)

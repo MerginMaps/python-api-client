@@ -15,12 +15,6 @@ class ClientError(Exception):
     pass
 
 
-class SyncError(Exception):
-    def __init__(self, msg, detail=""):
-        super().__init__(msg)
-        self.detail = detail
-
-
 try:
     import dateutil.parser
     from dateutil.tz import tzlocal

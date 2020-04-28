@@ -14,7 +14,7 @@ import hashlib
 import pprint
 import concurrent.futures
 
-from .common import UPLOAD_CHUNK_SIZE, ClientError, SyncError
+from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
 from .utils import generate_checksum, do_sqlite_checkpoint
 
@@ -99,7 +99,7 @@ def push_project_async(mc, directory):
     if not enough_free_space:
         freespace = int(freespace/(1024*1024))
         mp.log.error(f"--- push {project_path} - not enough space")
-        raise SyncError("Storage limit has been reached. Only " + str(freespace) + "MB left")
+        raise ClientError("Storage limit has been reached. Only " + str(freespace) + "MB left")
 
     if not sum(len(v) for v in changes.values()):
         mp.log.info(f"--- push {project_path} - nothing to do")
