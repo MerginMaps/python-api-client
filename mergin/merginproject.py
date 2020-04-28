@@ -289,7 +289,7 @@ class MerginProject:
         changes = self.compare_file_sets(self.metadata['files'], self.inspect_files())
         # do checkpoint to push changes from wal file to gpkg
         for file in changes['added'] + changes['updated']:
-            size, checksum = do_sqlite_checkpoint(self.fpath(file["path"]))
+            size, checksum = do_sqlite_checkpoint(self.fpath(file["path"]), self.log)
             if size and checksum:
                 file["size"] = size
                 file["checksum"] = checksum
