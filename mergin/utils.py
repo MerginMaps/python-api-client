@@ -69,25 +69,33 @@ def int_version(version):
     return int(version.lstrip('v')) if re.match(r'v\d', version) else None
 
 
-def do_sqlite_checkpoint(path):
+def do_sqlite_checkpoint(path, log=None):
     """
     Function to do checkpoint over the geopackage file which was not able to do diff file.
 
     :param path: file's absolute path on disk
     :type path: str
+    :param log: optional reference to a logger
+    :type log: logging.Logger
     :returns: new size and checksum of file after checkpoint
     :rtype: int, str
     """
     new_size = None
     new_checksum = None
     if ".gpkg" in path and os.path.exists(f'{path}-wal'):
+        if log:
+            log.info("checkpoint - going to add it in " + path)
         conn = sqlite3.connect(path)
         cursor = conn.cursor()
         cursor.execute("PRAGMA wal_checkpoint=FULL")
+        if log:
+            log.info("checkpoint - return value: " + str(cursor.fetchone()))
         cursor.execute("VACUUM")
         conn.commit()
         conn.close()
         new_size = os.path.getsize(path)
         new_checksum = generate_checksum(path)
+        if log:
+            log.info("checkpoint - new size {} checksum {}".format(new_size, new_checksum))
 
     return new_size, new_checksum
