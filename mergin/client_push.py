@@ -133,10 +133,6 @@ def push_project_async(mc, directory):
     total_size = 0
     # prepare file chunks for upload
     for file in upload_files:
-        # do checkpoint to push changes from wal file to gpkg if there is no diff
-        if "diff" not in file and mp.is_versioned_file(file["path"]):
-            do_sqlite_checkpoint(mp.fpath(file["path"]), mp.log)
-            file["checksum"] = generate_checksum(mp.fpath(file["path"]))
         file['location'] = mp.fpath_meta(file['diff']['path']) if 'diff' in file else mp.fpath(file['path'])
 
         for chunk_index, chunk_id in enumerate(file["chunks"]):
