@@ -1,5 +1,11 @@
 # Changelog
 
+## 2020.4.0
+
+- Asynchronous push/pull/download (#44)
+- Basic logging of sync oprations to .mergin/client-log.txt
+- Modified create_project() API - does not do project upload anymore
+
 ## 2020.3.1
 
 - Second fix of the issue with sync (#119)
