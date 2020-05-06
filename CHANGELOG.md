@@ -1,5 +1,9 @@
 # Changelog
 
+## 2020.4.1
+
+- Fixed load error if pip is not available (#133)
+
 ## 2020.4.0
 
 - Asynchronous push/pull/download (#44)
