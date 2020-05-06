@@ -10,8 +10,6 @@ from datetime import datetime, timezone
 import dateutil.parser
 import ssl
 
-from pip._vendor import distro
-
 from .common import ClientError
 from .merginproject import MerginProject
 from .client_pull import download_project_async, download_project_wait, download_project_finalize
@@ -106,7 +104,11 @@ class MerginClient:
                 request.add_header("Authorization", self._auth_session["token"])
                 system_version = "Unknown"
                 if platform.system() == "Linux":
-                    system_version = distro.linux_distribution()[0]
+                    try:
+                        from pip._vendor import distro
+                        system_version = distro.linux_distribution()[0]
+                    except ModuleNotFoundError:   # pip may not be installed...
+                        system_version = "Linux"
                 elif platform.system() == "Windows":
                     system_version =  platform.win32_ver()[0]
                 elif platform.system() == "Mac":
