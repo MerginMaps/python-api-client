@@ -9,6 +9,8 @@ sudo ln -s `pwd`/cli.py /usr/bin/mergin
 """
 
 import os
+import sys
+import traceback
 import click
 
 from mergin import (
@@ -63,6 +65,13 @@ def _init_client():
     return MerginClient(url, auth_token='Bearer {}'.format(auth_token))
 
 
+def _print_unhandled_exception():
+    """ Outputs details of an unhandled exception that is being handled right now """
+    click.secho("Unhandled exception!", fg='red')
+    for line in traceback.format_exception(*sys.exc_info()):
+        click.echo(line)
+
+
 @click.group()
 def cli():
     pass
@@ -99,7 +108,7 @@ def init(project, directory, public):
         c.create_project(project, directory, is_public=public)
         click.echo('Done')
     except Exception as e:
-        click.secho(str(e), fg='red')
+        _print_unhandled_exception()
 
 
 @cli.command()
@@ -145,7 +154,7 @@ def download(project, directory):
         print("Cancelling...")
         download_project_cancel(job)
     except Exception as e:
-        click.secho(str(e), fg='red')
+        _print_unhandled_exception()
 
 
 def num_version(name):
@@ -201,7 +210,7 @@ def push():
         print("Cancelling...")
         push_project_cancel(job)
     except Exception as e:
-        click.secho(str(e), fg='red')
+        _print_unhandled_exception()
 
 
 @cli.command()
@@ -236,7 +245,7 @@ def pull():
         print("Cancelling...")
         pull_project_cancel(job)
     except Exception as e:
-        click.secho(str(e), fg='red')
+        _print_unhandled_exception()
 
 
 @cli.command()
@@ -281,7 +290,7 @@ def remove(project):
             shutil.rmtree(os.path.join(os.getcwd()))
         click.echo('Done')
     except Exception as e:
-        click.secho(str(e), fg='red')
+        _print_unhandled_exception()
 
 
 if __name__ == '__main__':

@@ -367,6 +367,9 @@ def pull_project_async(mc, directory):
             # The basefile does not exist for some reason. This should not happen normally (maybe user removed the file
             # or we removed it within previous pull because we failed to apply patch the older version for some reason).
             # But it's not a problem - we will download the newest version and we're sorted.
+            file_path = file['path']
+            mp.log.info(f"missing base file for {file_path} -> going to download it (version {server_version})")
+            file['version'] = server_version
             items = _download_items(file, temp_dir, diff_only=False)
             dest_file_path = mp.fpath(file["path"], temp_dir)
             #dest_file_path = os.path.join(os.path.dirname(os.path.normpath(os.path.join(temp_dir, file['path']))), os.path.basename(file['path']))
