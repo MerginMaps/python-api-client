@@ -391,3 +391,36 @@ def test_new_project_sync(mc):
     mp = MerginProject(project_dir)
     local_changes = mp.get_push_changes()
     assert not local_changes["added"] and not local_changes["removed"] and not local_changes["updated"]
+
+
+def test_missing_basefile_pull(mc):
+    """ Test pull of a project where basefile of a .gpkg is missing for some reason
+    (it should gracefully handle it by downloading the missing basefile)
+    """
+
+    test_project = 'test_missing_basefile_pull'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
+    project_dir_2 = os.path.join(TMP_DIR, test_project + '_2')  # concurrent project dir
+    test_data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), test_project)
+
+    cleanup(mc, project, [project_dir, project_dir_2])
+    # create remote project
+    shutil.copytree(test_data_dir, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
+
+    # update our gpkg in a different directory
+    mc.download_project(project, project_dir_2)
+    shutil.copy(os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"), os.path.join(project_dir_2, "base.gpkg"))
+    mc.pull_project(project_dir_2)
+    mc.push_project(project_dir_2)
+
+    # make some other local change
+    shutil.copy(os.path.join(TEST_DATA_DIR, "inserted_1_B.gpkg"), os.path.join(project_dir, "base.gpkg"))
+
+    # remove the basefile to simulate the issue
+    os.remove(os.path.join(project_dir, '.mergin', 'base.gpkg'))
+
+    # try to sync again  -- it should not crash
+    mc.pull_project(project_dir)
+    mc.push_project(project_dir)
