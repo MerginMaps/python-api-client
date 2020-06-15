@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 
 """
-Install:
-
-chmod +x cli.py
-sudo ln -s `pwd`/cli.py /usr/bin/mergin
-
+Command line interface for the Mergin client module. When installed with pip, this script
+is installed as 'mergin' command line tool (defined in setup.py). If you have installed the module
+but the tool is not available, you may need to fix your PATH (e.g. add ~/.local/bin where
+pip puts these tools).
 """
 
 import os
@@ -14,9 +13,10 @@ import traceback
 import click
 
 from mergin import (
+    ClientError,
     MerginClient,
-    MerginProject,
-    InvalidProject
+    InvalidProject,
+    LoginError,
 )
 from mergin.client_pull import download_project_async, download_project_is_running, download_project_finalize, download_project_cancel
 from mergin.client_pull import pull_project_async, pull_project_is_running, pull_project_finalize, pull_project_cancel
@@ -62,6 +62,9 @@ def pretty_summary(summary):
 def _init_client():
     url = os.environ.get('MERGIN_URL')
     auth_token = os.environ.get('MERGIN_AUTH')
+    if auth_token is None:
+        click.secho("Missing authorization token: please run 'login' first and set MERGIN_AUTH env variable", fg='red')
+        return None
     return MerginClient(url, auth_token='Bearer {}'.format(auth_token))
 
 
@@ -78,34 +81,38 @@ def cli():
 
 
 @cli.command()
-@click.argument('url')
+@click.argument('url', required=False)
 @click.option('--login', prompt=True)
 @click.option('--password', prompt=True, hide_input=True)
 def login(url, login, password):
-    """Fetch new authentication token"""
+    """Fetch new authentication token. If no URL is specified, the public Mergin instance will be used."""
     c = MerginClient(url)
+    click.echo("Mergin URL: " + c.url)
     if not c.is_server_compatible():
         click.secho(str('This client version is incompatible with server, try to upgrade'), fg='red')
         return
-    session = c.login(login, password)
-    print('export MERGIN_URL="%s"' % url)
+    try:
+        session = c.login(login, password)
+    except LoginError as e:
+        click.secho('Unable to log in: ' + str(e), fg='red')
+        return
+
+    print('export MERGIN_URL="%s"' % c.url)
     print('export MERGIN_AUTH="%s"' % session['token'])
-    print('export MERGIN_AUTH_HEADER="Authorization: %s"' % session['token'])
 
 
 @cli.command()
 @click.argument('project')
-@click.argument('directory', type=click.Path(exists=True), required=False)
 @click.option('--public', is_flag=True, default=False, help='Public project, visible to everyone')
-def init(project, directory, public):
-    """Initialize new project from existing DIRECTORY name"""
+def create(project, public):
+    """Create a new project on Mergin server"""
 
-    if directory:
-        directory = os.path.abspath(directory)
     c = _init_client()
+    if c is None:
+        return
 
     try:
-        c.create_project(project, directory, is_public=public)
+        c.create_project(project, is_public=public)
         click.echo('Done')
     except Exception as e:
         _print_unhandled_exception()
@@ -119,6 +126,8 @@ def list_projects(flag):
     filter_str = "(filter flag={})".format(flag) if flag is not None else "(all public)"
     click.echo('List of projects {}:'.format(filter_str))
     c = _init_client()
+    if c is None:
+        return
     projects_list = c.projects_list(flag=flag)
     for project in projects_list:
         full_name = "{} / {}".format(project["namespace"], project["name"])
@@ -132,6 +141,8 @@ def download(project, directory):
     """Download last version of mergin project"""
     
     c = _init_client()
+    if c is None:
+        return
     directory = directory or os.path.basename(project)
 
     click.echo('Downloading into {}'.format(directory))
@@ -153,6 +164,8 @@ def download(project, directory):
     except KeyboardInterrupt:
         print("Cancelling...")
         download_project_cancel(job)
+    except ClientError as e:
+        click.secho("Error: " + str(e), fg='red')
     except Exception as e:
         _print_unhandled_exception()
 
@@ -165,14 +178,16 @@ def num_version(name):
 def status():
     """Show all changes in project files - upstream and local"""
 
-    try:
-        mp = MerginProject(os.getcwd())
-    except InvalidProject:
-        click.secho('Invalid project directory', fg='red')
+    c = _init_client()
+    if c is None:
         return
 
-    c = _init_client()
-    pull_changes, push_changes, push_changes_summary = c.project_status(os.getcwd())
+    try:
+        pull_changes, push_changes, push_changes_summary = c.project_status(os.getcwd())
+    except InvalidProject as e:
+        click.secho('Invalid project directory ({})'.format(str(e)), fg='red')
+        return
+
     click.secho("### Server changes:", fg="magenta")
     pretty_diff(pull_changes)
     click.secho("### Local changes:", fg="magenta")
@@ -186,6 +201,8 @@ def push():
     """Upload local changes into Mergin repository"""
 
     c = _init_client()
+    if c is None:
+        return
     directory = os.getcwd()
 
     try:
@@ -204,8 +221,8 @@ def push():
             push_project_finalize(job)
 
         click.echo('Done')
-    except InvalidProject:
-        click.echo('Invalid project directory')
+    except InvalidProject as e:
+        click.secho('Invalid project directory ({})'.format(str(e)), fg='red')
     except KeyboardInterrupt:
         print("Cancelling...")
         push_project_cancel(job)
@@ -218,6 +235,8 @@ def pull():
     """Fetch changes from Mergin repository"""
 
     c = _init_client()
+    if c is None:
+        return
     directory = os.getcwd()
 
     try:
@@ -239,8 +258,8 @@ def pull():
         pull_project_finalize(job)
 
         click.echo('Done')
-    except InvalidProject:
-        click.echo('Invalid project directory')
+    except InvalidProject as e:
+        click.secho('Invalid project directory ({})'.format(str(e)), fg='red')
     except KeyboardInterrupt:
         print("Cancelling...")
         pull_project_cancel(job)
@@ -278,11 +297,13 @@ def remove(project):
         try:
             local_info = inspect_project(os.path.join(os.getcwd()))
             project = local_info['name']
-        except InvalidProject:
-            click.secho('Invalid project directory', fg='red')
+        except InvalidProject as e:
+            click.secho('Invalid project directory ({})'.format(str(e)), fg='red')
             return
 
     c = _init_client()
+    if c is None:
+        return
     try:
         c.delete_project(project)
         if local_info:

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import dateutil.parser
 import ssl
 
-from .common import ClientError
+from .common import ClientError, LoginError
 from .merginproject import MerginProject
 from .client_pull import download_project_async, download_project_wait, download_project_finalize
 from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
@@ -19,10 +19,6 @@ from .utils import DateTimeEncoder
 
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
-
-
-class LoginError(Exception):
-    pass
 
 
 def decode_token_data(token):
@@ -41,8 +37,8 @@ def decode_token_data(token):
 
 
 class MerginClient:
-    def __init__(self, url, auth_token=None, login=None, password=None, plugin_version=None):
-        self.url = url
+    def __init__(self, url=None, auth_token=None, login=None, password=None, plugin_version=None):
+        self.url = url if url is not None else MerginClient.default_url()
 
         self._auth_params = None
         self._auth_session = None
@@ -83,6 +79,11 @@ class MerginClient:
             if not self._auth_session:
                 self.login(login, password)
 
+    @staticmethod
+    def default_url():
+        """ Returns URL of the public instance of Mergin """
+        return 'https://public.cloudmergin.com'
+
     def _check_token(f):
         def wrapper(self, *args):
             if (not self._auth_session or self._auth_session['expire'] < datetime.now(timezone.utc)) and self._auth_params:
@@ -121,6 +122,9 @@ class MerginClient:
                 info = json.load(e)
                 raise ClientError(info.get("detail"))
             raise ClientError(e.read().decode("utf-8"))
+        except urllib.error.URLError as e:
+            # e.g. when DNS resolution fails (no internet connection?)
+            raise ClientError("Error requesting " + request.full_url + ": " + str(e))
 
     def get(self, path, data=None, headers={}):
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))

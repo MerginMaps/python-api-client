@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from dateutil.tz import tzlocal
 
-from .common import UPLOAD_CHUNK_SIZE
+from .common import UPLOAD_CHUNK_SIZE, InvalidProject
 from .utils import generate_checksum, move_file, int_version, find, do_sqlite_checkpoint
 
 
@@ -20,10 +20,6 @@ try:
     from .deps import pygeodiff
 except ImportError:
     os.environ['GEODIFF_ENABLED'] = 'False'
-
-
-class InvalidProject(Exception):
-    pass
 
 
 class MerginProject:
