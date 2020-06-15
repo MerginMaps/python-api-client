@@ -87,6 +87,15 @@ def _do_download(item, mc, mp, project_path, job):
     job.transferred_size += item.size
 
 
+def _cleanup_failed_download(directory):
+    """
+    If a download job fails, there will be the newly created directory left behind with some
+    temporary files in it. We want to remove it because a new download would fail because
+    the directory already exists.
+    """
+    shutil.rmtree(directory)
+
+
 def download_project_async(mc, project_path, directory):
     """
     Starts project download in background and returns handle to the pending project download.
@@ -94,14 +103,21 @@ def download_project_async(mc, project_path, directory):
     
     """
 
+    if '/' not in project_path:
+        raise ClientError("Project name needs to be fully qualified, e.g. <username>/<projectname>")
     if os.path.exists(directory):
-        raise Exception("Project directory already exists")
+        raise ClientError("Project directory already exists")
     os.makedirs(directory)
     mp = MerginProject(directory)
 
     mp.log.info(f"--- start download {project_path}")
 
-    project_info = mc.project_info(project_path)
+    try:
+        project_info = mc.project_info(project_path)
+    except ClientError:
+        _cleanup_failed_download(directory)
+        raise
+
     version = project_info['version'] if project_info['version'] else 'v0'
 
     mp.log.info(f"got project info. version {version}")
@@ -150,6 +166,7 @@ def download_project_is_running(job):
     """
     for future in job.futures:
         if future.done() and future.exception() is not None:
+            _cleanup_failed_download(job.directory)
             raise future.exception()
         if future.running():
             return True
@@ -171,6 +188,7 @@ def download_project_finalize(job):
     # make sure any exceptions from threads are not lost
     for future in job.futures:
         if future.exception() is not None:
+            _cleanup_failed_download(job.directory)
             raise future.exception()
 
     job.mp.log.info("--- download finished")
@@ -496,7 +514,7 @@ def pull_project_finalize(job):
             # the basefile and we ended up in this inconsistent state.
             # let's remove the basefile and let the user retry - we should download clean version again
             os.remove(basefile)
-            raise Exception("Cannot patch basefile {}! Please try syncing again.".format(basefile))
+            raise ClientError("Cannot patch basefile {}! Please try syncing again.".format(basefile))
 
     conflicts = job.mp.apply_pull_changes(job.pull_changes, job.temp_dir)
     job.mp.metadata = {

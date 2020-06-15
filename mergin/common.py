@@ -15,6 +15,14 @@ class ClientError(Exception):
     pass
 
 
+class LoginError(Exception):
+    pass
+
+
+class InvalidProject(Exception):
+    pass
+
+
 try:
     import dateutil.parser
     from dateutil.tz import tzlocal

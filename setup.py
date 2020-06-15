@@ -5,8 +5,8 @@ from setuptools import setup, find_packages
 
 setup(
     name='mergin-client',
-    version='dev',
-    url='',
+    version='2020.4.1',
+    url='https://github.com/lutraconsulting/mergin-py-client',
     license='MIT',
     author='Lutra Consulting Ltd.',
     author_email='mergin@lutraconsulting.co.uk',
@@ -19,8 +19,13 @@ setup(
     install_requires=[
         'python-dateutil==2.6.0',
         'pygeodiff==0.7.4',
-        'pytz==2019.3'
+        'pytz==2019.3',
+        'click',
     ],
+
+    entry_points={
+        'console_scripts': ['mergin=mergin.cli:cli'],
+    },
 
     test_suite='nose.collector',
     tests_require=['nose'],
