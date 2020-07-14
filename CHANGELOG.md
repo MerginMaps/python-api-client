@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+- Update to geodiff 0.8.4 (fixes a rebase bug, adds logging, supports conflict files)
+- More detailed logging
+- Better handling of exceptions
+- CLI improvements and fixes
+- Fixed sync error with missing basefile
+- Changed version because the module is going to have also independent releases from QGIS plugin
+  (they had synchronized version numbers until now)
+
 ## 2020.4.1
 
 - Fixed load error if pip is not available (#133)
