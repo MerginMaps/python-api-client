@@ -3,30 +3,9 @@
 This repository contains a Python client module for access to [Mergin](https://public.cloudmergin.com/)
 service and a command-line tool for easy access to data stored in Mergin.
 
-## Development
-Python 3.6+ required. Create `mergin/deps` folder where [geodiff](https://github.com/lutraconsulting/geodiff) lib is supposed to be and install dependencies:
-    
-    rm -r mergin/deps
-    mkdir mergin/deps
-    pipenv install --dev --three
-    pipenv run pip install -r <(pipenv lock -r | grep pygeodiff) --target mergin/deps
+To install the module:
 
-For using mergin client with its dependencies packaged locally run:
-
-    pip install wheel 
-    python3 setup.py sdist bdist_wheel
-    mkdir -p mergin/deps
-    pip wheel -r mergin_client.egg-info/requires.txt -w mergin/deps
-    unzip mergin/deps/pygeodiff-*.whl -d mergin/deps 
-
-## Tests
-For running test do:
-
-    cd mergin
-    export TEST_MERGIN_URL=<url> # testing server
-    export TEST_API_USERNAME=<username>
-    export TEST_API_PASSWORD=<pwd>
-    pipenv run pytest --cov-report html --cov=mergin test/
+    pip3 install mergin-client
 
 
 ## Command-line Tool
@@ -82,3 +61,45 @@ working directory:
    ```
    $ mergin push
    ```
+
+
+## Development
+
+### How to release 
+
+1. Update version in `setup.py`
+2. Tag git repository with the new version
+3. Create package and upload it
+
+```
+python3 setup.py sdist
+python3 -m twine upload dist/mergin-client-x.y.z.tar.gz
+```
+
+### Installing deps
+
+[this section needs revising - now using pip for dependencies]
+
+Python 3.6+ required. Create `mergin/deps` folder where [geodiff](https://github.com/lutraconsulting/geodiff) lib is supposed to be and install dependencies:
+    
+    rm -r mergin/deps
+    mkdir mergin/deps
+    pipenv install --dev --three
+    pipenv run pip install -r <(pipenv lock -r | grep pygeodiff) --target mergin/deps
+
+For using mergin client with its dependencies packaged locally run:
+
+    pip install wheel 
+    python3 setup.py sdist bdist_wheel
+    mkdir -p mergin/deps
+    pip wheel -r mergin_client.egg-info/requires.txt -w mergin/deps
+    unzip mergin/deps/pygeodiff-*.whl -d mergin/deps 
+
+### Tests
+For running test do:
+
+    cd mergin
+    export TEST_MERGIN_URL=<url> # testing server
+    export TEST_API_USERNAME=<username>
+    export TEST_API_PASSWORD=<pwd>
+    pipenv run pytest --cov-report html --cov=mergin test/
