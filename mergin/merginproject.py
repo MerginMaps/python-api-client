@@ -528,6 +528,7 @@ class MerginProject:
                         patch_error = self.apply_diffs(basefile, [changeset])
                         if patch_error:
                             # in case of local sync issues it is safier to remove basefile, next time it will be downloaded from server
+                            self.log.warning("removing basefile (because of apply diff error) for: " + path)
                             os.remove(basefile)
                 else:
                     pass
