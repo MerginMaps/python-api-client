@@ -16,10 +16,16 @@ from .utils import generate_checksum, move_file, int_version, find, do_sqlite_ch
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
 
+# Try to import pygeodiff from "deps" sub-directory (which should be present e.g. when
+# used within QGIS plugin), if that's not available then try to import it from standard
+# python paths.
 try:
     from .deps import pygeodiff
 except ImportError:
-    os.environ['GEODIFF_ENABLED'] = 'False'
+    try:
+        import pygeodiff
+    except ImportError:
+        os.environ['GEODIFF_ENABLED'] = 'False'
 
 
 class MerginProject:
@@ -251,6 +257,7 @@ class MerginProject:
         """
         changes = self.compare_file_sets(self.metadata['files'], server_files)
         if not self.geodiff:
+            self.log.warning("geodiff is not available!")
             return changes
 
         not_updated = []
@@ -305,6 +312,7 @@ class MerginProject:
             file['chunks'] = [str(uuid.uuid4()) for i in range(math.ceil(file["size"] / UPLOAD_CHUNK_SIZE))]
 
         if not self.geodiff:
+            self.log.warning("geodiff is not available!")
             return changes
 
         # need to check for for real changes in geodiff files using geodiff tool (comparing checksum is not enough)
@@ -511,8 +519,10 @@ class MerginProject:
                 elif k == 'updated':
                     # in case for geopackage cannot be created diff (e.g. forced update with committed changes from wal file)
                     if "diff" not in item:
+                        self.log.info("updating basefile (copy) for: " + path)
                         shutil.copy(self.fpath(path), basefile)
                     else:
+                        self.log.info("updating basefile (diff) for: " + path)
                         # better to apply diff to previous basefile to avoid issues with geodiff tmp files
                         changeset = self.fpath_meta(item['diff']['path'])
                         patch_error = self.apply_diffs(basefile, [changeset])
