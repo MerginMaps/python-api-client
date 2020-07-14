@@ -55,6 +55,19 @@ class MerginProject:
             log_handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
             self.log.addHandler(log_handler)
 
+        # redirect any geodiff output to our log file
+        if self.geodiff:
+            def _logger_callback(level, text_bytes):
+                text = text_bytes.decode()  # convert bytes to str
+                if level == pygeodiff.GeoDiff.LevelError:
+                    self.log.error("GEODIFF: " + text)
+                elif level == pygeodiff.GeoDiff.LevelWarning:
+                    self.log.warning("GEODIFF: " + text)
+                else:
+                    self.log.info("GEODIFF: " + text)
+            self.geodiff.set_logger_callback(_logger_callback)
+            self.geodiff.set_maximum_logger_level(pygeodiff.GeoDiff.LevelDebug)
+
     def fpath(self, file, other_dir=None):
         """
         Helper function to get absolute path of project file. Defaults to project dir but
@@ -323,6 +336,7 @@ class MerginProject:
                 else:
                     not_updated.append(file)
             except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as e:
+                self.log.warning("failed to create changeset for " + path)
                 # changes from wal file already committed
                 pass
 
@@ -385,6 +399,7 @@ class MerginProject:
                 # 'src' here is server version of file and 'dest' is locally modified
                 if self.is_versioned_file(path) and k == 'updated':
                     if path in modified:
+                        self.log.info("updating file with rebase: " + path)
                         server_diff = self.fpath(f'{path}-server_diff', temp_dir)  # diff between server file and local basefile
                         local_diff = self.fpath(f'{path}-local_diff', temp_dir)
 
@@ -399,16 +414,24 @@ class MerginProject:
                             shutil.copy(basefile, f_conflict_file)
                             self.geodiff.apply_changeset(f_conflict_file, local_diff)
                         except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
+                            self.log.warning("backup of local file with geodiff failed - need to do hard copy (dangerous!)")
                             # FIXME hard copy can lead to data loss if changes from -wal file were not flushed !!!
                             shutil.copy(dest, f_conflict_file)
+
+                        # in case there will be any conflicting operations found during rebase,
+                        # they will be stored in a JSON file - if there are no conflicts, the file
+                        # won't even be created
+                        rebase_conflicts = self.fpath(f'{path}_rebase_conflicts')
 
                         # try to do rebase magic
                         try:
                             self.geodiff.create_changeset(basefile, src, server_diff)
-                            self.geodiff.rebase(basefile, src, dest)
+                            self.geodiff.rebase(basefile, src, dest, rebase_conflicts)
                             # make sure basefile is in the same state as remote server file (for calc of push changes)
                             self.geodiff.apply_changeset(basefile, server_diff)
+                            self.log.info("rebase successful!")
                         except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as err:
+                            self.log.warning("rebase failed! going to create conflict file")
                             # it would not be possible to commit local changes, they need to end up in new conflict file
                             shutil.copy(f_conflict_file, dest)  # revert file
                             conflict = self.backup_file(path)
@@ -424,6 +447,7 @@ class MerginProject:
                     else:
                         # The local file is not modified -> no rebase needed.
                         # We just apply the diff between our copy and server to both the local copy and its basefile
+                        self.log.info("updating file without rebase: " + path)
                         try:
                             server_diff = self.fpath(f'{path}-server_diff', temp_dir)  # diff between server file and local basefile
                             # TODO: it could happen that basefile does not exist.
@@ -433,7 +457,9 @@ class MerginProject:
                             self.geodiff.create_changeset(basefile, src, server_diff)
                             self.geodiff.apply_changeset(dest, server_diff)
                             self.geodiff.apply_changeset(basefile, server_diff)
+                            self.log.info("update successful")
                         except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
+                            self.log.warning("update failed! going to copy file (dangerous!)")
                             # something bad happened and we have failed to patch our local files - this should not happen if there
                             # wasn't a schema change or something similar that geodiff can't handle.
                             # FIXME: this is a last resort and may corrupt data! (we should warn user)
@@ -536,6 +562,7 @@ class MerginProject:
             try:
                 self.geodiff.apply_changeset(basefile, diff)
             except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as e:
+                self.log.warning("failed to apply changeset " + diff + " to " + basefile)
                 error = str(e)
                 break
         return error
