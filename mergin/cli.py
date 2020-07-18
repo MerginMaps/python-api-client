@@ -65,7 +65,17 @@ def _init_client():
     if auth_token is None:
         click.secho("Missing authorization token: please run 'login' first and set MERGIN_AUTH env variable", fg='red')
         return None
-    return MerginClient(url, auth_token='Bearer {}'.format(auth_token))
+
+    mc = MerginClient(url, auth_token='Bearer {}'.format(auth_token))
+
+    # check whether the token has not expired already (normally it expires in 12 hours)
+    from datetime import datetime, timezone
+    delta = mc._auth_session['expire'] - datetime.now(timezone.utc)
+    if delta.total_seconds() < 0:
+        click.secho("Access token has expired: please run 'login' again and set MERGIN_AUTH env variable", fg='red')
+        return None
+
+    return mc
 
 
 def _print_unhandled_exception():
@@ -114,6 +124,9 @@ def create(project, public):
     try:
         c.create_project(project, is_public=public)
         click.echo('Done')
+    except ClientError as e:
+        click.secho('Error: ' + str(e), fg='red')
+        return
     except Exception as e:
         _print_unhandled_exception()
 
@@ -187,6 +200,12 @@ def status():
     except InvalidProject as e:
         click.secho('Invalid project directory ({})'.format(str(e)), fg='red')
         return
+    except ClientError as e:
+        click.secho('Error: ' + str(e), fg='red')
+        return
+    except Exception as e:
+        _print_unhandled_exception()
+        return
 
     click.secho("### Server changes:", fg="magenta")
     pretty_diff(pull_changes)
@@ -223,6 +242,9 @@ def push():
         click.echo('Done')
     except InvalidProject as e:
         click.secho('Invalid project directory ({})'.format(str(e)), fg='red')
+    except ClientError as e:
+        click.secho('Error: ' + str(e), fg='red')
+        return
     except KeyboardInterrupt:
         print("Cancelling...")
         push_project_cancel(job)
@@ -260,6 +282,9 @@ def pull():
         click.echo('Done')
     except InvalidProject as e:
         click.secho('Invalid project directory ({})'.format(str(e)), fg='red')
+    except ClientError as e:
+        click.secho('Error: ' + str(e), fg='red')
+        return
     except KeyboardInterrupt:
         print("Cancelling...")
         pull_project_cancel(job)
