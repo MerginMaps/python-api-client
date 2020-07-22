@@ -7,6 +7,7 @@ but the tool is not available, you may need to fix your PATH (e.g. add ~/.local/
 pip puts these tools).
 """
 
+import json
 import os
 import sys
 import traceback
@@ -15,6 +16,7 @@ import click
 from mergin import (
     ClientError,
     MerginClient,
+    MerginProject,
     InvalidProject,
     LoginError,
 )
@@ -290,6 +292,69 @@ def pull():
         pull_project_cancel(job)
     except Exception as e:
         _print_unhandled_exception()
+
+
+@cli.command()
+@click.argument('version')
+def show_version(version):
+    """ Displays information about a single version of a project """
+
+    c = _init_client()
+    if c is None:
+        return
+    directory = os.getcwd()
+
+    mp = MerginProject(directory)
+    project_path = mp.metadata["name"]
+
+    version_info_dict = c.project_version_info(project_path, version)[0]
+    print("Project: " + version_info_dict['project']['namespace'] + "/" + version_info_dict['project']['name'])
+    print("Version: " + version_info_dict['name'] + " by " + version_info_dict['author'])
+    print("Time:    " + version_info_dict['created'])
+    pretty_diff(version_info_dict['changes'])
+
+
+@cli.command()
+@click.argument('path')
+def show_file_history(path):
+    """ Displays information about a single version of a project """
+
+    c = _init_client()
+    if c is None:
+        return
+    directory = os.getcwd()
+
+    mp = MerginProject(directory)
+    project_path = mp.metadata["name"]
+
+    info_dict = c.project_file_history_info(project_path, path)
+    history_dict = info_dict['history']
+
+    print("File history: " + info_dict['path'])
+    print("-----")
+    for version, version_data in history_dict.items():
+        diff_info = ''
+        if 'diff' in version_data:
+            diff_info = "diff ({} bytes)".format(version_data['diff']['size'])
+        print(" {:5} {:10} {}".format(version, version_data['change'], diff_info))
+
+
+@cli.command()
+@click.argument('path')
+@click.argument('version')
+def show_file_changeset(path, version):
+    """ Displays information about a single version of a project """
+
+    c = _init_client()
+    if c is None:
+        return
+    directory = os.getcwd()
+
+    mp = MerginProject(directory)
+    project_path = mp.metadata["name"]
+
+    info_dict = c.project_file_changeset_info(project_path, path, version)
+    print(json.dumps(info_dict, indent=2))
 
 
 @cli.command()

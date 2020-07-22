@@ -414,3 +414,21 @@ class MerginClient:
         push_changes_summary = mp.get_list_of_push_changes(push_changes)
 
         return pull_changes, push_changes, push_changes_summary
+
+    def project_version_info(self, project_path, version):
+        """ Returns JSON with detailed information about a single project version"""
+        params = {'version_id': version}
+        resp = self.get("/v1/project/version/{}".format(project_path), params)
+        return json.load(resp)
+
+    def project_file_history_info(self, project_path, file_path):
+        """ Returns JSON with full history of a single file within a project """
+        params = {'path': file_path}
+        resp = self.get("/v1/resource/history/{}".format(project_path), params)
+        return json.load(resp)
+
+    def project_file_changeset_info(self, project_path, file_path, version):
+        """ Returns JSON with changeset details of a particular version of a file within a project """
+        params = {'path': file_path}
+        resp = self.get("/v1/resource/changesets/{}/{}".format(project_path, version), params)
+        return json.load(resp)
