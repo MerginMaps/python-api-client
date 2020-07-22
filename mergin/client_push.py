@@ -88,6 +88,11 @@ def push_project_async(mc, directory):
 
     mp.log.info(f"got project info. version {server_version}")
 
+    username = mc.username()
+    if username not in server_info["access"]["writersnames"]:
+        mp.log.error(f"--- push {project_path} - username {username} does not have write access")
+        raise ClientError(f"You do not seem to have write access to the project (username '{username}')")
+
     if local_version != server_version:
         mp.log.error(f"--- push {project_path} - not up to date (local {local_version} vs server {server_version})")
         raise ClientError("There is a new version of the project on the server. Please update your local copy." +
