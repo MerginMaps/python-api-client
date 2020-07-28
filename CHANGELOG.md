@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.2
+
+- Release fix
+
 ## 0.5.1
 
 - Update to geodiff 0.8.5 (leaking file handles in hasChanges() call)
