@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1
+
+- Update to geodiff 0.8.5 (leaking file handles in hasChanges() call)
+- Better error reporting for CLI, detect expired access token
+- Project push: fail early if user does not have write permissions
+- Support more endpoints with project info + CLI integration
+- Raise ClientError when request fails when trying to log in
+
 ## 0.5.0
 
 - Update to geodiff 0.8.4 (fixes a rebase bug, adds logging, supports conflict files)
