@@ -71,6 +71,11 @@ class MerginClient:
             self.opener = urllib.request.build_opener(https_handler)
         urllib.request.install_opener(self.opener)
 
+        if login and not password:
+            raise ClientError("Unable to log in: no password provided for '{}'".format(login))
+        if password and not login:
+            raise ClientError("Unable to log in: password provided but no username/email")
+
         if login and password:
             self._auth_params = {
                 "login": login,
