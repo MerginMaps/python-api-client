@@ -11,6 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+
       - name: Install dependencies
         run: |
           sudo apt install python3-pytest python3-pytest-cov python3-pip python3-dateutil python3-tz python3-setuptools
