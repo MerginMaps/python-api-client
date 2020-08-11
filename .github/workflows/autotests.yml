@@ -26,5 +26,7 @@ jobs:
           pytest --cov=mergin test/
 
       - name: Submit coverage to Coveralls
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           coveralls
