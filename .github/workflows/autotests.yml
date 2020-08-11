@@ -11,6 +11,15 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Install dependencies
+        run: |
+          sudo apt install python3-pytest python3-pip
+
+      - name: Install python package dependencies
+        run: |
+          pip3 install pygeodiff
+
       - name: Run tests
         run: |
+          cd mergin
           pytest-3 --cov-report html --cov=mergin test/
