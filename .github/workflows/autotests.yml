@@ -15,19 +15,15 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Install dependencies
-        run: |
-          sudo apt install python3-pytest python3-pytest-cov python3-pip python3-dateutil python3-tz python3-setuptools
-
       - name: Install python package dependencies
         run: |
-          python3 -m pip install --upgrade pip
-          pip3 install pygeodiff coveralls
+          python -m pip install --upgrade pip
+          pip install python-dateutil pytz pytest pytest-cov pygeodiff coveralls
 
       - name: Run tests
         run: |
           cd mergin
-          pytest-3 --cov=mergin test/
+          pytest --cov=mergin test/
 
       - name: Submit coverage to Coveralls
         run: |
