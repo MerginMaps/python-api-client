@@ -13,7 +13,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt install python3-pytest python3-pytest-cov python3-pip
+          sudo apt install python3-pytest python3-pytest-cov python3-pip python3-dateutil python3-tz
 
       - name: Install python package dependencies
         run: |
