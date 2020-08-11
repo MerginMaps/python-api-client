@@ -7,6 +7,10 @@ To install the module:
 
     pip3 install mergin-client
 
+[![PyPI version](https://badge.fury.io/py/mergin-client.svg)](https://badge.fury.io/py/mergin-client)
+[![Auto Tests](https://github.com/lutraconsulting/mergin-py-client/workflows/Auto%20Tests/badge.svg)](https://github.com/lutraconsulting/mergin-py-client/actions?query=workflow%3A%22Auto+Tests%22)
+[![Coverage Status](https://img.shields.io/coveralls/lutraconsulting/mergin-py-client.svg)](https://coveralls.io/github/lutraconsulting/mergin-py-client)
+
 
 ## Command-line Tool
 
