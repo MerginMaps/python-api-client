@@ -308,6 +308,7 @@ def test_sync_diff(mc, push_geodiff_enabled, pull_geodiff_enabled):
         assert os.path.exists(mp.fpath('base.gpkg_conflict_copy'))
 
 
+@pytest.mark.skip(reason="currently fails on test.dev instance due to server bug")
 def test_list_of_push_changes(mc):
     PUSH_CHANGES_SUMMARY = "{'base.gpkg': {'geodiff_summary': [{'table': 'gpkg_contents', 'insert': 0, 'update': 1, 'delete': 0}, {'table': 'simple', 'insert': 1, 'update': 0, 'delete': 0}]}}"
 
