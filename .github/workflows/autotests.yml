@@ -22,7 +22,7 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest --cov=mergin test/mergin/
+          pytest --cov=mergin mergin/test/
 
       - name: Submit coverage to Coveralls
         env:
