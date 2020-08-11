@@ -18,9 +18,10 @@ jobs:
       - name: Install python package dependencies
         run: |
           python3 -m pip install --upgrade pip
-          pip3 install pygeodiff
+          pip3 install pygeodiff coveralls
 
       - name: Run tests
         run: |
           cd mergin
-          pytest-3 --cov-report html --cov=mergin test/
+          pytest-3 --cov=mergin test/
+          coveralls
