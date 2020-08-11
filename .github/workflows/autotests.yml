@@ -24,4 +24,7 @@ jobs:
         run: |
           cd mergin
           pytest-3 --cov=mergin test/
+
+      - name: Submit coverage to Coveralls
+        run: |
           coveralls
