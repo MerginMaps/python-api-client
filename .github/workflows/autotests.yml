@@ -1,0 +1,16 @@
+name: Auto Tests
+on: [push]
+env:
+  TEST_MERGIN_URL: https://test.dev.cloudmergin.com/
+  TEST_API_USERNAME: test_plugin
+  TEST_API_PASSWORD: ${{ secrets.MERGINTEST_API_PASSWORD }}
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Run tests
+        run: |
+          pytest-3 --cov-report html --cov=mergin test/
