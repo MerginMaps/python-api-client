@@ -16,6 +16,7 @@ from .client_pull import download_project_async, download_project_wait, download
 from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
 from .client_push import push_project_async, push_project_wait, push_project_finalize
 from .utils import DateTimeEncoder
+from .version import __version__
 
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
@@ -43,7 +44,9 @@ class MerginClient:
         self._auth_params = None
         self._auth_session = None
         self._user_info = None
-        self.client_version = plugin_version if plugin_version is not None else "Python-client/--"
+        self.client_version = "Python-client/" + __version__
+        if plugin_version is not None:   # this could be e.g. "Plugin/2020.1 QGIS/3.14"
+            self.client_version += " " + plugin_version
         if auth_token:
             token_data = decode_token_data(auth_token)
             self._auth_session = {
@@ -89,6 +92,21 @@ class MerginClient:
         """ Returns URL of the public instance of Mergin """
         return 'https://public.cloudmergin.com'
 
+    def user_agent_info(self):
+        """ Returns string as it is sent as User-Agent http header to the server """
+        system_version = "Unknown"
+        if platform.system() == "Linux":
+            try:
+                from pip._vendor import distro
+                system_version = distro.linux_distribution()[0]
+            except ModuleNotFoundError:  # pip may not be installed...
+                system_version = "Linux"
+        elif platform.system() == "Windows":
+            system_version = platform.win32_ver()[0]
+        elif platform.system() == "Mac":
+            system_version = platform.mac_ver()[0]
+        return f"{self.client_version} ({platform.system()}/{system_version})"
+
     def _check_token(f):
         def wrapper(self, *args):
             if (not self._auth_session or self._auth_session['expire'] < datetime.now(timezone.utc)) and self._auth_params:
@@ -108,18 +126,7 @@ class MerginClient:
 
             if self._auth_session:
                 request.add_header("Authorization", self._auth_session["token"])
-                system_version = "Unknown"
-                if platform.system() == "Linux":
-                    try:
-                        from pip._vendor import distro
-                        system_version = distro.linux_distribution()[0]
-                    except ModuleNotFoundError:   # pip may not be installed...
-                        system_version = "Linux"
-                elif platform.system() == "Windows":
-                    system_version =  platform.win32_ver()[0]
-                elif platform.system() == "Mac":
-                    system_version = platform.mac_ver()[0]
-                request.add_header("User-Agent", f"{self.client_version} ({platform.system()}/{system_version})")
+        request.add_header("User-Agent", self.user_agent_info())
         try:
             return self.opener.open(request)
         except urllib.error.HTTPError as e:
@@ -212,6 +219,7 @@ class MerginClient:
             url = urllib.parse.urljoin(self.url, urllib.parse.quote("/v1/auth/login"))
             data = json.dumps(self._auth_params, cls=DateTimeEncoder).encode("utf-8")
             request = urllib.request.Request(url, data, {"Content-Type": "application/json"}, method="POST")
+            request.add_header("User-Agent", self.user_agent_info())
             resp = self.opener.open(request)
             data = json.load(resp)
             session = data["session"]

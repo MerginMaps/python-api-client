@@ -110,6 +110,7 @@ def download_project_async(mc, project_path, directory):
     os.makedirs(directory)
     mp = MerginProject(directory)
 
+    mp.log.info("--- version: " + mc.user_agent_info())
     mp.log.info(f"--- start download {project_path}")
 
     try:
@@ -320,6 +321,7 @@ def pull_project_async(mc, directory):
     project_path = mp.metadata["name"]
     local_version = mp.metadata["version"]
 
+    mp.log.info("--- version: " + mc.user_agent_info())
     mp.log.info(f"--- start pull {project_path}")
 
     server_info = mc.project_info(project_path, since=local_version)

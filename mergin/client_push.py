@@ -81,6 +81,7 @@ def push_project_async(mc, directory):
     project_path = mp.metadata["name"]
     local_version = mp.metadata["version"]
 
+    mp.log.info("--- version: " + mc.user_agent_info())
     mp.log.info(f"--- start push {project_path}")
 
     server_info = mc.project_info(project_path)
