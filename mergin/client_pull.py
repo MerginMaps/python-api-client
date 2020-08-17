@@ -237,6 +237,7 @@ class UpdateTask:
         basename = os.path.basename(self.file_path)   #file['diff']['path']) if diff_only else os.path.basename(file['path'])
         file_dir = os.path.dirname(os.path.normpath(os.path.join(directory, self.file_path)))
         dest_file_path = os.path.join(file_dir, basename)
+        os.makedirs(file_dir, exist_ok=True)
 
         # merge chunks together (and delete them afterwards)
         file_to_merge = FileToMerge(dest_file_path, self.download_queue_items)
@@ -372,6 +373,7 @@ def pull_project_async(mc, directory):
         file_dir = os.path.dirname(os.path.normpath(os.path.join(temp_dir, file['path'])))
         basename = os.path.basename(file['diff']['path']) if diff_only else os.path.basename(file['path'])
         dest_file_path = os.path.join(file_dir, basename)
+        os.makedirs(file_dir, exist_ok=True)
         files_to_merge.append( FileToMerge(dest_file_path, items) )
 
 

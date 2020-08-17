@@ -428,3 +428,32 @@ def test_missing_basefile_pull(mc):
     # try to sync again  -- it should not crash
     mc.pull_project(project_dir)
     mc.push_project(project_dir)
+
+
+def test_empty_file_in_subdir(mc):
+    """ Test pull of a project where there is an empty file in a sub-directory """
+
+    test_project = 'test_empty_file_in_subdir'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
+    project_dir_2 = os.path.join(TMP_DIR, test_project + '_2')  # concurrent project dir
+    test_data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), test_project)
+
+    cleanup(mc, project, [project_dir, project_dir_2])
+    # create remote project
+    shutil.copytree(test_data_dir, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
+
+    # try to check out the project
+    mc.download_project(project, project_dir_2)
+    assert os.path.exists(os.path.join(project_dir_2, 'subdir', 'empty.txt'))
+
+    # add another empty file in a different subdir
+    os.mkdir(os.path.join(project_dir, 'subdir2'))
+    shutil.copy(os.path.join(project_dir, 'subdir', 'empty.txt'),
+                os.path.join(project_dir, 'subdir2', 'empty2.txt'))
+    mc.push_project(project_dir)
+
+    # check that pull works fine
+    mc.pull_project(project_dir_2)
+    assert os.path.exists(os.path.join(project_dir_2, 'subdir2', 'empty2.txt'))
