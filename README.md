@@ -71,7 +71,7 @@ working directory:
 
 ### How to release 
 
-1. Update version in `setup.py`
+1. Update version in `setup.py` and `mergin/version.py`
 2. Tag git repository with the new version
 3. Create package and upload it
 

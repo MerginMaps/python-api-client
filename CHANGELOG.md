@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.3
+
+- ix download/pull of subdirs with just empty file(s) (qgis-mergin-plugin#160)
+- Add version info to user agent + log versions in log file (qgis-mergin-plugin#150)
+- Raise exception when username is passed but no password
+- Automatic running of tests in continuous integration on GitHub (#64)
+
 ## 0.5.2
 
 - Release fix
