@@ -142,7 +142,10 @@ def test_push_pull_changes(mc):
     assert next((f for f in push_changes['added'] if f['path'] == f_added), None)
     assert next((f for f in push_changes['removed'] if f['path'] == f_removed), None)
     assert next((f for f in push_changes['updated'] if f['path'] == f_updated), None)
-    assert next((f for f in push_changes['renamed'] if f['path'] == f_renamed), None)
+    # renamed file will result in removed + added file
+    assert next((f for f in push_changes['removed'] if f['path'] == f_renamed), None)
+    assert next((f for f in push_changes['added'] if f['path'] == 'renamed.txt'), None)
+    assert not pull_changes['renamed']  # not supported
 
     mc.push_project(project_dir)
     project_info = mc.project_info(project)
@@ -174,8 +177,8 @@ def test_push_pull_changes(mc):
     assert next((f for f in pull_changes['added'] if f['path'] == f_added), None)
     assert next((f for f in pull_changes['removed'] if f['path'] == f_removed), None)
     assert next((f for f in pull_changes['updated'] if f['path'] == f_updated), None)
-    assert next((f for f in pull_changes['renamed'] if f['path'] == f_renamed), None)
-    assert next((f for f in push_changes['updated'] if f['path'] == f_updated), None)
+    assert next((f for f in pull_changes['removed'] if f['path'] == f_renamed), None)
+    assert next((f for f in pull_changes['added'] if f['path'] == 'renamed.txt'), None)
 
     mc.pull_project(project_dir_2)
     assert os.path.exists(os.path.join(project_dir_2, f_added))

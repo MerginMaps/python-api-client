@@ -26,7 +26,7 @@ from mergin.client_push import push_project_async, push_project_is_running, push
 
 
 def get_changes_count(diff):
-    attrs = ["added", "removed", "updated", "renamed"]
+    attrs = ["added", "removed", "updated"]
     return sum([len(diff[attr]) for attr in attrs])
 
 
@@ -34,12 +34,6 @@ def pretty_diff(diff):
     added = diff["added"]
     removed = diff["removed"]
     updated = diff["updated"]
-    renamed = diff["renamed"]
-
-    if renamed:
-        click.secho("\n>>> Renamed:", fg="cyan")
-        for f in renamed:
-            click.echo(" ".join([f["path"], "->", f["new_path"]]))
 
     if removed:
         click.secho("\n>>> Removed:", fg="cyan")
