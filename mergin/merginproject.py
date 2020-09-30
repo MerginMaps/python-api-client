@@ -202,26 +202,7 @@ class MerginProject:
         origin_map = {f["path"]: f for f in origin}
         current_map = {f["path"]: f for f in current}
         removed = [f for f in origin if f["path"] not in current_map]
-
-        added = []
-        for f in current:
-            if f["path"] in origin_map:
-                continue
-            added.append(f)
-
-        moved = []
-        for rf in removed:
-            match = find(
-                current,
-                lambda f: f["checksum"] == rf["checksum"] and f["size"] == rf["size"] and all(
-                    f["path"] != mf["path"] for mf in moved)
-            )
-            if match:
-                moved.append({**rf, "new_path": match["path"]})
-
-        added = [f for f in added if all(f["path"] != mf["new_path"] for mf in moved)]
-        removed = [f for f in removed if all(f["path"] != mf["path"] for mf in moved)]
-
+        added = [f for f in current if f["path"] not in origin_map]
         updated = []
         for f in current:
             path = f["path"]
@@ -234,7 +215,7 @@ class MerginProject:
             updated.append(f)
 
         return {
-            "renamed": moved,
+            "renamed": [],
             "added": added,
             "removed": removed,
             "updated": updated
@@ -389,8 +370,6 @@ class MerginProject:
         modified = {}
         for f in local_changes["added"] + local_changes["updated"]:
             modified.update({f['path']: f})
-        for f in local_changes["renamed"]:
-            modified.update({f['new_path']: f})
 
         local_files_map = {}
         for f in self.inspect_files():
@@ -398,8 +377,8 @@ class MerginProject:
 
         for k, v in changes.items():
             for item in v:
-                path = item['path'] if k != 'renamed' else item['new_path']
-                src = self.fpath(path, temp_dir) if k != 'renamed' else self.fpath(item["path"])
+                path = item['path']
+                src = self.fpath(path, temp_dir)
                 dest = self.fpath(path)
                 basefile = self.fpath_meta(path)
 
@@ -483,10 +462,6 @@ class MerginProject:
                         os.remove(dest)
                         if self.is_versioned_file(path):
                             os.remove(basefile)
-                    elif k == 'renamed':
-                        move_file(src, dest)
-                        if self.is_versioned_file(path):
-                            move_file(self.fpath_meta(item["path"]), basefile)
                     else:
                         shutil.copy(src, dest)
                         if self.is_versioned_file(path):
@@ -505,14 +480,12 @@ class MerginProject:
             return
         for k, v in changes.items():
             for item in v:
-                path = item['path'] if k != 'renamed' else item['new_path']
+                path = item['path']
                 if not self.is_versioned_file(path):
                     continue
 
                 basefile = self.fpath_meta(path)
-                if k == 'renamed':
-                    move_file(self.fpath_meta(item["path"]), basefile)
-                elif k == 'removed':
+                if k == 'removed':
                     os.remove(basefile)
                 elif k == 'added':
                     shutil.copy(self.fpath(path), basefile)
