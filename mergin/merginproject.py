@@ -344,7 +344,7 @@ class MerginProject:
                     with open(result_file, 'r') as f:
                         change = f.read()
                         changes[file["path"]] = json.loads(change)
-                    os.remove(result_file)
+                    self.try_remove(result_file)
                 except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
                     pass
         return changes
@@ -459,9 +459,9 @@ class MerginProject:
                         conflicts.append(conflict)
 
                     if k == 'removed':
-                        os.remove(dest)
+                        self.try_remove(dest)
                         if self.is_versioned_file(path):
-                            os.remove(basefile)
+                            self.try_remove(basefile)
                     else:
                         shutil.copy(src, dest)
                         if self.is_versioned_file(path):
@@ -486,7 +486,7 @@ class MerginProject:
 
                 basefile = self.fpath_meta(path)
                 if k == 'removed':
-                    os.remove(basefile)
+                    self.try_remove(basefile)
                 elif k == 'added':
                     shutil.copy(self.fpath(path), basefile)
                 elif k == 'updated':
@@ -502,7 +502,7 @@ class MerginProject:
                         if patch_error:
                             # in case of local sync issues it is safier to remove basefile, next time it will be downloaded from server
                             self.log.warning("removing basefile (because of apply diff error) for: " + path)
-                            os.remove(basefile)
+                            self.try_remove(basefile)
                 else:
                     pass
 
@@ -550,3 +550,10 @@ class MerginProject:
                 error = str(e)
                 break
         return error
+    
+    def try_remove(self,filepath):
+        try:
+            os.remove(filepath)
+        except:
+            return(False)
+        return(True)
