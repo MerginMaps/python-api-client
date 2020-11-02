@@ -140,12 +140,13 @@ def push_project_async(mc, directory):
     # prepare file chunks for upload
     for file in upload_files:
         file['location'] = mp.fpath_meta(file['diff']['path']) if 'diff' in file else mp.fpath(file['path'])
+        file_size = file['diff']['size'] if 'diff' in file else file['size']
 
         for chunk_index, chunk_id in enumerate(file["chunks"]):
-            size = min(UPLOAD_CHUNK_SIZE, file['size'] - chunk_index * UPLOAD_CHUNK_SIZE)
+            size = min(UPLOAD_CHUNK_SIZE, file_size - chunk_index * UPLOAD_CHUNK_SIZE)
             upload_queue_items.append(UploadQueueItem(file['location'], size, transaction_id, chunk_id, chunk_index))
 
-        total_size += file['size']
+        total_size += file_size
 
     job.total_size = total_size
     job.upload_queue_items = upload_queue_items
@@ -204,7 +205,9 @@ def push_project_finalize(job):
                 raise future.exception()
 
     if job.transferred_size != job.total_size:
-        raise ClientError("Upload error: transferred size and expected total size do not match!")
+        error_msg = "Transferred size ({}) and expected total size ({}) do not match!".format(job.transferred_size, job.total_size)
+        job.mp.log.error("--- push finish failed! " + error_msg)
+        raise ClientError("Upload error: " + error_msg)
 
     if with_upload_of_files:
         try:
