@@ -12,6 +12,18 @@ To install the module:
 [![Coverage Status](https://img.shields.io/coveralls/lutraconsulting/mergin-py-client.svg)](https://coveralls.io/github/lutraconsulting/mergin-py-client)
 
 
+## Using Python API
+
+To use Mergin from Python, it is only needed to create `MerginClient` object and then use it:
+
+```python
+import mergin
+
+client = mergin.MerginClient(login='john', password='topsecret')
+client.download_project('lutraconsulting/Basic survey', '/tmp/basic-survey')
+```
+
+
 ## Command-line Tool
 
 When the module is installed, it comes with `mergin` command line tool.
