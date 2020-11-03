@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.5
+
+- Update to geodiff 0.8.6 (fixes non-ascii paths, quotes in paths, rebase with gpkg triggers)
+- Fix "transferred size and expected total size do not match" (qgis-mergin-plugin#142)
+
 ## 0.5.4
 
 - Disable upload of renames of files to prevent corrupt projects (#27)
