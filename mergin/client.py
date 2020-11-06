@@ -103,7 +103,7 @@ class MerginClient:
                 system_version = "Linux"
         elif platform.system() == "Windows":
             system_version = platform.win32_ver()[0]
-        elif platform.system() == "Mac":
+        elif platform.system() in ["Mac", "Darwin"]:
             system_version = platform.mac_ver()[0]
         return f"{self.client_version} ({platform.system()}/{system_version})"
 
@@ -397,6 +397,28 @@ class MerginClient:
             return   # project is up to date
         pull_project_wait(job)
         return pull_project_finalize(job)
+
+    def clone_project(self, full_project_name, namespace, name):
+        """
+        Clone project on server.
+
+        :param project_path: Project's full name (<namespace>/<name>)
+        :type project_path: String
+        :param namespace: Cloned project's namespace
+        :type namespace: String
+        :param name: Cloned project's name
+        :type name: String
+        """
+        path = "/v1/project/clone/%s" % full_project_name
+        url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
+        json_headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
+        data = {
+            'namespace': namespace,
+            'project': name
+        }
+
+        request = urllib.request.Request(url, data=json.dumps(data).encode(), headers=json_headers, method="POST")
+        self._do_request(request)
 
     def delete_project(self, project_path):
         """
