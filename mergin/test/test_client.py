@@ -460,3 +460,23 @@ def test_empty_file_in_subdir(mc):
     # check that pull works fine
     mc.pull_project(project_dir_2)
     assert os.path.exists(os.path.join(project_dir_2, 'subdir2', 'empty2.txt'))
+
+def test_clone_delete_project(mc):
+    # create new (empty) project on server
+    test_project = 'test_clone_delete'
+    mc.create_project(test_project)
+    projects = mc.projects_list(flag='created')
+    assert any(p for p in projects if p['name'] == test_project and p['namespace'] == API_USER)
+
+    # clone project
+    cloned_project_name = test_project + "_cloned"
+    test_project_fullname = API_USER + '/' + test_project
+    mc.clone_project(test_project_fullname, API_USER, cloned_project_name)
+    projects = mc.projects_list(flag='created')
+    assert any(p for p in projects if p['name'] == cloned_project_name and p['namespace'] == API_USER)
+
+    project_dir = os.path.join(TMP_DIR, test_project)
+    cleanup(mc, test_project_fullname, [project_dir])
+
+    cloned_project_dir = os.path.join(TMP_DIR, cloned_project_name)
+    cleanup(mc, API_USER + '/' + cloned_project_name, [cloned_project_dir])

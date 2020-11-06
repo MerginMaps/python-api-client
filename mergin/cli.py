@@ -372,6 +372,22 @@ def modtime(directory):
 
 
 @cli.command()
+@click.argument('project_fullname', required=True)
+@click.argument('project_namespace', required=True)
+@click.argument('project_name', required=True)
+def clone(project_fullname, project_namespace, project_name):
+    """Clone project from server."""
+    c = _init_client()
+    if c is None:
+        return
+    try:
+        c.clone_project(project_fullname, project_namespace, project_name)
+        click.echo('Done')
+    except Exception as e:
+        _print_unhandled_exception()
+
+
+@cli.command()
 @click.argument('project', required=False)
 def remove(project):
     """Remove project from server and locally (if exists)."""
