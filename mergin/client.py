@@ -246,7 +246,7 @@ class MerginClient:
             return None  # not authenticated
         return self._user_info["username"]
 
-    def create_project(self, project_name, is_public=False):
+    def create_project(self, project_name, is_public=False, namespace=None):
         """
         Create new project repository in user namespace on Mergin server.
         Optionally initialized from given local directory.
@@ -255,7 +255,10 @@ class MerginClient:
         :type project_name: String
 
         :param is_public: Flag for public/private project, defaults to False
-        :type directory: Boolean
+        :type is_public: Boolean
+
+        :param namespace: Optional namespace for a new project. If empty username is used.
+        :type namespace: String
         """
         if not self._user_info:
             raise Exception("Authentication required")
@@ -264,14 +267,10 @@ class MerginClient:
             "name": project_name,
             "public": is_public
         }
-        namespace = self.username()
+        if namespace is None:
+            namespace = self.username()
         try:
             self.post("/v1/project/%s" % namespace, params, {"Content-Type": "application/json"})
-            data = {
-                "name": "%s/%s" % (namespace, project_name),
-                "version": "v0",
-                "files": []
-            }
         except Exception as e:
             detail = f"Namespace: {namespace}, project name: {project_name}"
             raise ClientError(str(e), detail)
@@ -360,17 +359,19 @@ class MerginClient:
         download_project_finalize(job)
 
     def enough_storage_available(self, data):
-        user_name = self.username()
-        resp = self.get('/v1/user/' + user_name)
-        info = json.load(resp)
+        info = self.user_info()
         free_space = int(info["storage_limit"]) - int(info["disk_usage"])
-        upload_files_sizes =[f["size"] for f in data["updated"] + data["added"]]
+        upload_files_sizes = [f["size"] for f in data["updated"] + data["added"]]
         size_to_upload = sum(upload_files_sizes)
 
         if size_to_upload > free_space:
             return False, free_space
 
         return True, free_space
+
+    def user_info(self):
+        resp = self.get('/v1/user/' + self.username())
+        return json.load(resp)
 
     def push_project(self, directory):
         """
