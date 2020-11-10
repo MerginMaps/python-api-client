@@ -372,16 +372,16 @@ def modtime(directory):
 
 
 @cli.command()
-@click.argument('project_fullname', required=True)
-@click.argument('project_namespace', required=True)
-@click.argument('project_name', required=True)
-def clone(project_fullname, project_namespace, project_name):
+@click.argument('source_project_path', required=True)
+@click.argument('cloned_project_name', required=True)
+@click.argument('cloned_project_namespace', required=False)
+def clone(source_project_path, cloned_project_name, cloned_project_namespace=None):
     """Clone project from server."""
     c = _init_client()
     if c is None:
         return
     try:
-        c.clone_project(project_fullname, project_namespace, project_name)
+        c.clone_project(source_project_path, cloned_project_name, cloned_project_namespace)
         click.echo('Done')
     except Exception as e:
         _print_unhandled_exception()

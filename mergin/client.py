@@ -399,23 +399,23 @@ class MerginClient:
         pull_project_wait(job)
         return pull_project_finalize(job)
 
-    def clone_project(self, full_project_name, namespace, name):
+    def clone_project(self, source_project_path, cloned_project_name, cloned_project_namespace=None):
         """
         Clone project on server.
+        :param source_project_path: Project's full name (<namespace>/<name>)
+        :type source_project_path: String
+        :param cloned_project_name: Cloned project's name
+        :type cloned_project_name: String
+        :param cloned_project_namespace: Cloned project's namespace, username is used if not defined
+        :type cloned_project_namespace: String
 
-        :param project_path: Project's full name (<namespace>/<name>)
-        :type project_path: String
-        :param namespace: Cloned project's namespace
-        :type namespace: String
-        :param name: Cloned project's name
-        :type name: String
         """
-        path = "/v1/project/clone/%s" % full_project_name
+        path = "/v1/project/clone/%s" % source_project_path
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         json_headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
         data = {
-            'namespace': namespace,
-            'project': name
+            'namespace': cloned_project_namespace,
+            'project': cloned_project_name if cloned_project_name else self.username()
         }
 
         request = urllib.request.Request(url, data=json.dumps(data).encode(), headers=json_headers, method="POST")
