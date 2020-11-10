@@ -413,8 +413,8 @@ class MerginClient:
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         json_headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
         data = {
-            'namespace': cloned_project_namespace,
-            'project': cloned_project_name if cloned_project_name else self.username()
+            'namespace': cloned_project_namespace if cloned_project_namespace else self.username(),
+            'project': cloned_project_name
         }
 
         request = urllib.request.Request(url, data=json.dumps(data).encode(), headers=json_headers, method="POST")
