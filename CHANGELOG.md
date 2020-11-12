@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.6
+
+- Added API for cloning of projects
+- Projects can be created on behalf of an organisation
+
 ## 0.5.5
 
 - Update to geodiff 0.8.6 (fixes non-ascii paths, quotes in paths, rebase with gpkg triggers)
