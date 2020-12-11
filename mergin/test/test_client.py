@@ -476,6 +476,7 @@ def test_empty_file_in_subdir(mc):
     mc.pull_project(project_dir_2)
     assert os.path.exists(os.path.join(project_dir_2, 'subdir2', 'empty2.txt'))
 
+
 def test_clone_project(mc):
     test_project = 'test_clone_project'
     test_project_fullname = API_USER + '/' + test_project
@@ -500,12 +501,76 @@ def test_clone_project(mc):
     assert any(p for p in projects if p['name'] == cloned_project_name and p['namespace'] == API_USER)
 
 
-def test_available_storage_validation(mc, mc2):
+def test_set_read_write_access(mc):
+    test_project = 'test_set_access'
+    test_project_fullname = API_USER + '/' + test_project
+
+    # create new (empty) project on server
+    mc.create_project(test_project)
+
+    # Add writer access to another client
+    project_info = get_project_info(mc, API_USER, test_project)
+    access = project_info['access']
+    access['writersnames'].append(API_USER2)
+    access['readersnames'].append(API_USER2)
+    mc.set_project_access(test_project_fullname, access)
+
+    # check access
+    project_info = get_project_info(mc, API_USER, test_project)
+    access = project_info['access']
+    assert API_USER2 in access['writersnames']
+    assert API_USER2 in access['readersnames']
+
+
+def test_available_storage_validation(mc):
     """
     Testing of storage limit - should not be applied for user pushing changes into project with different namespace.
     This test also tests giving read and write access to another user. Additionally tests also uploading of big file.
     """
     test_project = 'test_available_storage_validation'
+    test_project_fullname = API_USER + '/' + test_project
+
+    # cleanups
+    project_dir = os.path.join(TMP_DIR, test_project, API_USER)
+    cleanup(mc, test_project_fullname, [project_dir])
+
+    # create new (empty) project on server
+    mc.create_project(test_project)
+
+    # download project
+    mc.download_project(test_project_fullname, project_dir)
+
+    # get user_info about storage capacity
+    user_info = mc.user_info()
+    storage_remaining = user_info['storage'] - user_info['disk_usage']
+
+    # generate dummy data (remaining storage + extra 1024b)
+    dummy_data_path = project_dir + "/data"
+    file_size = storage_remaining + 1024
+    _generate_big_file(dummy_data_path, file_size)
+
+    # try to upload
+    got_right_err = False
+    try:
+        mc.push_project(project_dir)
+    except ClientError as e:
+        # Expecting "Storage limit has been reached" error msg.
+        assert str(e).startswith("Storage limit has been reached")
+        got_right_err = True
+    assert got_right_err
+
+    # Expecting empty project
+    project_info = get_project_info(mc, API_USER, test_project)
+    assert project_info['meta']['files_count'] == 0
+    assert project_info['meta']['size'] == 0
+
+
+def test_available_storage_validation2(mc, mc2):
+    """
+    Testing of storage limit - should not be applied for user pushing changes into project with different namespace.
+    This test also tests giving read and write access to another user. Additionally tests also uploading of big file.
+    """
+    test_project = 'test_available_storage_validation2'
     test_project_fullname = API_USER2 + '/' + test_project
 
     # cleanups
@@ -521,18 +586,10 @@ def test_available_storage_validation(mc, mc2):
     access = project_info['access']
     access['writersnames'].append(API_USER)
     access['readersnames'].append(API_USER)
-    project_info['access'] = access
-    # TODO create separate test
     mc2.set_project_access(test_project_fullname, access)
-
-    # check writers access
-    project_info = get_project_info(mc2, API_USER2, test_project)
-    access = project_info['access']
-    assert API_USER in access['writersnames']
 
     # download project
     mc.download_project(test_project_fullname, project_dir)
-    mp = MerginProject(project_dir)
 
     # get user_info about storage capacity
     user_info = mc.user_info()
