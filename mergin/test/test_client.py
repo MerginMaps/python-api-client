@@ -11,6 +11,8 @@ from ..utils import generate_checksum
 SERVER_URL = os.environ.get('TEST_MERGIN_URL')
 API_USER = os.environ.get('TEST_API_USERNAME')
 USER_PWD = os.environ.get('TEST_API_PASSWORD')
+API_USER2 = os.environ.get('TEST_API_USERNAME2')
+USER_PWD2 = os.environ.get('TEST_API_PASSWORD2')
 TMP_DIR = tempfile.gettempdir()
 TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'test_data')
 CHANGED_SCHEMA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'modified_schema')
@@ -22,8 +24,16 @@ def toggle_geodiff(enabled):
 
 @pytest.fixture(scope='function')
 def mc():
-    assert SERVER_URL and SERVER_URL.rstrip('/') != 'https://public.cloudmergin.com' and API_USER and USER_PWD
-    return MerginClient(SERVER_URL, login=API_USER, password=USER_PWD)
+    return create_client(API_USER, USER_PWD)
+
+@pytest.fixture(scope='function')
+def mc2():
+    return create_client(API_USER2, USER_PWD2)
+
+
+def create_client(user, pwd):
+    assert SERVER_URL and SERVER_URL.rstrip('/') != 'https://public.cloudmergin.com' and user and pwd
+    return MerginClient(SERVER_URL, login=user, password=pwd)
 
 
 def cleanup(mc, project, dirs):
@@ -32,6 +42,11 @@ def cleanup(mc, project, dirs):
         mc.delete_project(project)
     except ClientError:
         pass
+    remove_folders(dirs)
+
+
+def remove_folders(dirs):
+    # clean given directories
     for d in dirs:
         if os.path.exists(d):
             shutil.rmtree(d)
@@ -483,3 +498,77 @@ def test_clone_project(mc):
     mc.clone_project(test_project_fullname, cloned_project_name, API_USER)
     projects = mc.projects_list(flag='created')
     assert any(p for p in projects if p['name'] == cloned_project_name and p['namespace'] == API_USER)
+
+
+def test_available_storage_validation(mc, mc2):
+    """
+    Testing of storage limit - should not be applied for user pushing changes into project with different namespace.
+    This test also tests giving read and write access to another user. Additionally tests also uploading of big file.
+    """
+    test_project = 'test_available_storage_validation'
+    test_project_fullname = API_USER2 + '/' + test_project
+
+    # cleanups
+    project_dir = os.path.join(TMP_DIR, test_project, API_USER)
+    cleanup(mc, test_project_fullname, [project_dir])
+    cleanup(mc2, test_project_fullname, [project_dir])
+
+    try:
+        # create new (empty) project on server
+        mc2.create_project(test_project)
+
+        # Add writer access to another client
+        project_info = get_project_info(mc2, API_USER2, test_project)
+        access = project_info['access']
+        access['writersnames'].append(API_USER)
+        access['readersnames'].append(API_USER)
+        project_info['access'] = access
+        mc2.set_project_access(test_project_fullname, access)
+
+        # check writers access
+        project_info = get_project_info(mc2, API_USER2, test_project)
+        access = project_info['access']
+        assert API_USER in access['writersnames']
+
+        # download project
+        mc.download_project(test_project_fullname, project_dir)
+        mp = MerginProject(project_dir)
+
+        # get user_info about storage capacity
+        user_info = mc.user_info()
+        storage_remaining = user_info['storage'] - user_info['disk_usage']
+
+        # generate dummy data (remaining storage + extra 1024b)
+        dummy_data_path = project_dir + "/data"
+        file_size = storage_remaining + 1024
+        _generate_big_file(dummy_data_path, file_size)
+
+        # try to upload
+        mc.push_project(project_dir)
+
+        # Check project content
+        project_info = get_project_info(mc2, API_USER2, test_project)
+        assert project_info['meta']['files_count'] == 1
+        assert project_info['meta']['size'] == file_size
+
+    # clean project due to high storage requirement
+    finally:
+        cleanup(mc, test_project_fullname, [project_dir])
+        cleanup(mc2, test_project_fullname, [project_dir])
+
+
+def get_project_info(mc, namespace, project_name):
+    projects = mc.projects_list(flag='created')
+    test_project_list = [p for p in projects if p['name'] == project_name and p['namespace'] == namespace]
+    assert any(test_project_list)
+    return test_project_list[0]
+
+
+def _generate_big_file(filepath, size):
+    """
+    generate big binary file with the specified size in bytes
+    :param filepath: full filepath
+    :param size: the size in bytes
+    """
+    with open('%s'%filepath, 'wb') as fout:
+        fout.write(os.urandom(size))

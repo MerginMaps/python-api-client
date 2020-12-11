@@ -102,7 +102,7 @@ def push_project_async(mc, directory):
     changes = mp.get_push_changes()
     mp.log.debug("push changes:\n" + pprint.pformat(changes))
 
-    # currently proceed storage limit check only if a project is own by a current user. 
+    # currently proceed storage limit check only if a project is own by a current user.
     if username == project_path.split("/")[0]:
         enough_free_space, freespace = mc.enough_storage_available(changes)
         if not enough_free_space:

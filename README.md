@@ -118,4 +118,6 @@ For running test do:
     export TEST_MERGIN_URL=<url> # testing server
     export TEST_API_USERNAME=<username>
     export TEST_API_PASSWORD=<pwd>
+    export TEST_API_USERNAME2=<username2>
+    export TEST_API_PASSWORD2=<pwd2>
     pipenv run pytest --cov-report html --cov=mergin test/

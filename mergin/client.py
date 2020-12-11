@@ -373,6 +373,21 @@ class MerginClient:
         resp = self.get('/v1/user/' + self.username())
         return json.load(resp)
 
+    def set_project_access(self, project_path, access):
+        if not self._user_info:
+            raise Exception("Authentication required")
+
+        params = {"access": access}
+        path = "/v1/project/%s" % project_path
+        url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
+        json_headers = {'Content-Type': 'application/json'}
+        try:
+            request = urllib.request.Request(url, data=json.dumps(params).encode(), headers=json_headers, method="PUT")
+            self._do_request(request)
+        except Exception as e:
+            detail = f"Project path: {project_path}"
+
+
     def push_project(self, directory):
         """
         Upload local changes to the repository.
