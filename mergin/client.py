@@ -374,6 +374,11 @@ class MerginClient:
         return json.load(resp)
 
     def set_project_access(self, project_path, access):
+        """
+        Updates access for given project.
+        :param project_path: project full name (<namespace>/<name>)
+        :param access: dict <readersnames, writersnames, ownersnames> -> list of str username we want to give access to
+        """
         if not self._user_info:
             raise Exception("Authentication required")
 
@@ -386,6 +391,7 @@ class MerginClient:
             self._do_request(request)
         except Exception as e:
             detail = f"Project path: {project_path}"
+            raise ClientError(str(e), detail)
 
 
     def push_project(self, directory):

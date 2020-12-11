@@ -513,54 +513,59 @@ def test_available_storage_validation(mc, mc2):
     cleanup(mc, test_project_fullname, [project_dir])
     cleanup(mc2, test_project_fullname, [project_dir])
 
-    try:
-        # create new (empty) project on server
-        mc2.create_project(test_project)
+    # create new (empty) project on server
+    mc2.create_project(test_project)
 
-        # Add writer access to another client
-        project_info = get_project_info(mc2, API_USER2, test_project)
-        access = project_info['access']
-        access['writersnames'].append(API_USER)
-        access['readersnames'].append(API_USER)
-        project_info['access'] = access
-        mc2.set_project_access(test_project_fullname, access)
+    # Add writer access to another client
+    project_info = get_project_info(mc2, API_USER2, test_project)
+    access = project_info['access']
+    access['writersnames'].append(API_USER)
+    access['readersnames'].append(API_USER)
+    project_info['access'] = access
+    # TODO create separate test
+    mc2.set_project_access(test_project_fullname, access)
 
-        # check writers access
-        project_info = get_project_info(mc2, API_USER2, test_project)
-        access = project_info['access']
-        assert API_USER in access['writersnames']
+    # check writers access
+    project_info = get_project_info(mc2, API_USER2, test_project)
+    access = project_info['access']
+    assert API_USER in access['writersnames']
 
-        # download project
-        mc.download_project(test_project_fullname, project_dir)
-        mp = MerginProject(project_dir)
+    # download project
+    mc.download_project(test_project_fullname, project_dir)
+    mp = MerginProject(project_dir)
 
-        # get user_info about storage capacity
-        user_info = mc.user_info()
-        storage_remaining = user_info['storage'] - user_info['disk_usage']
+    # get user_info about storage capacity
+    user_info = mc.user_info()
+    storage_remaining = user_info['storage'] - user_info['disk_usage']
 
-        # generate dummy data (remaining storage + extra 1024b)
-        dummy_data_path = project_dir + "/data"
-        file_size = storage_remaining + 1024
-        _generate_big_file(dummy_data_path, file_size)
+    # generate dummy data (remaining storage + extra 1024b)
+    dummy_data_path = project_dir + "/data"
+    file_size = storage_remaining + 1024
+    _generate_big_file(dummy_data_path, file_size)
 
-        # try to upload
-        mc.push_project(project_dir)
+    # try to upload
+    mc.push_project(project_dir)
 
-        # Check project content
-        project_info = get_project_info(mc2, API_USER2, test_project)
-        assert project_info['meta']['files_count'] == 1
-        assert project_info['meta']['size'] == file_size
+    # Check project content
+    project_info = get_project_info(mc2, API_USER2, test_project)
+    assert project_info['meta']['files_count'] == 1
+    assert project_info['meta']['size'] == file_size
 
-    # clean project due to high storage requirement
-    finally:
-        cleanup(mc, test_project_fullname, [project_dir])
-        cleanup(mc2, test_project_fullname, [project_dir])
+    # remove dummy big file from a disk
+    remove_folders([project_dir])
 
 
 def get_project_info(mc, namespace, project_name):
+    """
+    Returns first (and suppose to be just one) project info dict of project matching given namespace and name.
+    :param mc: MerginClient instance
+    :param namespace: project's namespace
+    :param project_name: project's name
+    :return: dict with project info
+    """
     projects = mc.projects_list(flag='created')
     test_project_list = [p for p in projects if p['name'] == project_name and p['namespace'] == namespace]
-    assert any(test_project_list)
+    assert len(test_project_list) == 1
     return test_project_list[0]
 
 
@@ -570,5 +575,5 @@ def _generate_big_file(filepath, size):
     :param filepath: full filepath
     :param size: the size in bytes
     """
-    with open('%s'%filepath, 'wb') as fout:
-        fout.write(os.urandom(size))
+    with open(filepath, 'wb') as fout:
+        fout.write(b"\0" * size)
