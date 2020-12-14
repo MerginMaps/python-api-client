@@ -505,6 +505,10 @@ def test_set_read_write_access(mc):
     test_project = 'test_set_access'
     test_project_fullname = API_USER + '/' + test_project
 
+    # cleanups
+    project_dir = os.path.join(TMP_DIR, test_project, API_USER)
+    cleanup(mc, test_project_fullname, [project_dir])
+
     # create new (empty) project on server
     mc.create_project(test_project)
 
@@ -556,7 +560,7 @@ def test_available_storage_validation(mc):
     except ClientError as e:
         # Expecting "Storage limit has been reached" error msg.
         assert str(e).startswith("Storage limit has been reached")
-        got_right_err = True
+        got_right_err = True    
     assert got_right_err
 
     # Expecting empty project
