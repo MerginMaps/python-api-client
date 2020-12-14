@@ -528,7 +528,7 @@ def test_set_read_write_access(mc):
 
 def test_available_storage_validation(mc):
     """
-    Testing of storage limit - should not be applied for user pushing changes into project with different namespace.
+    Testing of storage limit - applies to user pushing changes into own project (namespace matching username).
     This test also tests giving read and write access to another user. Additionally tests also uploading of big file.
     """
     test_project = 'test_available_storage_validation'
@@ -572,7 +572,13 @@ def test_available_storage_validation(mc):
 def test_available_storage_validation2(mc, mc2):
     """
     Testing of storage limit - should not be applied for user pushing changes into project with different namespace.
-    This test also tests giving read and write access to another user. Additionally tests also uploading of big file.
+    This should cover the exception of mergin-py-client that a user can push changes to someone else's project regardless
+    the user's own storage limitation. Of course, other limitations are still applied (write access, owner of
+    a modified project has to have enough free storage).
+
+    Therefore NOTE that there are following assumptions:
+        - API_USER2's free storage >= API_USER's free storage + 1024b (size of changes to be pushed)
+        - both accounts should ideally have a free plan
     """
     test_project = 'test_available_storage_validation2'
     test_project_fullname = API_USER2 + '/' + test_project
