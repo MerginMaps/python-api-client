@@ -502,7 +502,7 @@ def test_clone_project(mc):
 
 
 def test_set_read_write_access(mc):
-    test_project = 'test_set_access'
+    test_project = 'test_set_read_write_access'
     test_project_fullname = API_USER + '/' + test_project
 
     # cleanups
