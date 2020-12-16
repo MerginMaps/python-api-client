@@ -4,6 +4,8 @@ env:
   TEST_MERGIN_URL: https://test.dev.cloudmergin.com/
   TEST_API_USERNAME: test_plugin
   TEST_API_PASSWORD: ${{ secrets.MERGINTEST_API_PASSWORD }}
+  TEST_API_USERNAME2: test_plugin2
+  TEST_API_PASSWORD2: ${{ secrets.MERGINTEST_API_PASSWORD2 }}
 
 jobs:
   tests:
