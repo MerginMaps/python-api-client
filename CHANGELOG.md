@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.7
+
+- Fixed quota check when uploading to organisations (#70)
+- Added API to manage collaborators in a project
+
 ## 0.5.6
 
 - Added API for cloning of projects
