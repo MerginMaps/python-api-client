@@ -644,3 +644,21 @@ def _generate_big_file(filepath, size):
     """
     with open(filepath, 'wb') as fout:
         fout.write(b"\0" * size)
+
+
+def test_get_projects_by_name(mc):
+    """ Test server 'bulk' endpoint for projects' info"""
+    test_projects = {
+        "projectA": f"{API_USER}/projectA",
+        "projectB": f"{API_USER}/projectB"
+    }
+
+    for name, full_name in test_projects.items():
+        cleanup(mc, full_name, [])
+        mc.create_project(name)
+
+    resp = mc.get_projects_by_names(list(test_projects.values()))
+    for name, full_name in test_projects.items():
+        assert full_name in resp
+        assert resp[full_name]["name"] == name
+        assert resp[full_name]["version"] == 'v0'
