@@ -492,3 +492,13 @@ class MerginClient:
         params = {'path': file_path}
         resp = self.get("/v1/resource/changesets/{}/{}".format(project_path, version), params)
         return json.load(resp)
+
+    def get_projects_by_names(self, projects):
+        """ Returns JSON with simplified projects' info for list of required projects
+
+        :param projects: list of projects in the form 'namespace/project_name'
+        :type projects: List[String]
+        """
+
+        resp = self.post("/v1/project/by_names", {"projects": projects}, {"Content-Type": "application/json"})
+        return json.load(resp)
