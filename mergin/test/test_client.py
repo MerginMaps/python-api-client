@@ -658,6 +658,7 @@ def test_get_projects_by_name(mc):
         mc.create_project(name)
 
     resp = mc.get_projects_by_names(list(test_projects.values()))
+    assert len(resp) == len(test_projects)
     for name, full_name in test_projects.items():
         assert full_name in resp
         assert resp[full_name]["name"] == name
