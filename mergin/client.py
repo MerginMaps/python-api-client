@@ -494,7 +494,11 @@ class MerginClient:
         return json.load(resp)
 
     def get_projects_by_names(self, projects):
-        """ Returns JSON with simplified projects' info for list of required projects
+        """ Returns JSON with projects' info for list of required projects.
+        The schema of the returned information is the same as the response from projects_list().
+
+        This is useful when we have a couple of Mergin projects available locally and we want to
+        find out their status at once (e.g. whether there is a new version on the server).
 
         :param projects: list of projects in the form 'namespace/project_name'
         :type projects: List[String]
