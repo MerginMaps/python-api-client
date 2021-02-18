@@ -329,7 +329,6 @@ def test_sync_diff(mc, push_geodiff_enabled, pull_geodiff_enabled):
     toggle_geodiff(True)
 
 
-@pytest.mark.skip(reason="currently fails on test.dev instance due to server bug")
 def test_list_of_push_changes(mc):
     PUSH_CHANGES_SUMMARY = "{'base.gpkg': {'geodiff_summary': [{'table': 'gpkg_contents', 'insert': 0, 'update': 1, 'delete': 0}, {'table': 'simple', 'insert': 1, 'update': 0, 'delete': 0}]}}"
 
@@ -352,7 +351,7 @@ def test_list_of_push_changes(mc):
 
     mc._auth_session["expire"] = datetime.now().replace(tzinfo=pytz.utc) - timedelta(days=1)
     mc._auth_params = None
-    with pytest.raises(ClientError, match="You don't have the permission to access the requested resource. It is either read-protected or not readable by the server."):
+    with pytest.raises(ClientError, match="You do not have permissions for this project"):
         mc.project_status(project_dir)
 
 
@@ -565,8 +564,8 @@ def test_available_storage_validation(mc):
 
     # Expecting empty project
     project_info = get_project_info(mc, API_USER, test_project)
-    assert project_info['meta']['files_count'] == 0
-    assert project_info['meta']['size'] == 0
+    assert project_info['version'] == 'v0'
+    assert project_info['disk_usage'] == 0
 
 
 def test_available_storage_validation2(mc, mc2):
@@ -614,9 +613,9 @@ def test_available_storage_validation2(mc, mc2):
     mc.push_project(project_dir)
 
     # Check project content
-    project_info = get_project_info(mc2, API_USER2, test_project)
-    assert project_info['meta']['files_count'] == 1
-    assert project_info['meta']['size'] == file_size
+    project_info = mc.project_info(test_project_fullname)
+    assert len(project_info["files"]) == 1
+    assert project_info["disk_usage"] == file_size
 
     # remove dummy big file from a disk
     remove_folders([project_dir])
