@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.8
+
+- Added API (get_projects_by_names()) to request project info for specified projects
+
 ## 0.5.7
 
 - Fixed quota check when uploading to organisations (#70)
