@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.9
+
+- Added API to download older version of a project (#74)
+- Added API to query project details of an older version of a project
+
 ## 0.5.8
 
 - Added API (get_projects_by_names()) to request project info for specified projects
