@@ -96,7 +96,7 @@ def _cleanup_failed_download(directory):
     shutil.rmtree(directory)
 
 
-def download_project_async(mc, project_path, directory):
+def download_project_async(mc, project_path, directory, project_version=None):
     """
     Starts project download in background and returns handle to the pending project download.
     Using that object it is possible to watch progress or cancel the ongoing work.
@@ -114,7 +114,7 @@ def download_project_async(mc, project_path, directory):
     mp.log.info(f"--- start download {project_path}")
 
     try:
-        project_info = mc.project_info(project_path)
+        project_info = mc.project_info(project_path, version=project_version)
     except ClientError:
         _cleanup_failed_download(directory)
         raise

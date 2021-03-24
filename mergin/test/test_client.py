@@ -662,3 +662,42 @@ def test_get_projects_by_name(mc):
         assert full_name in resp
         assert resp[full_name]["name"] == name
         assert resp[full_name]["version"] == 'v0'
+
+
+def test_download_versions(mc):
+    test_project = 'test_download'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    # download dirs
+    project_dir_v1 = os.path.join(TMP_DIR, test_project + '_v1')
+    project_dir_v2 = os.path.join(TMP_DIR, test_project + '_v2')
+    project_dir_v3 = os.path.join(TMP_DIR, test_project + '_v3')
+
+    cleanup(mc, project, [project_dir, project_dir_v1, project_dir_v2, project_dir_v3])
+    # create remote project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
+
+    # create new version - v2
+    f_added = 'new.txt'
+    with open(os.path.join(project_dir, f_added), 'w') as f:
+        f.write('new file')
+
+    mc.push_project(project_dir)
+    project_info = mc.project_info(project)
+    assert project_info['version'] == 'v2'
+
+    info_v1 = mc.project_info(project, version='v1')
+    mc.download_project(project, project_dir_v1, 'v1')
+    for f in info_v1["files"]:
+        assert os.path.exists(os.path.join(project_dir_v1, f["path"]))
+
+    mc.download_project(project, project_dir_v2, 'v2')
+    info_v2 = mc.project_info(project, version='v2')
+    assert os.path.exists(os.path.join(project_dir_v2, f_added))
+    for f in info_v2["files"]:
+        assert os.path.exists(os.path.join(project_dir_v2, f["path"]))
+
+    # try to download not-existing version
+    with pytest.raises(ClientError):
+        mc.download_project(project, project_dir_v3, 'v3')
