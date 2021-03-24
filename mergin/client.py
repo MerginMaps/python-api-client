@@ -318,7 +318,7 @@ class MerginClient:
         projects = json.load(resp)
         return projects
 
-    def project_info(self, project_path, since=None):
+    def project_info(self, project_path, since=None, version=None):
         """
         Fetch info about project.
 
@@ -326,9 +326,14 @@ class MerginClient:
         :type project_path: String
         :param since: Version to track history of geodiff files from
         :type since: String
+        :param version: Project version to get details for (particularly list of files)
+        :type version: String
         :rtype: Dict
         """
         params = {'since': since} if since else {}
+        # since and version are mutually exclusive
+        if version:
+            params = {'version': version}
         resp = self.get("/v1/project/{}".format(project_path), params)
         return json.load(resp)
 
@@ -344,17 +349,20 @@ class MerginClient:
         resp = self.get("/v1/project/version/{}".format(project_path))
         return json.load(resp)
 
-    def download_project(self, project_path, directory):
+    def download_project(self, project_path, directory, version=None):
         """
-        Download latest version of project into given directory.
+        Download project into given directory. If version is not specified, latest version is downloaded
 
         :param project_path: Project's full name (<namespace>/<name>)
         :type project_path: String
 
+        :param version: Project version to download
+        :type version: String
+
         :param directory: Target directory
         :type directory: String
         """
-        job = download_project_async(self, project_path, directory)
+        job = download_project_async(self, project_path, directory, version)
         download_project_wait(job)
         download_project_finalize(job)
 

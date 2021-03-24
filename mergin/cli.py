@@ -146,7 +146,8 @@ def list_projects(flag):
 @cli.command()
 @click.argument('project')
 @click.argument('directory', type=click.Path(), required=False)
-def download(project, directory):
+@click.option('--version', default=None, help='Version of project to download')
+def download(project, directory, version):
     """Download last version of mergin project"""
     
     c = _init_client()
@@ -156,7 +157,7 @@ def download(project, directory):
 
     click.echo('Downloading into {}'.format(directory))
     try:
-        job = download_project_async(c, project, directory)
+        job = download_project_async(c, project, directory, version)
 
         import time
         with click.progressbar(length=job.total_size) as bar:
