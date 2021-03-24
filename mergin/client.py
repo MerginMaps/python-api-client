@@ -356,7 +356,7 @@ class MerginClient:
         :param project_path: Project's full name (<namespace>/<name>)
         :type project_path: String
 
-        :param version: Project version to download
+        :param version: Project version to download, e.g. v42
         :type version: String
 
         :param directory: Target directory

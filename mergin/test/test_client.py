@@ -687,16 +687,13 @@ def test_download_versions(mc):
     project_info = mc.project_info(project)
     assert project_info['version'] == 'v2'
 
-    info_v1 = mc.project_info(project, version='v1')
     mc.download_project(project, project_dir_v1, 'v1')
-    for f in info_v1["files"]:
-        assert os.path.exists(os.path.join(project_dir_v1, f["path"]))
+    assert os.path.exists(os.path.join(project_dir_v1, 'base.gpkg'))
+    assert not os.path.exists(os.path.join(project_dir_v2, f_added))  # added only in v2
 
     mc.download_project(project, project_dir_v2, 'v2')
-    info_v2 = mc.project_info(project, version='v2')
     assert os.path.exists(os.path.join(project_dir_v2, f_added))
-    for f in info_v2["files"]:
-        assert os.path.exists(os.path.join(project_dir_v2, f["path"]))
+    assert os.path.exists(os.path.join(project_dir_v1, 'base.gpkg'))  # added in v1 but still present in v2
 
     # try to download not-existing version
     with pytest.raises(ClientError):
