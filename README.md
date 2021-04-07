@@ -11,6 +11,7 @@ To install the module:
 [![Auto Tests](https://github.com/lutraconsulting/mergin-py-client/workflows/Auto%20Tests/badge.svg)](https://github.com/lutraconsulting/mergin-py-client/actions?query=workflow%3A%22Auto+Tests%22)
 [![Coverage Status](https://img.shields.io/coveralls/lutraconsulting/mergin-py-client.svg)](https://coveralls.io/github/lutraconsulting/mergin-py-client)
 
+Note: Check also [Mergin Cpp Client](https://github.com/lutraconsulting/mergin-cpp-client)
 
 ## Using Python API
 
