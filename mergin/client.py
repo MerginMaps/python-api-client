@@ -287,7 +287,7 @@ class MerginClient:
             if mp.inspect_files():
                 self.push_project(directory)
 
-    def projects_list(self, tags=None, user=None, flag=None, q=None):
+    def projects_list(self, tags=None, user=None, flag=None, q=None, page=1, per_page=50):
         """
         Find all available mergin projects.
 
@@ -303,6 +303,12 @@ class MerginClient:
         :param q: Search query string
         :type q: String
 
+        :param page: Page number for paginated projects list
+        :type page: Integer
+
+        :param per_page: Number of projects fetched per page, max 100 (restriction set by server)
+        :type per_page: Integer
+
         :rtype: List[Dict]
         """
         params = {}
@@ -314,7 +320,9 @@ class MerginClient:
             params["flag"] = flag
         if q:
             params["q"] = q
-        resp = self.get("/v1/project", params)
+        params["page"] = page
+        params["per_page"] = per_page
+        resp = self.get("/v1/project/paginated", params)
         projects = json.load(resp)
         return projects
 
