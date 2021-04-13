@@ -287,7 +287,7 @@ class MerginClient:
             if mp.inspect_files():
                 self.push_project(directory)
 
-    def projects_list(self, tags=None, user=None, flag=None, q=None, page=1, per_page=50):
+    def paginated_projects_list(self, tags=None, user=None, flag=None, q=None, page=1, per_page=50):
         """
         Find all available mergin projects.
 
@@ -320,9 +320,48 @@ class MerginClient:
             params["flag"] = flag
         if q:
             params["q"] = q
+        params["order_by"] = 'namespace'
+        params["descending"] = False
         params["page"] = page
         params["per_page"] = per_page
         resp = self.get("/v1/project/paginated", params)
+        projects = json.load(resp)
+        return projects
+
+    def projects_list(self, tags=None, user=None, flag=None, q=None):
+        """
+        Find all available mergin projects.
+
+        :param tags: Filter projects by tags ('valid_qgis', 'mappin_use', input_use')
+        :type tags: List
+
+        :param user: Username for 'flag' filter. If not provided, it means user executing request.
+        :type user: String
+
+        :param flag: Predefined filter flag ('created', 'shared')
+        :type flag: String
+
+        :param q: Search query string
+        :type q: String
+
+        :param page: Page number for paginated projects list
+        :type page: Integer
+
+        :param per_page: Number of projects fetched per page, max 100 (restriction set by server)
+        :type per_page: Integer
+
+        :rtype: List[Dict]
+        """
+        params = {}
+        if tags:
+            params["tags"] = ",".join(tags)
+        if user:
+            params["user"] = user
+        if flag:
+            params["flag"] = flag
+        if q:
+            params["q"] = q
+        resp = self.get("/v1/project", params)
         projects = json.load(resp)
         return projects
 

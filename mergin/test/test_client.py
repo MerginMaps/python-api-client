@@ -67,7 +67,8 @@ def test_create_delete_project(mc):
     # create new (empty) project on server
     test_project = 'test_create_delete'
     mc.create_project(test_project)
-    projects = mc.projects_list(flag='created')
+    resp = mc.paginated_projects_list(flag='created')
+    projects = resp["projects"]
     assert any(p for p in projects if p['name'] == test_project and p['namespace'] == API_USER)
 
     # try again
@@ -76,7 +77,8 @@ def test_create_delete_project(mc):
 
     # remove project
     mc.delete_project(API_USER + '/' + test_project)
-    projects = mc.projects_list(flag='created')
+    resp = mc.paginated_projects_list(flag='created')
+    projects = resp["projects"]
     assert not any(p for p in projects if p['name'] == test_project and p['namespace'] == API_USER)
 
     # try again, nothing to delete
@@ -486,7 +488,8 @@ def test_clone_project(mc):
 
     # create new (empty) project on server
     mc.create_project(test_project)
-    projects = mc.projects_list(flag='created')
+    resp = mc.paginated_projects_list(flag='created')
+    projects = resp["projects"]
     assert any(p for p in projects if p['name'] == test_project and p['namespace'] == API_USER)
 
     cloned_project_name = test_project + "_cloned"
@@ -496,7 +499,8 @@ def test_clone_project(mc):
 
     # clone project
     mc.clone_project(test_project_fullname, cloned_project_name, API_USER)
-    projects = mc.projects_list(flag='created')
+    resp = mc.paginated_projects_list(flag='created')
+    projects = resp["projects"]
     assert any(p for p in projects if p['name'] == cloned_project_name and p['namespace'] == API_USER)
 
 
@@ -629,7 +633,8 @@ def get_project_info(mc, namespace, project_name):
     :param project_name: project's name
     :return: dict with project info
     """
-    projects = mc.projects_list(flag='created')
+    resp = mc.paginated_projects_list(flag='created')
+    projects = resp["projects"]
     test_project_list = [p for p in projects if p['name'] == project_name and p['namespace'] == namespace]
     assert len(test_project_list) == 1
     return test_project_list[0]
