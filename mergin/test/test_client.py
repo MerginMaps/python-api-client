@@ -64,8 +64,13 @@ def test_login(mc):
 
 
 def test_create_delete_project(mc):
-    # create new (empty) project on server
     test_project = 'test_create_delete'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    download_dir = os.path.join(TMP_DIR, 'download', test_project)
+
+    cleanup(mc, project, [project_dir, download_dir])
+    # create new (empty) project on server
     mc.create_project(test_project)
     resp = mc.paginated_projects_list(flag='created')
     projects = resp["projects"]
