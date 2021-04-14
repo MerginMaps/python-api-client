@@ -463,7 +463,10 @@ class MerginProject:
                         if self.is_versioned_file(path):
                             os.remove(basefile)
                     else:
-                        shutil.copy(src, dest)
+                        try:
+                            shutil.copy(src, dest)
+                        except shutil.SameFileError:
+                            self.log.info(f"Skip copying - paths are identical: {src} and {dest}")
                         if self.is_versioned_file(path):
                             shutil.copy(src, basefile)
 
