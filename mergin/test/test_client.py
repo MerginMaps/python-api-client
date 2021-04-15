@@ -26,6 +26,7 @@ def toggle_geodiff(enabled):
 def mc():
     return create_client(API_USER, USER_PWD)
 
+
 @pytest.fixture(scope='function')
 def mc2():
     return create_client(API_USER2, USER_PWD2)
@@ -72,8 +73,7 @@ def test_create_delete_project(mc):
     cleanup(mc, project, [project_dir, download_dir])
     # create new (empty) project on server
     mc.create_project(test_project)
-    resp = mc.paginated_projects_list(flag='created')
-    projects = resp["projects"]
+    projects = mc.projects_list(flag='created')
     assert any(p for p in projects if p['name'] == test_project and p['namespace'] == API_USER)
 
     # try again
@@ -493,8 +493,7 @@ def test_clone_project(mc):
 
     # create new (empty) project on server
     mc.create_project(test_project)
-    resp = mc.paginated_projects_list(flag='created')
-    projects = resp["projects"]
+    projects = mc.projects_list(flag='created')
     assert any(p for p in projects if p['name'] == test_project and p['namespace'] == API_USER)
 
     cloned_project_name = test_project + "_cloned"
@@ -504,8 +503,7 @@ def test_clone_project(mc):
 
     # clone project
     mc.clone_project(test_project_fullname, cloned_project_name, API_USER)
-    resp = mc.paginated_projects_list(flag='created')
-    projects = resp["projects"]
+    projects = mc.projects_list(flag='created')
     assert any(p for p in projects if p['name'] == cloned_project_name and p['namespace'] == API_USER)
 
 
@@ -638,8 +636,7 @@ def get_project_info(mc, namespace, project_name):
     :param project_name: project's name
     :return: dict with project info
     """
-    resp = mc.paginated_projects_list(flag='created')
-    projects = resp["projects"]
+    projects = mc.projects_list(flag='created')
     test_project_list = [p for p in projects if p['name'] == project_name and p['namespace'] == namespace]
     assert len(test_project_list) == 1
     return test_project_list[0]
@@ -708,3 +705,35 @@ def test_download_versions(mc):
     # try to download not-existing version
     with pytest.raises(ClientError):
         mc.download_project(project, project_dir_v3, 'v3')
+
+
+def test_paginated_project_list(mc):
+    """Test the new endpoint for projects list with pagination, ordering etc."""
+    test_projects = {
+        "projectA": f"{API_USER}/projectA",
+        "projectB": f"{API_USER}/projectB",
+        "projectC": f"{API_USER}/projectC",
+        "projectD": f"{API_USER}/projectD",
+        "projectE": f"{API_USER}/projectE",
+        "projectF": f"{API_USER}/projectF"
+    }
+
+    for name, full_name in test_projects.items():
+        cleanup(mc, full_name, [])
+        mc.create_project(name)
+
+    sorted_test_names = [n for n in sorted(test_projects.keys())]
+
+    resp = mc.paginated_projects_list(flag='created', page=1, per_page=10, order_by="name")
+    projects = resp["projects"]
+    count = resp["count"]
+    assert count == len(test_projects)
+    assert len(projects) == len(test_projects)
+    for i, project in enumerate(projects):
+        assert project["name"] == sorted_test_names[i]
+
+    resp = mc.paginated_projects_list(flag='created', page=2, per_page=2, order_by="name")
+    projects = resp["projects"]
+    assert len(projects) == 2
+    for i, project in enumerate(projects):
+        assert project["name"] == sorted_test_names[i+2]

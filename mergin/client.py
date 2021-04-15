@@ -287,7 +287,8 @@ class MerginClient:
             if mp.inspect_files():
                 self.push_project(directory)
 
-    def paginated_projects_list(self, tags=None, user=None, flag=None, q=None, page=1, per_page=50):
+    def paginated_projects_list(self, tags=None, user=None, flag=None, q=None, page=1, per_page=50, order_by=None,
+                                order_params=None):
         """
         Find all available mergin projects.
 
@@ -308,6 +309,15 @@ class MerginClient:
 
         :param per_page: Number of projects fetched per page, max 100 (restriction set by server)
         :type per_page: Integer
+
+        :param order_by: Deprecated! Optional projects attribute used for sorting the list.
+            Available attrs: namespace, name, created, updated, disk_usage, creator
+        :type order_by: String
+
+        :param order_params: optional attributes for sorting the list. It should be a comma separated attribute names
+            with _asc or _desc appended for sorting direction. For example: "namespace_asc,disk_usage_desc".
+            Available attrs: namespace, name, created, updated, disk_usage, creator
+        :type order_params: String
 
         :rtype: List[Dict]
         """
@@ -320,17 +330,21 @@ class MerginClient:
             params["flag"] = flag
         if q:
             params["q"] = q
-        params["order_by"] = 'namespace'
         params["descending"] = False
         params["page"] = page
         params["per_page"] = per_page
+        if order_params is not None:
+            params["order_params"] = order_params
+        elif order_by is not None:
+            params["order_by"] = order_by
         resp = self.get("/v1/project/paginated", params)
         projects = json.load(resp)
         return projects
 
     def projects_list(self, tags=None, user=None, flag=None, q=None):
         """
-        Find all available mergin projects.
+        Find all available Mergin projects. It will always retrieve max 100 projects.
+        Consider using the paginated_projects_list instead.
 
         :param tags: Filter projects by tags ('valid_qgis', 'mappin_use', input_use')
         :type tags: List
@@ -343,12 +357,6 @@ class MerginClient:
 
         :param q: Search query string
         :type q: String
-
-        :param page: Page number for paginated projects list
-        :type page: Integer
-
-        :param per_page: Number of projects fetched per page, max 100 (restriction set by server)
-        :type per_page: Integer
 
         :rtype: List[Dict]
         """
