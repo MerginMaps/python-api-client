@@ -494,13 +494,20 @@ def pull_project_finalize(job):
     # make sure any exceptions from threads are not lost
     for future in job.futures:
         if future.exception() is not None:
+            job.mp.log.error("Error while downloading data: " + str(future.exception()))
+            job.mp.log.info("--- pull aborted")
             raise future.exception()
 
     job.mp.log.info("finalizing pull")
 
     # merge downloaded chunks
-    for file_to_merge in job.files_to_merge:
-        file_to_merge.merge()
+    try:
+        for file_to_merge in job.files_to_merge:
+            file_to_merge.merge()
+    except ClientError as err:
+        job.mp.log.error("Error merging chunks of downloaded file: " + str(err))
+        job.mp.log.info("--- pull aborted")
+        raise
 
     # make sure we can update geodiff reference files (aka. basefiles) with diffs or
     # download their full versions so we have them up-to-date for applying changes
@@ -517,6 +524,10 @@ def pull_project_finalize(job):
             # was also able to apply those diffs. It could be that someone modified
             # the basefile and we ended up in this inconsistent state.
             # let's remove the basefile and let the user retry - we should download clean version again
+            job.mp.log.error(f"Error patching basefile {basefile}")
+            job.mp.log.error("Diffs we were applying: " + str(diffs))
+            job.mp.log.error("Removing basefile because it would be corrupted anyway...")
+            job.mp.log.info("--- pull aborted")
             os.remove(basefile)
             raise ClientError("Cannot patch basefile {}! Please try syncing again.".format(basefile))
 
