@@ -250,14 +250,21 @@ class MerginProject:
             diffs = []
             diffs_size = 0
             is_updated = False
+
+            # get sorted list of the history (they may not be sorted or using lexical sorting - "v10", "v11", "v5", "v6", ...)
+            history_list = []
+            for version_str, version_info in file['history'].items():
+                history_list.append( (int_version(version_str), version_info) )
+            history_list = sorted(history_list, key=lambda item: item[0])  # sort tuples based on version numbers
+
             # need to track geodiff file history to see if there were any changes
-            for k, v in file['history'].items():
-                if int_version(k) <= int_version(self.metadata['version']):
+            for version, version_info in history_list:
+                if version <= int_version(self.metadata['version']):
                     continue  # ignore history of no interest
                 is_updated = True
-                if 'diff' in v:
-                    diffs.append(v['diff']['path'])
-                    diffs_size += v['diff']['size']
+                if 'diff' in version_info:
+                    diffs.append(version_info['diff']['path'])
+                    diffs_size += version_info['diff']['size']
                 else:
                     diffs = []
                     break  # we found force update in history, does not make sense to download diffs
