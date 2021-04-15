@@ -82,8 +82,7 @@ def test_create_delete_project(mc):
 
     # remove project
     mc.delete_project(API_USER + '/' + test_project)
-    resp = mc.paginated_projects_list(flag='created')
-    projects = resp["projects"]
+    projects = mc.projects_list(flag='created')
     assert not any(p for p in projects if p['name'] == test_project and p['namespace'] == API_USER)
 
     # try again, nothing to delete
