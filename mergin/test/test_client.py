@@ -37,6 +37,13 @@ def create_client(user, pwd):
     return MerginClient(SERVER_URL, login=user, password=pwd)
 
 
+def cleanup_all(mc):
+    """Remove all created projects."""
+    projects = mc.projects_list(flag='created')
+    for project in projects:
+        mc.delete_project(API_USER + '/' + project["name"])
+
+
 def cleanup(mc, project, dirs):
     # cleanup leftovers from previous test if needed such as remote project and local directories
     try:
@@ -708,6 +715,9 @@ def test_download_versions(mc):
 
 def test_paginated_project_list(mc):
     """Test the new endpoint for projects list with pagination, ordering etc."""
+    # First remove any existing projects
+    cleanup_all(mc)
+
     test_projects = {
         "projectA": f"{API_USER}/projectA",
         "projectB": f"{API_USER}/projectB",
