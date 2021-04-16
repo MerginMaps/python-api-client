@@ -37,13 +37,6 @@ def create_client(user, pwd):
     return MerginClient(SERVER_URL, login=user, password=pwd)
 
 
-def cleanup_all(mc):
-    """Remove all created projects."""
-    projects = mc.projects_list(flag='created')
-    for project in projects:
-        mc.delete_project(API_USER + '/' + project["name"])
-
-
 def cleanup(mc, project, dirs):
     # cleanup leftovers from previous test if needed such as remote project and local directories
     try:
@@ -715,17 +708,10 @@ def test_download_versions(mc):
 
 def test_paginated_project_list(mc):
     """Test the new endpoint for projects list with pagination, ordering etc."""
-    # First remove any existing projects
-    cleanup_all(mc)
-
-    test_projects = {
-        "projectA": f"{API_USER}/projectA",
-        "projectB": f"{API_USER}/projectB",
-        "projectC": f"{API_USER}/projectC",
-        "projectD": f"{API_USER}/projectD",
-        "projectE": f"{API_USER}/projectE",
-        "projectF": f"{API_USER}/projectF"
-    }
+    test_projects = dict()
+    for symb in "ABCDEF":
+        name = f"test_paginated_{symb}"
+        test_projects[name] = f"{API_USER}/{name}"
 
     for name, full_name in test_projects.items():
         cleanup(mc, full_name, [])
@@ -733,7 +719,7 @@ def test_paginated_project_list(mc):
 
     sorted_test_names = [n for n in sorted(test_projects.keys())]
 
-    resp = mc.paginated_projects_list(flag='created', page=1, per_page=10, order_by="name")
+    resp = mc.paginated_projects_list(flag='created', name="test_paginated", page=1, per_page=10, order_by="name")
     projects = resp["projects"]
     count = resp["count"]
     assert count == len(test_projects)
@@ -741,7 +727,7 @@ def test_paginated_project_list(mc):
     for i, project in enumerate(projects):
         assert project["name"] == sorted_test_names[i]
 
-    resp = mc.paginated_projects_list(flag='created', page=2, per_page=2, order_by="name")
+    resp = mc.paginated_projects_list(flag='created', name="test_paginated", page=2, per_page=2, order_by="name")
     projects = resp["projects"]
     assert len(projects) == 2
     for i, project in enumerate(projects):
