@@ -287,8 +287,8 @@ class MerginClient:
             if mp.inspect_files():
                 self.push_project(directory)
 
-    def paginated_projects_list(self, tags=None, user=None, flag=None, q=None, page=1, per_page=50, order_by=None,
-                                order_params=None):
+    def paginated_projects_list(self, page=1, per_page=50, tags=None, user=None, flag=None, name=None,
+                                namespace=None, order_by=None, order_params=None):
         """
         Find all available mergin projects.
 
@@ -301,8 +301,11 @@ class MerginClient:
         :param flag: Predefined filter flag ('created', 'shared')
         :type flag: String
 
-        :param q: Search query string
-        :type q: String
+        :param name: Filter projects with name like name
+        :type name: String
+
+        :param namespace: Filter projects with namespace like namespace
+        :type namespace: String
 
         :param page: Page number for paginated projects list
         :type page: Integer
@@ -328,15 +331,17 @@ class MerginClient:
             params["user"] = user
         if flag:
             params["flag"] = flag
-        if q:
-            params["q"] = q
-        params["descending"] = False
+        if name:
+            params["name"] = name
+        if namespace:
+            params["namespace"] = namespace
         params["page"] = page
         params["per_page"] = per_page
         if order_params is not None:
             params["order_params"] = order_params
         elif order_by is not None:
             params["order_by"] = order_by
+            params["descending"] = False
         resp = self.get("/v1/project/paginated", params)
         projects = json.load(resp)
         return projects
