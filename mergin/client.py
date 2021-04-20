@@ -288,7 +288,7 @@ class MerginClient:
                 self.push_project(directory)
 
     def paginated_projects_list(self, page=1, per_page=50, tags=None, user=None, flag=None, name=None,
-                                namespace=None, order_by=None, order_params=None):
+                                namespace=None, order_params=None):
         """
         Find all available mergin projects.
 
@@ -313,10 +313,6 @@ class MerginClient:
         :param per_page: Number of projects fetched per page, max 100 (restriction set by server)
         :type per_page: Integer
 
-        :param order_by: Deprecated! Optional projects attribute used for sorting the list.
-            Available attrs: namespace, name, created, updated, disk_usage, creator
-        :type order_by: String
-
         :param order_params: optional attributes for sorting the list. It should be a comma separated attribute names
             with _asc or _desc appended for sorting direction. For example: "namespace_asc,disk_usage_desc".
             Available attrs: namespace, name, created, updated, disk_usage, creator
@@ -339,9 +335,6 @@ class MerginClient:
         params["per_page"] = per_page
         if order_params is not None:
             params["order_params"] = order_params
-        elif order_by is not None:
-            params["order_by"] = order_by
-            params["descending"] = False
         resp = self.get("/v1/project/paginated", params)
         projects = json.load(resp)
         return projects
