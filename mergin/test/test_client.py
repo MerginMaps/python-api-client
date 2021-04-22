@@ -719,7 +719,9 @@ def test_paginated_project_list(mc):
 
     sorted_test_names = [n for n in sorted(test_projects.keys())]
 
-    resp = mc.paginated_projects_list(flag='created', name="test_paginated", page=1, per_page=10, order_by="name")
+    resp = mc.paginated_projects_list(
+        flag='created', name="test_paginated", page=1, per_page=10, order_params="name_asc"
+    )
     projects = resp["projects"]
     count = resp["count"]
     assert count == len(test_projects)
@@ -727,7 +729,9 @@ def test_paginated_project_list(mc):
     for i, project in enumerate(projects):
         assert project["name"] == sorted_test_names[i]
 
-    resp = mc.paginated_projects_list(flag='created', name="test_paginated", page=2, per_page=2, order_by="name")
+    resp = mc.paginated_projects_list(
+        flag='created', name="test_paginated", page=2, per_page=2, order_params="name_asc"
+    )
     projects = resp["projects"]
     assert len(projects) == 2
     for i, project in enumerate(projects):
