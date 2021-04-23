@@ -84,7 +84,12 @@ def push_project_async(mc, directory):
     mp.log.info("--- version: " + mc.user_agent_info())
     mp.log.info(f"--- start push {project_path}")
 
-    server_info = mc.project_info(project_path)
+    try:
+        server_info = mc.project_info(project_path)
+    except ClientError as err:
+        mp.log.error("Error getting project info: " + str(err))
+        mp.log.info("--- push aborted")
+        raise
     server_version = server_info["version"] if server_info["version"] else "v0"
 
     mp.log.info(f"got project info: local version {local_version} / server version {server_version}")
@@ -122,7 +127,12 @@ def push_project_async(mc, directory):
         "changes": changes
     }
 
-    resp = mc.post(f'/v1/project/push/{project_path}', data, {"Content-Type": "application/json"})
+    try:
+        resp = mc.post(f'/v1/project/push/{project_path}', data, {"Content-Type": "application/json"})
+    except ClientError as err:
+        mp.log.error("Error starting transaction: " + str(err))
+        mp.log.info("--- push aborted")
+        raise
     server_resp = json.load(resp)
 
     upload_files = data['changes']["added"] + data['changes']["updated"]
@@ -181,6 +191,8 @@ def push_project_is_running(job):
     """
     for future in job.futures:
         if future.done() and future.exception() is not None:
+            job.mp.log.error("Error while pushing data: " + str(future.exception()))
+            job.mp.log.info("--- push aborted")
             raise future.exception()
         if future.running():
             return True
@@ -205,6 +217,8 @@ def push_project_finalize(job):
         # make sure any exceptions from threads are not lost
         for future in job.futures:
             if future.exception() is not None:
+                job.mp.log.error("Error while pushing data: " + str(future.exception()))
+                job.mp.log.info("--- push aborted")
                 raise future.exception()
 
     if job.transferred_size != job.total_size:
@@ -256,6 +270,6 @@ def _do_upload(item, job):
     """ runs in worker thread """
     if job.is_cancelled:
         return
-    
+
     item.upload_blocking(job.mc, job.mp)
     job.transferred_size += item.size

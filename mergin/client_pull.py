@@ -325,7 +325,12 @@ def pull_project_async(mc, directory):
     mp.log.info("--- version: " + mc.user_agent_info())
     mp.log.info(f"--- start pull {project_path}")
 
-    server_info = mc.project_info(project_path, since=local_version)
+    try:
+        server_info = mc.project_info(project_path, since=local_version)
+    except ClientError as err:
+        mp.log.error("Error getting project info: " + str(err))
+        mp.log.info("--- pull aborted")
+        raise
     server_version = server_info["version"]
 
     mp.log.info(f"got project info: local version {local_version} / server version {server_version}")
@@ -437,6 +442,8 @@ def pull_project_is_running(job):
     """
     for future in job.futures:
         if future.done() and future.exception() is not None:
+            job.mp.log.error("Error while pulling data: " + str(future.exception()))
+            job.mp.log.info("--- pull aborted")
             raise future.exception()
         if future.running():
             return True
@@ -494,7 +501,7 @@ def pull_project_finalize(job):
     # make sure any exceptions from threads are not lost
     for future in job.futures:
         if future.exception() is not None:
-            job.mp.log.error("Error while downloading data: " + str(future.exception()))
+            job.mp.log.error("Error while pulling data: " + str(future.exception()))
             job.mp.log.info("--- pull aborted")
             raise future.exception()
 
