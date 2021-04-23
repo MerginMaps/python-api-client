@@ -137,7 +137,8 @@ def list_projects(flag):
     c = _init_client()
     if c is None:
         return
-    projects_list = c.projects_list(flag=flag)
+    resp = c.paginated_projects_list(flag=flag)
+    projects_list = resp["projects"]
     for project in projects_list:
         full_name = "{} / {}".format(project["namespace"], project["name"])
         click.echo("  {:40}\t{:6.1f} MB\t{}".format(full_name, project["disk_usage"]/(1024*1024), project['version']))
