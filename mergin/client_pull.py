@@ -328,7 +328,7 @@ def pull_project_async(mc, directory):
     server_info = mc.project_info(project_path, since=local_version)
     server_version = server_info["version"]
 
-    mp.log.info(f"got project info. version {server_version}")
+    mp.log.info(f"got project info: local version {local_version} / server version {server_version}")
 
     if local_version == server_version:
         mp.log.info("--- pull - nothing to do (already at server version)")
@@ -538,7 +538,7 @@ def pull_project_finalize(job):
         'files': job.project_info['files']
     }
 
-    job.mp.log.info("--- pull finished")
+    job.mp.log.info("--- pull finished -- at version " + job.mp.metadata['version'])
 
     shutil.rmtree(job.temp_dir)
     return conflicts

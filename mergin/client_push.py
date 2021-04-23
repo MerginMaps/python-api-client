@@ -87,7 +87,7 @@ def push_project_async(mc, directory):
     server_info = mc.project_info(project_path)
     server_version = server_info["version"] if server_info["version"] else "v0"
 
-    mp.log.info(f"got project info. version {server_version}")
+    mp.log.info(f"got project info: local version {local_version} / server version {server_version}")
 
     username = mc.username()
     if username not in server_info["access"]["writersnames"]:
@@ -237,7 +237,7 @@ def push_project_finalize(job):
     }
     job.mp.apply_push_changes(job.changes)
 
-    job.mp.log.info("--- push finished")
+    job.mp.log.info("--- push finished - new project version " + job.server_resp['version'])
 
 
 def push_project_cancel(job):
