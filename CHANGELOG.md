@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.10
+
+- Added API (paginated_projects_list()) for paginated listing of projects (#77)
+- Fixed sync error that have happened when moving to version >= 10 (#79, fixes lutraconsulting/qgis-mergin-plugin#219)
+- Added more details to diagnostic logs to help finding errors
+
 ## 0.5.9
 
 - Added API to download older version of a project (#74)
