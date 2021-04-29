@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.11
+
+- Update to geodiff 0.8.8 (fixed issues with unicode paths, better error reporting)
+
 ## 0.5.10
 
 - Added API (paginated_projects_list()) for paginated listing of projects (#77)
