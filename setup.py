@@ -27,8 +27,6 @@ setup(
         'console_scripts': ['mergin=mergin.cli:cli'],
     },
 
-    test_suite='nose.collector',
-    tests_require=['nose'],
     classifiers=[
         'Development Status :: 5 - Production/Stable',
         'Intended Audience :: Developers',

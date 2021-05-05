@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from dateutil.tz import tzlocal
 
-from .common import UPLOAD_CHUNK_SIZE, InvalidProject
+from .common import UPLOAD_CHUNK_SIZE, InvalidProject, ClientError
 from .utils import generate_checksum, move_file, int_version, find, do_sqlite_checkpoint
 
 
@@ -22,10 +22,7 @@ this_dir = os.path.dirname(os.path.realpath(__file__))
 try:
     from .deps import pygeodiff
 except ImportError:
-    try:
-        import pygeodiff
-    except ImportError:
-        os.environ['GEODIFF_ENABLED'] = 'False'
+    import pygeodiff
 
 
 class MerginProject:
@@ -37,15 +34,6 @@ class MerginProject:
         self.dir = os.path.abspath(directory)
         if not os.path.exists(self.dir):
             raise InvalidProject('Project directory does not exist')
-
-        # make sure we can load correct pygeodiff
-        if os.environ.get('GEODIFF_ENABLED', 'True').lower() == 'true':
-            try:
-                self.geodiff = pygeodiff.GeoDiff()
-            except pygeodiff.geodifflib.GeoDiffLibVersionError:
-                self.geodiff = None
-        else:
-            self.geodiff = None
 
         self.meta_dir = os.path.join(self.dir, '.mergin')
         if not os.path.exists(self.meta_dir):
@@ -61,18 +49,25 @@ class MerginProject:
             log_handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
             self.log.addHandler(log_handler)
 
+        # make sure we can load correct pygeodiff
+        try:
+            self.geodiff = pygeodiff.GeoDiff()
+        except pygeodiff.geodifflib.GeoDiffLibVersionError:
+            # this is a fatal error, we can't live without geodiff
+            self.log.error("Unable to load geodiff! (lib version error)")
+            raise ClientError("Unable to load geodiff library!")
+
         # redirect any geodiff output to our log file
-        if self.geodiff:
-            def _logger_callback(level, text_bytes):
-                text = text_bytes.decode()  # convert bytes to str
-                if level == pygeodiff.GeoDiff.LevelError:
-                    self.log.error("GEODIFF: " + text)
-                elif level == pygeodiff.GeoDiff.LevelWarning:
-                    self.log.warning("GEODIFF: " + text)
-                else:
-                    self.log.info("GEODIFF: " + text)
-            self.geodiff.set_logger_callback(_logger_callback)
-            self.geodiff.set_maximum_logger_level(pygeodiff.GeoDiff.LevelDebug)
+        def _logger_callback(level, text_bytes):
+            text = text_bytes.decode()  # convert bytes to str
+            if level == pygeodiff.GeoDiff.LevelError:
+                self.log.error("GEODIFF: " + text)
+            elif level == pygeodiff.GeoDiff.LevelWarning:
+                self.log.warning("GEODIFF: " + text)
+            else:
+                self.log.info("GEODIFF: " + text)
+        self.geodiff.set_logger_callback(_logger_callback)
+        self.geodiff.set_maximum_logger_level(pygeodiff.GeoDiff.LevelDebug)
 
     def fpath(self, file, other_dir=None):
         """
@@ -116,8 +111,6 @@ class MerginProject:
         :returns: if file is compatible with geodiff lib
         :rtype: bool
         """
-        if not self.geodiff:
-            return False
         diff_extensions = ['.gpkg', '.sqlite']
         f_extension = os.path.splitext(file)[1]
         return f_extension in diff_extensions
@@ -236,14 +229,13 @@ class MerginProject:
         :returns: changes metadata for files to be pulled from server
         :rtype: dict
         """
-        changes = self.compare_file_sets(self.metadata['files'], server_files)
-        if not self.geodiff:
-            self.log.warning("geodiff is not available!")
-            return changes
 
+        # first let's have a look at the added/updated/removed files
+        changes = self.compare_file_sets(self.metadata['files'], server_files)
+
+        # then let's inspect our versioned files (geopackages) if there are any relevant changes
         not_updated = []
         for file in changes['updated']:
-            # for small geodiff files it does not make sense to download diff and then apply it (slow)
             if not self.is_versioned_file(file["path"]):
                 continue
 
@@ -298,10 +290,6 @@ class MerginProject:
                 file["size"] = size
                 file["checksum"] = checksum
             file['chunks'] = [str(uuid.uuid4()) for i in range(math.ceil(file["size"] / UPLOAD_CHUNK_SIZE))]
-
-        if not self.geodiff:
-            self.log.warning("geodiff is not available!")
-            return changes
 
         # need to check for for real changes in geodiff files using geodiff tool (comparing checksum is not enough)
         not_updated = []
@@ -483,8 +471,6 @@ class MerginProject:
         :param changes: metadata for pulled files
         :type changes: dict[str, list[dict]]
         """
-        if not self.geodiff:
-            return
         for k, v in changes.items():
             for item in v:
                 path = item['path']
