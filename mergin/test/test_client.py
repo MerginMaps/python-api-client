@@ -20,10 +20,6 @@ TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'test_
 CHANGED_SCHEMA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'modified_schema')
 
 
-def toggle_geodiff(enabled):
-    os.environ['GEODIFF_ENABLED'] = str(enabled)
-
-
 @pytest.fixture(scope='function')
 def mc():
     return create_client(API_USER, USER_PWD)
@@ -282,19 +278,9 @@ def test_ignore_files(mc):
     assert not next((f for f in project_info['files'] if f['path'] == '.directory'), None)
 
 
-# (diffs size limit, push geodiff enabled, pull geodiff enabled)
-diff_test_scenarios = [
-    (True, True),
-    (True, False),
-    (False, True),
-    (False, False),
-]
+def test_sync_diff(mc):
 
-
-@pytest.mark.parametrize("push_geodiff_enabled, pull_geodiff_enabled", diff_test_scenarios)
-def test_sync_diff(mc, push_geodiff_enabled, pull_geodiff_enabled):
-
-    test_project = f'test_sync_diff_push{int(push_geodiff_enabled)}_pull{int(pull_geodiff_enabled)}'
+    test_project = f'test_sync_diff'
     project = API_USER + '/' + test_project
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
     project_dir_2 = os.path.join(TMP_DIR, test_project + '_2')  # concurrent project dir with no changes
@@ -302,32 +288,24 @@ def test_sync_diff(mc, push_geodiff_enabled, pull_geodiff_enabled):
 
     cleanup(mc, project, [project_dir, project_dir_2, project_dir_3])
     # create remote project
-    toggle_geodiff(push_geodiff_enabled)
     shutil.copytree(TEST_DATA_DIR, project_dir)
     mc.create_project_and_push(test_project, project_dir)
 
     # make sure we have v1 also in concurrent project dirs
-    toggle_geodiff(pull_geodiff_enabled)
     mc.download_project(project, project_dir_2)
     mc.download_project(project, project_dir_3)
 
     # test push changes with diffs:
-    toggle_geodiff(push_geodiff_enabled)
     mp = MerginProject(project_dir)
     f_updated = 'base.gpkg'
     # step 1) base.gpkg updated to inserted_1_A (inserted A feature)
-    if push_geodiff_enabled:
-        shutil.move(mp.fpath(f_updated), mp.fpath_meta(f_updated))  # make local copy for changeset calculation
+    shutil.move(mp.fpath(f_updated), mp.fpath_meta(f_updated))  # make local copy for changeset calculation
     shutil.copy(mp.fpath('inserted_1_A.gpkg'), mp.fpath(f_updated))
     mc.push_project(project_dir)
-    if push_geodiff_enabled:
-        mp.geodiff.create_changeset(mp.fpath(f_updated), mp.fpath_meta(f_updated), mp.fpath_meta('push_diff'))
-        assert not mp.geodiff.has_changes(mp.fpath_meta('push_diff'))
-    else:
-        assert not os.path.exists(mp.fpath_meta(f_updated))
+    mp.geodiff.create_changeset(mp.fpath(f_updated), mp.fpath_meta(f_updated), mp.fpath_meta('push_diff'))
+    assert not mp.geodiff.has_changes(mp.fpath_meta('push_diff'))
     # step 2) base.gpkg updated to inserted_1_A_mod (modified 2 features)
-    if push_geodiff_enabled:
-        shutil.move(mp.fpath(f_updated), mp.fpath_meta(f_updated))
+    shutil.move(mp.fpath(f_updated), mp.fpath_meta(f_updated))
     shutil.copy(mp.fpath('inserted_1_A_mod.gpkg'), mp.fpath(f_updated))
     # introduce some other changes
     f_removed = 'inserted_1_B.gpkg'
@@ -343,48 +321,27 @@ def test_sync_diff(mc, push_geodiff_enabled, pull_geodiff_enabled):
     assert next((f for f in project_info['files'] if f['path'] == 'renamed.gpkg'), None)
     assert not next((f for f in project_info['files'] if f['path'] == f_removed), None)
     assert not os.path.exists(mp.fpath_meta(f_removed))
-    if push_geodiff_enabled:
-        assert 'diff' in f_remote
-        assert os.path.exists(mp.fpath_meta('renamed.gpkg'))
-    else:
-        assert 'diff' not in f_remote
-        assert not os.path.exists(mp.fpath_meta('renamed.gpkg'))
+    assert 'diff' in f_remote
+    assert os.path.exists(mp.fpath_meta('renamed.gpkg'))
 
     # pull project in different directory
-    toggle_geodiff(pull_geodiff_enabled)
     mp2 = MerginProject(project_dir_2)
     mc.pull_project(project_dir_2)
-    if pull_geodiff_enabled:
-        mp2.geodiff.create_changeset(mp.fpath(f_updated), mp2.fpath(f_updated), mp2.fpath_meta('diff'))
-        assert not mp2.geodiff.has_changes(mp2.fpath_meta('diff'))
-    else:
-        server_file_checksum = next((f['checksum'] for f in project_info['files'] if f['path'] == f_updated), '')
-        assert server_file_checksum == generate_checksum(mp2.fpath(f_updated))
+    mp2.geodiff.create_changeset(mp.fpath(f_updated), mp2.fpath(f_updated), mp2.fpath_meta('diff'))
+    assert not mp2.geodiff.has_changes(mp2.fpath_meta('diff'))
 
     # introduce conflict local change (inserted B feature to base)
     mp3 = MerginProject(project_dir_3)
     shutil.copy(mp3.fpath('inserted_1_B.gpkg'), mp3.fpath(f_updated))
     checksum = generate_checksum(mp3.fpath('inserted_1_B.gpkg'))
     mc.pull_project(project_dir_3)
-    if pull_geodiff_enabled:
-        assert not os.path.exists(mp3.fpath('base.gpkg_conflict_copy'))
-    else:
-        assert os.path.exists(mp3.fpath('base.gpkg_conflict_copy'))  #
-        assert generate_checksum(mp3.fpath('base.gpkg_conflict_copy')) == checksum
+    assert not os.path.exists(mp3.fpath('base.gpkg_conflict_copy'))
 
     # push new changes from project_3 and pull in original project
-    toggle_geodiff(push_geodiff_enabled)
     mc.push_project(project_dir_3)
-    toggle_geodiff(pull_geodiff_enabled)
     mc.pull_project(project_dir)
-    if pull_geodiff_enabled:
-        mp3.geodiff.create_changeset(mp.fpath(f_updated), mp3.fpath(f_updated), mp.fpath_meta('diff'))
-        assert not mp3.geodiff.has_changes(mp.fpath_meta('diff'))
-    else:
-        assert os.path.exists(mp.fpath('base.gpkg_conflict_copy'))
-
-    # make sure that we leave geodiff enabled for further tests
-    toggle_geodiff(True)
+    mp3.geodiff.create_changeset(mp.fpath(f_updated), mp3.fpath(f_updated), mp.fpath_meta('diff'))
+    assert not mp3.geodiff.has_changes(mp.fpath_meta('diff'))
 
 
 def test_list_of_push_changes(mc):
@@ -396,7 +353,6 @@ def test_list_of_push_changes(mc):
 
     cleanup(mc, project, [project_dir])
     shutil.copytree(TEST_DATA_DIR, project_dir)
-    toggle_geodiff(True)
     mc.create_project_and_push(test_project, project_dir)
 
     f_updated = 'base.gpkg'
