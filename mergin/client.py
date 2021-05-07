@@ -230,7 +230,7 @@ class MerginClient:
             raise LoginError(e.read().decode("utf-8"))
         except urllib.error.URLError as e:
             # e.g. when DNS resolution fails (no internet connection?)
-            raise ClientError("Error trying to log in: " + str(e))
+            raise ClientError("failure reason: " + str(e.reason))
         self._auth_session = {
             "token": "Bearer %s" % session["token"],
             "expire": dateutil.parser.parse(session["expire"])
