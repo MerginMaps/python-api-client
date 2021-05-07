@@ -466,7 +466,11 @@ class MerginProject:
                         conflicts.append(conflict)
 
                     if k == 'removed':
-                        os.remove(dest)
+                        if os.path.exists(dest):
+                            os.remove(dest)
+                        else:
+                            # the file could be deleted via web interface AND also manually locally -> just log it
+                            self.log.warning(f"File to be removed locally doesn't exist: {dest}")
                         if self.is_versioned_file(path):
                             os.remove(basefile)
                     else:
