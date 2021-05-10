@@ -6,6 +6,7 @@ import pytest
 import pytz
 
 from ..client import MerginClient, ClientError, MerginProject, LoginError
+from ..client_push import push_project_async, push_project_cancel
 from ..utils import generate_checksum
 
 SERVER_URL = os.environ.get('TEST_MERGIN_URL')
@@ -209,6 +210,53 @@ def test_push_pull_changes(mc):
     assert os.path.exists(os.path.join(project_dir_2, f_updated+'_conflict_copy'))
     assert generate_checksum(os.path.join(project_dir_2, f_updated+'_conflict_copy')) == f_conflict_checksum
     assert generate_checksum(os.path.join(project_dir_2, f_updated)) == f_remote_checksum
+
+
+def test_cancel_push(mc):
+    """
+    Start pushing and cancel the process, then try to push again and check if previous sync process was cleanly
+    finished.
+    """
+    test_project = "test_cancel_push"
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project + "_3")  # primary project dir for updates
+
+    cleanup(mc, project, [project_dir])
+    # create remote project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
+
+    # test push changes (add, update)
+    f_added = 'new.txt'
+    with open(os.path.join(project_dir, f_added), 'w') as f:
+        f.write('new file')
+    f_updated = 'test3.txt'
+    with open(os.path.join(project_dir, f_updated), 'w') as f:
+        f.write('Modified')
+
+    # check changes before applied
+    pull_changes, push_changes, _ = mc.project_status(project_dir)
+    assert not sum(len(v) for v in pull_changes.values())
+    assert next((f for f in push_changes['added'] if f['path'] == f_added), None)
+    assert next((f for f in push_changes['updated'] if f['path'] == f_updated), None)
+
+    # start pushing and then cancel the job
+    job = push_project_async(mc, project_dir)
+    push_project_cancel(job)
+
+    # if cancelled properly, we should be now able to do the push without any problem
+    mc.push_project(project_dir)
+    project_info = mc.project_info(project)
+    assert project_info['version'] == 'v2'
+    assert next((f for f in project_info['files'] if f['path'] == f_added), None)
+    f_remote_checksum = next((f['checksum'] for f in project_info['files'] if f['path'] == f_updated), None)
+    assert generate_checksum(os.path.join(project_dir, f_updated)) == f_remote_checksum
+    mp = MerginProject(project_dir)
+    assert len(project_info['files']) == len(mp.inspect_files())
+    project_versions = mc.project_versions(project)
+    assert len(project_versions) == 2
+    f_change = next((f for f in project_versions[0]['changes']['updated'] if f['path'] == f_updated), None)
+    assert 'origin_checksum' not in f_change  # internal client info
 
 
 def test_ignore_files(mc):

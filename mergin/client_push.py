@@ -259,11 +259,15 @@ def push_project_cancel(job):
     To be called (from main thread) to cancel a job that has uploads in progress.
     Returns once all background tasks have exited (may block for a bit of time).
     """
-    
+
+    job.mp.log.info("user canceled the push...")
     # set job as cancelled
     job.is_cancelled = True
-
     job.executor.shutdown(wait=True)
+
+    resp_cancel = job.mc.post("/v1/project/push/cancel/%s" % job.transaction_id)
+    server_resp_cancel = json.load(resp_cancel)
+    job.mp.log.info("--- push cancel response: " + str(server_resp_cancel))
 
 
 def _do_upload(item, job):

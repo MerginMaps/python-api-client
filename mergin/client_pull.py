@@ -213,12 +213,11 @@ def download_project_cancel(job):
     To be called (from main thread) to cancel a job that has downloads in progress.
     Returns once all background tasks have exited (may block for a bit of time).
     """
-    
+    job.mp.log.info("user cancelled downloading...")
     # set job as cancelled
     job.is_cancelled = True
-
     job.executor.shutdown(wait=True)
-
+    job.mp.log.info("--- download cancelled")
 
 
 class UpdateTask:
@@ -455,11 +454,11 @@ def pull_project_cancel(job):
     To be called (from main thread) to cancel a job that has downloads in progress.
     Returns once all background tasks have exited (may block for a bit of time).
     """
-    
+    job.mp.log.info("user cancelled the pull...")
     # set job as cancelled
     job.is_cancelled = True
-
     job.executor.shutdown(wait=True)
+    job.mp.log.info("--- pull cancelled")
 
 
 class FileToMerge:
