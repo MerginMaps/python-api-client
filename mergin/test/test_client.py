@@ -736,3 +736,31 @@ def test_paginated_project_list(mc):
     assert len(projects) == 2
     for i, project in enumerate(projects):
         assert project["name"] == sorted_test_names[i+2]
+
+
+def test_missing_local_file_pull(mc):
+    """Test pull of a project where a file deleted in the service is missing for some reason."""
+
+    test_project = "test_dir"
+    file_to_remove = "test2.txt"
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project + "_5")  # primary project dir for updates
+    project_dir_2 = os.path.join(TMP_DIR, test_project + "_6")  # concurrent project dir
+    test_data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "test_data", test_project)
+
+    cleanup(mc, project, [project_dir, project_dir_2])
+    # create remote project
+    shutil.copytree(test_data_dir, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
+
+    # remove a file in a different directory
+    mc.download_project(project, project_dir_2)
+    os.remove(os.path.join(project_dir_2, file_to_remove))
+    mc.push_project(project_dir_2)
+
+    # manually remove the file also locally in the original project dir
+    os.remove(os.path.join(project_dir, file_to_remove))
+
+    # try to sync again  -- it should not crash
+    mc.pull_project(project_dir)
+    mc.push_project(project_dir)
