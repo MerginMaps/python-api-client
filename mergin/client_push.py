@@ -263,6 +263,7 @@ def push_project_cancel(job):
     job.mp.log.info("user cancelled the push...")
     # set job as cancelled
     job.is_cancelled = True
+
     job.executor.shutdown(wait=True)
     try:
         resp_cancel = job.mc.post("/v1/project/push/cancel/%s" % job.transaction_id)
