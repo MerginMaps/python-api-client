@@ -260,14 +260,17 @@ def push_project_cancel(job):
     Returns once all background tasks have exited (may block for a bit of time).
     """
 
-    job.mp.log.info("user canceled the push...")
+    job.mp.log.info("user cancelled the push...")
     # set job as cancelled
     job.is_cancelled = True
     job.executor.shutdown(wait=True)
-
-    resp_cancel = job.mc.post("/v1/project/push/cancel/%s" % job.transaction_id)
-    server_resp_cancel = json.load(resp_cancel)
-    job.mp.log.info("--- push cancel response: " + str(server_resp_cancel))
+    try:
+        resp_cancel = job.mc.post("/v1/project/push/cancel/%s" % job.transaction_id)
+        job.server_resp = json.load(resp_cancel)
+    except ClientError as err:
+        job.mp.log.error("--- push cancelling failed! " + str(err))
+        raise err
+    job.mp.log.info("--- push cancel response: " + str(job.server_resp))
 
 
 def _do_upload(item, job):

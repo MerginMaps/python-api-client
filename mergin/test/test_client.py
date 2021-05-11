@@ -220,19 +220,20 @@ def test_cancel_push(mc):
     test_project = "test_cancel_push"
     project = API_USER + '/' + test_project
     project_dir = os.path.join(TMP_DIR, test_project + "_3")  # primary project dir for updates
-
-    cleanup(mc, project, [project_dir])
+    project_dir_2 = os.path.join(TMP_DIR, test_project + "_4")
+    cleanup(mc, project, [project_dir, project_dir_2])
     # create remote project
     shutil.copytree(TEST_DATA_DIR, project_dir)
     mc.create_project_and_push(test_project, project_dir)
 
-    # test push changes (add, update)
+    # modify the project (add, update)
     f_added = 'new.txt'
     with open(os.path.join(project_dir, f_added), 'w') as f:
-        f.write('new file')
-    f_updated = 'test3.txt'
+        f.write("new file")
+    f_updated = "test3.txt"
+    modification = "Modified"
     with open(os.path.join(project_dir, f_updated), 'w') as f:
-        f.write('Modified')
+        f.write(modification)
 
     # check changes before applied
     pull_changes, push_changes, _ = mc.project_status(project_dir)
@@ -246,17 +247,14 @@ def test_cancel_push(mc):
 
     # if cancelled properly, we should be now able to do the push without any problem
     mc.push_project(project_dir)
-    project_info = mc.project_info(project)
-    assert project_info['version'] == 'v2'
-    assert next((f for f in project_info['files'] if f['path'] == f_added), None)
-    f_remote_checksum = next((f['checksum'] for f in project_info['files'] if f['path'] == f_updated), None)
-    assert generate_checksum(os.path.join(project_dir, f_updated)) == f_remote_checksum
-    mp = MerginProject(project_dir)
-    assert len(project_info['files']) == len(mp.inspect_files())
-    project_versions = mc.project_versions(project)
-    assert len(project_versions) == 2
-    f_change = next((f for f in project_versions[0]['changes']['updated'] if f['path'] == f_updated), None)
-    assert 'origin_checksum' not in f_change  # internal client info
+
+    # download the project to a different directory and check the version and content
+    mc.download_project(project, project_dir_2)
+    mp = MerginProject(project_dir_2)
+    assert mp.metadata["version"] == 'v2'
+    assert os.path.exists(os.path.join(project_dir_2, f_added))
+    with open(os.path.join(project_dir_2, f_updated), 'r') as f:
+        assert f.read() == modification
 
 
 def test_ignore_files(mc):
