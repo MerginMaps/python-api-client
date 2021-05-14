@@ -55,24 +55,23 @@ class UploadQueueItem:
     
     def upload_blocking(self, mc, mp):
         
-        file_handle = open(self.file_path, 'rb')
-        file_handle.seek(self.chunk_index * UPLOAD_CHUNK_SIZE)
-        data = file_handle.read(UPLOAD_CHUNK_SIZE)
+        with open(self.file_path, 'rb') as file_handle:
+            file_handle.seek(self.chunk_index * UPLOAD_CHUNK_SIZE)
+            data = file_handle.read(UPLOAD_CHUNK_SIZE)
+
+            checksum = hashlib.sha1()
+            checksum.update(data)
+
+            mp.log.debug(f"Uploading {self.file_path} part={self.chunk_index}")
+
+            headers = {"Content-Type": "application/octet-stream"}
+            resp = mc.post("/v1/project/push/chunk/{}/{}".format(self.transaction_id, self.chunk_id), data, headers)
+            resp_dict = json.load(resp)
+            mp.log.debug(f"Upload finished: {self.file_path}")
+            if not (resp_dict['size'] == len(data) and resp_dict['checksum'] == checksum.hexdigest()):
+                mc.post("/v1/project/push/cancel/{}".format(self.transaction_id))
+                raise ClientError("Mismatch between uploaded file chunk {} and local one".format(self.chunk_id))
         
-        checksum = hashlib.sha1()
-        checksum.update(data)
-
-        mp.log.debug(f"Uploading {self.file_path} part={self.chunk_index}")
-
-        headers = {"Content-Type": "application/octet-stream"}
-        resp = mc.post("/v1/project/push/chunk/{}/{}".format(self.transaction_id, self.chunk_id), data, headers)
-        resp_dict = json.load(resp)
-        mp.log.debug(f"Upload finished: {self.file_path}")
-        if not (resp_dict['size'] == len(data) and resp_dict['checksum'] == checksum.hexdigest()):
-            mc.post("/v1/project/push/cancel/{}".format(self.transaction_id))
-            raise ClientError("Mismatch between uploaded file chunk {} and local one".format(self.chunk_id))
-        
-
 
 def push_project_async(mc, directory):
     """ Starts push of a project and returns pending upload job """
@@ -173,7 +172,6 @@ def push_project_async(mc, directory):
         job.futures.append(future)
 
     return job
-
 
 
 def push_project_wait(job):
