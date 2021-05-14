@@ -38,9 +38,8 @@ def decode_token_data(token):
 
 
 class MerginClient:
-    def __init__(self, url=None, auth_token=None, login=None, password=None, plugin_version=None):
+    def __init__(self, url=None, auth_token=None, login=None, password=None, plugin_version=None, proxy_config=None):
         self.url = url if url is not None else MerginClient.default_url()
-
         self._auth_params = None
         self._auth_session = None
         self._user_info = None
@@ -57,13 +56,32 @@ class MerginClient:
                 "username": token_data["username"]
             }
 
+        # Setup proxy handler, if needed
+        proxy_handler = None
+        auth_handler = None
+        if proxy_config is not None:
+            proxy_url_parsed = urllib.parse.urlparse(proxy_config['url'])
+            proxy_url = proxy_url_parsed.path
+            if proxy_config["user"] and proxy_config["password"]:
+                proxy_handler = urllib.request.ProxyHandler({
+                    "https": f"{proxy_config['user']}:{proxy_config['password']}@{proxy_url}:{proxy_config['port']}"
+                })
+                auth_handler = urllib.request.HTTPBasicAuthHandler()
+            else:
+                proxy_handler = urllib.request.ProxyHandler({"https": f"{proxy_url}:{proxy_config['port']}"})
+        handlers = []
+        if proxy_handler is not None:
+            handlers.append(proxy_handler)
+        if auth_handler is not None:
+            handlers.append(auth_handler)
+
         # fix for wrong macos installation of python certificates,
         # see https://github.com/lutraconsulting/qgis-mergin-plugin/issues/70
         # remove when https://github.com/qgis/QGIS-Mac-Packager/issues/32
         # is fixed.
         default_capath = ssl.get_default_verify_paths().openssl_capath
         if os.path.exists(default_capath):
-            self.opener = urllib.request.build_opener()
+            self.opener = urllib.request.build_opener(*handlers, urllib.request.HTTPSHandler())
         else:
             cafile = os.path.join(this_dir, 'cert.pem')
             if not os.path.exists(cafile):
@@ -71,7 +89,7 @@ class MerginClient:
             ctx = ssl.SSLContext()
             ctx.load_verify_locations(cafile)
             https_handler = urllib.request.HTTPSHandler(context=ctx)
-            self.opener = urllib.request.build_opener(https_handler)
+            self.opener = urllib.request.build_opener(*handlers, https_handler)
         urllib.request.install_opener(self.opener)
 
         if login and not password:
@@ -90,7 +108,7 @@ class MerginClient:
     @staticmethod
     def default_url():
         """ Returns URL of the public instance of Mergin """
-        return 'https://public.cloudmergin.com'
+        return "https://public.cloudmergin.com"
 
     def user_agent_info(self):
         """ Returns string as it is sent as User-Agent http header to the server """
