@@ -48,6 +48,7 @@ class MerginClient:
                 self._auth_session = {"token": auth_token, "expire": dateutil.parser.parse(token_data["expire"])}
                 self._user_info = {"username": token_data["username"]}
             except (ClientError, KeyError):
+                raise ClientError("Invalid token data")
                 pass  # Invalid token data - ignore it
         handlers = []
 
@@ -120,9 +121,9 @@ class MerginClient:
         def wrapper(self, *args):
             if self._auth_params:
                 if self._auth_session:
-                    # Refresh auth token if it expired or expires very soon
+                    # Refresh auth token if it expired or will expire very soon
                     delta = self._auth_session["expire"] - datetime.now(timezone.utc)
-                    if delta.total_seconds() < 24 * 3600:
+                    if delta.total_seconds() < 5:
                         self.login(self._auth_params["login"], self._auth_params["password"])
                 else:
                     # Create a new authorization token
