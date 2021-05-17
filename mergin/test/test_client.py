@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import pytest
 import pytz
 
-from ..client import MerginClient, ClientError, MerginProject, LoginError
+from ..client import MerginClient, ClientError, MerginProject, LoginError, decode_token_data
 from ..client_push import push_project_async, push_project_cancel
 from ..utils import generate_checksum
 
@@ -58,8 +58,8 @@ def test_login(mc):
     token = mc._auth_session['token']
     assert MerginClient(mc.url, auth_token=token)
 
-    with pytest.raises(ValueError, match='Invalid token data'):
-        MerginClient(mc.url, auth_token='Bearer .jas646kgfa')
+    with pytest.raises(ClientError, match='Invalid token data'):
+        decode_token_data("Bearer .jas646kgfa")
 
     with pytest.raises(LoginError, match='Invalid username or password'):
         mc.login('foo', 'bar')
@@ -401,10 +401,20 @@ def test_list_of_push_changes(mc):
     pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
     assert str(push_changes_summary) == PUSH_CHANGES_SUMMARY
 
+
+def test_token_renewal(mc):
+    test_project = 'test_token_renewal'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
+
+    cleanup(mc, project, [project_dir])
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
+
     mc._auth_session["expire"] = datetime.now().replace(tzinfo=pytz.utc) - timedelta(days=1)
-    mc._auth_params = None
-    with pytest.raises(ClientError, match="You do not have permissions for this project"):
-        mc.project_status(project_dir)
+    pull_changes, push_changes, _ = mc.project_status(project_dir)
+    to_expire = mc._auth_session["expire"] - datetime.now().replace(tzinfo=pytz.utc)
+    assert to_expire.total_seconds() > (9 * 3600)
 
 
 def test_force_gpkg_update(mc):
