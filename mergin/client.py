@@ -18,23 +18,7 @@ from .client_push import push_project_async, push_project_wait, push_project_fin
 from .utils import DateTimeEncoder
 from .version import __version__
 
-
 this_dir = os.path.dirname(os.path.realpath(__file__))
-
-
-def decode_token_data(token):
-    token_prefix = "Bearer ."
-    if not token.startswith(token_prefix):
-        raise ValueError("Invalid token type")
-
-    try:
-        data = token[len(token_prefix):].split('.')[0]
-        # add proper base64 padding"
-        data += "=" * (-len(data) % 4)
-        decoded = zlib.decompress(base64.urlsafe_b64decode(data))
-        return json.loads(decoded)
-    except (IndexError, TypeError, ValueError, zlib.error):
-        raise ValueError("Invalid token data")
 
 
 class MerginClient:
@@ -59,14 +43,12 @@ class MerginClient:
         if plugin_version is not None:   # this could be e.g. "Plugin/2020.1 QGIS/3.14"
             self.client_version += " " + plugin_version
         if auth_token:
-            token_data = decode_token_data(auth_token)
-            self._auth_session = {
-                "token": auth_token,
-                "expire": dateutil.parser.parse(token_data["expire"])
-            }
-            self._user_info = {
-                "username": token_data["username"]
-            }
+            try:
+                token_data = decode_token_data(auth_token)
+                self._auth_session = {"token": auth_token, "expire": dateutil.parser.parse(token_data["expire"])}
+                self._user_info = {"username": token_data["username"]}
+            except (ClientError, KeyError):
+                pass  # Invalid token data - ignore it
         handlers = []
 
         # Create handlers for proxy, if needed
@@ -134,24 +116,25 @@ class MerginClient:
         return f"{self.client_version} ({platform.system()}/{system_version})"
 
     def _check_token(f):
+        """Wrapper for creating/renewing authorization token."""
         def wrapper(self, *args):
-            if (not self._auth_session or self._auth_session['expire'] < datetime.now(timezone.utc)) and self._auth_params:
-                self.login(self._auth_params['login'], self._auth_params['password'])
+            if self._auth_params:
+                if self._auth_session:
+                    # Refresh auth token if it expired or expires very soon
+                    delta = self._auth_session["expire"] - datetime.now(timezone.utc)
+                    if delta.total_seconds() < 24 * 3600:
+                        self.login(self._auth_params["login"], self._auth_params["password"])
+                else:
+                    # Create a new authorization token
+                    self.login(self._auth_params['login'], self._auth_params['password'])
             return f(self, *args)
         return wrapper
 
     @_check_token
     def _do_request(self, request):
+        """General server request method."""
         if self._auth_session:
-            delta = self._auth_session["expire"] - datetime.now(timezone.utc)
-            if delta.total_seconds() < 1:
-                self._auth_session = None
-                # Refresh auth token when login credentials are available
-                if self._auth_params:
-                    self.login(self._auth_params["login"], self._auth_params["password"])
-
-            if self._auth_session:
-                request.add_header("Authorization", self._auth_session["token"])
+            request.add_header("Authorization", self._auth_session["token"])
         request.add_header("User-Agent", self.user_agent_info())
         try:
             return self.opener.open(request)
@@ -240,6 +223,7 @@ class MerginClient:
             "login": login,
             "password": password
         }
+        self._auth_session = None
         try:
             self._auth_params = params
             url = urllib.parse.urljoin(self.url, urllib.parse.quote("/v1/auth/login"))
@@ -480,7 +464,6 @@ class MerginClient:
             detail = f"Project path: {project_path}"
             raise ClientError(str(e), detail)
 
-
     def push_project(self, directory):
         """
         Upload local changes to the repository.
@@ -593,3 +576,17 @@ class MerginClient:
 
         resp = self.post("/v1/project/by_names", {"projects": projects}, {"Content-Type": "application/json"})
         return json.load(resp)
+
+
+def decode_token_data(token):
+    token_prefix = "Bearer ."
+    if not token.startswith(token_prefix):
+        raise ClientError("Invalid token type")
+    try:
+        data = token[len(token_prefix):].split('.')[0]
+        # add proper base64 padding"
+        data += "=" * (-len(data) % 4)
+        decoded = zlib.decompress(base64.urlsafe_b64decode(data))
+        return json.loads(decoded)
+    except (IndexError, TypeError, ValueError, zlib.error):
+        raise ClientError("Invalid token data")
