@@ -52,7 +52,7 @@ class MerginProject:
             os.mkdir(self.meta_dir)
 
         # setup logging into project directory's .mergin/client-log.txt file
-        self.log = logging.getLogger('mergin.' + directory)
+        self.log = logging.getLogger('mergin.project.' + directory)
         self.log.setLevel(logging.DEBUG)   # log everything (it would otherwise log just warnings+errors)
         if not self.log.handlers:
             # we only need to set the handler once
