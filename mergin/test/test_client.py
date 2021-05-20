@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import pytest
 import pytz
 
-from ..client import MerginClient, ClientError, MerginProject, LoginError, decode_token_data
+from ..client import MerginClient, ClientError, MerginProject, LoginError, decode_token_data, TokenError
 from ..client_push import push_project_async, push_project_cancel
 from ..utils import generate_checksum
 
@@ -58,8 +58,9 @@ def test_login(mc):
     token = mc._auth_session['token']
     assert MerginClient(mc.url, auth_token=token)
 
-    with pytest.raises(ClientError, match='Invalid token data'):
-        decode_token_data("Bearer .jas646kgfa")
+    invalid_token = "Bearer .jas646kgfa"
+    with pytest.raises(TokenError, match=f"Invalid token data: {invalid_token}"):
+        decode_token_data(invalid_token)
 
     with pytest.raises(LoginError, match='Invalid username or password'):
         mc.login('foo', 'bar')

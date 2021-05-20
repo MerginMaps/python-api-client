@@ -1,3 +1,5 @@
+import logging
+from logging.handlers import RotatingFileHandler
 import os
 import json
 import zlib
@@ -21,6 +23,24 @@ from .version import __version__
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
 
+class TokenError(Exception):
+    pass
+
+
+def decode_token_data(token):
+    token_prefix = "Bearer ."
+    if not token.startswith(token_prefix):
+        raise TokenError(f"Token doesn't start with 'Bearer .': {token}")
+    try:
+        data = token[len(token_prefix):].split('.')[0]
+        # add proper base64 padding"
+        data += "=" * (-len(data) % 4)
+        decoded = zlib.decompress(base64.urlsafe_b64decode(data))
+        return json.loads(decoded)
+    except (IndexError, TypeError, ValueError, zlib.error):
+        raise TokenError(f"Invalid token data: {token}")
+
+
 class MerginClient:
     """
     Client for Mergin service.
@@ -42,14 +62,14 @@ class MerginClient:
         self.client_version = "Python-client/" + __version__
         if plugin_version is not None:   # this could be e.g. "Plugin/2020.1 QGIS/3.14"
             self.client_version += " " + plugin_version
+        self.setup_logging()
         if auth_token:
             try:
                 token_data = decode_token_data(auth_token)
                 self._auth_session = {"token": auth_token, "expire": dateutil.parser.parse(token_data["expire"])}
                 self._user_info = {"username": token_data["username"]}
-            except (ClientError, KeyError):
-                raise ClientError("Invalid token data")
-                pass  # Invalid token data - ignore it
+            except TokenError as e:
+                self.log.error(e)
         handlers = []
 
         # Create handlers for proxy, if needed
@@ -95,6 +115,21 @@ class MerginClient:
             }
             if not self._auth_session:
                 self.login(login, password)
+
+    def setup_logging(self):
+        """Setup Mergin client logging."""
+        client_log_file = os.environ.get('MERGIN_CLIENT_LOG', None)
+        self.log = logging.getLogger('mergin.client')
+        self.log.setLevel(logging.DEBUG)  # log everything (it would otherwise log just warnings+errors)
+        if not self.log.handlers:
+            if client_log_file:
+                log_handler = RotatingFileHandler(client_log_file, maxBytes=50*1024, backupCount=2)
+                log_handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
+                self.log.addHandler(log_handler)
+            else:
+                # no Mergin log path in the environment - create a null handler that does nothing
+                null_logger = logging.NullHandler()
+                self.log.addHandler(null_logger)
 
     @staticmethod
     def default_url():
@@ -237,6 +272,7 @@ class MerginClient:
         except urllib.error.HTTPError as e:
             if e.headers.get("Content-Type", "") == "application/problem+json":
                 info = json.load(e)
+                self.log.info(f"Login problem: {info.get('detail')}")
                 raise LoginError(info.get("detail"))
             raise LoginError(e.read().decode("utf-8"))
         except urllib.error.URLError as e:
@@ -577,17 +613,3 @@ class MerginClient:
 
         resp = self.post("/v1/project/by_names", {"projects": projects}, {"Content-Type": "application/json"})
         return json.load(resp)
-
-
-def decode_token_data(token):
-    token_prefix = "Bearer ."
-    if not token.startswith(token_prefix):
-        raise ClientError("Invalid token type")
-    try:
-        data = token[len(token_prefix):].split('.')[0]
-        # add proper base64 padding"
-        data += "=" * (-len(data) % 4)
-        decoded = zlib.decompress(base64.urlsafe_b64decode(data))
-        return json.loads(decoded)
-    except (IndexError, TypeError, ValueError, zlib.error):
-        raise ClientError("Invalid token data")
