@@ -123,7 +123,7 @@ class MerginClient:
         self.log.setLevel(logging.DEBUG)  # log everything (it would otherwise log just warnings+errors)
         if not self.log.handlers:
             if client_log_file:
-                log_handler = RotatingFileHandler(client_log_file, maxBytes=50*1024, backupCount=2)
+                log_handler = logging.FileHandler(client_log_file)
                 log_handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
                 self.log.addHandler(log_handler)
             else:
@@ -159,9 +159,11 @@ class MerginClient:
                     # Refresh auth token if it expired or will expire very soon
                     delta = self._auth_session["expire"] - datetime.now(timezone.utc)
                     if delta.total_seconds() < 5:
+                        self.log.info("Token has expired - refreshing...")
                         self.login(self._auth_params["login"], self._auth_params["password"])
                 else:
                     # Create a new authorization token
+                    self.log.info(f"No token - login user: {self._auth_params['login']}")
                     self.login(self._auth_params['login'], self._auth_params['password'])
             return f(self, *args)
         return wrapper
@@ -260,6 +262,7 @@ class MerginClient:
             "password": password
         }
         self._auth_session = None
+        self.log.info(f"Going to log in user {login}")
         try:
             self._auth_params = params
             url = urllib.parse.urljoin(self.url, urllib.parse.quote("/v1/auth/login"))
@@ -285,6 +288,7 @@ class MerginClient:
         self._user_info = {
             "username": data["username"]
         }
+        self.log.info(f"User {data['username']} successfully logged in.")
         return session
 
     def username(self):

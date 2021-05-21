@@ -58,6 +58,10 @@ def test_login(mc):
     token = mc._auth_session['token']
     assert MerginClient(mc.url, auth_token=token)
 
+    invalid_token = "Completely invalid token...."
+    with pytest.raises(TokenError, match=f"Token doesn't start with 'Bearer .': {invalid_token}"):
+        decode_token_data(invalid_token)
+
     invalid_token = "Bearer .jas646kgfa"
     with pytest.raises(TokenError, match=f"Invalid token data: {invalid_token}"):
         decode_token_data(invalid_token)
@@ -404,6 +408,7 @@ def test_list_of_push_changes(mc):
 
 
 def test_token_renewal(mc):
+    """Test token regeneration in case it has expired."""
     test_project = 'test_token_renewal'
     project = API_USER + '/' + test_project
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
