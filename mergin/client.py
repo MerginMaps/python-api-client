@@ -1,5 +1,4 @@
 import logging
-from logging.handlers import RotatingFileHandler
 import os
 import json
 import zlib
@@ -277,6 +276,7 @@ class MerginClient:
                 info = json.load(e)
                 self.log.info(f"Login problem: {info.get('detail')}")
                 raise LoginError(info.get("detail"))
+            self.log.info(f"Login problem: {e.read().decode('utf-8')}")
             raise LoginError(e.read().decode("utf-8"))
         except urllib.error.URLError as e:
             # e.g. when DNS resolution fails (no internet connection?)
