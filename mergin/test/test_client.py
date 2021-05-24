@@ -1,3 +1,4 @@
+import logging
 import os
 import tempfile
 import shutil
@@ -826,3 +827,25 @@ def test_missing_local_file_pull(mc):
     # try to sync again  -- it should not crash
     mc.pull_project(project_dir)
     mc.push_project(project_dir)
+
+
+def test_logging(mc):
+    """Test logger creation with and w/out the env variable for log file."""
+    assert isinstance(mc.log.handlers[0], logging.NullHandler)
+    mc.log.info("Test info log...")
+    # remove the Null handler and set the env variable with the global log file path
+    mc.log.handlers = []
+    os.environ['MERGIN_CLIENT_LOG'] = os.path.join(TMP_DIR, 'global-mergin-log.txt')
+    assert os.environ.get('MERGIN_CLIENT_LOG', None) is not None
+    token = mc._auth_session['token']
+    mc1 = MerginClient(mc.url, auth_token=token)
+    assert isinstance(mc1.log.handlers[0], logging.FileHandler)
+    mc1.log.info("Test log info to the log file...")
+    # cleanup
+    mc.log.handlers = []
+    del os.environ['MERGIN_CLIENT_LOG']
+
+
+def test_server_compatibility(mc):
+    """Test server compatibility."""
+    assert mc.is_server_compatible()
