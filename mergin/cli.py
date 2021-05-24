@@ -395,7 +395,7 @@ def remove(project):
     """Remove project from server and locally (if exists)."""
     local_info = None
     if not project:
-        from mergin.client import inspect_project
+        from mergin.client import inspect_project  # TODO: no inspect_project defined in the client!
         try:
             local_info = inspect_project(os.path.join(os.getcwd()))
             project = local_info['name']

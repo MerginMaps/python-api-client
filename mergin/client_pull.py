@@ -87,12 +87,16 @@ def _do_download(item, mc, mp, project_path, job):
     job.transferred_size += item.size
 
 
-def _cleanup_failed_download(directory):
+def _cleanup_failed_download(directory, mergin_project=None):
     """
     If a download job fails, there will be the newly created directory left behind with some
     temporary files in it. We want to remove it because a new download would fail because
     the directory already exists.
     """
+    # First try to get the Mergin project logger and remove its handlers to allow the log file deletion
+    if mergin_project is not None:
+        mergin_project.remove_logging_handler()
+
     shutil.rmtree(directory)
 
 
@@ -116,7 +120,7 @@ def download_project_async(mc, project_path, directory, project_version=None):
     try:
         project_info = mc.project_info(project_path, version=project_version)
     except ClientError:
-        _cleanup_failed_download(directory)
+        _cleanup_failed_download(directory, mp)
         raise
 
     version = project_info['version'] if project_info['version'] else 'v0'
@@ -167,7 +171,7 @@ def download_project_is_running(job):
     """
     for future in job.futures:
         if future.done() and future.exception() is not None:
-            _cleanup_failed_download(job.directory)
+            _cleanup_failed_download(job.directory, job.mp)
             raise future.exception()
         if future.running():
             return True
@@ -189,7 +193,7 @@ def download_project_finalize(job):
     # make sure any exceptions from threads are not lost
     for future in job.futures:
         if future.exception() is not None:
-            _cleanup_failed_download(job.directory)
+            _cleanup_failed_download(job.directory, job.mp)
             raise future.exception()
 
     job.mp.log.info("--- download finished")

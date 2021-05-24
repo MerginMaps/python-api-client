@@ -51,15 +51,7 @@ class MerginProject:
         if not os.path.exists(self.meta_dir):
             os.mkdir(self.meta_dir)
 
-        # setup logging into project directory's .mergin/client-log.txt file
-        self.log = logging.getLogger('mergin.project.' + directory)
-        self.log.setLevel(logging.DEBUG)   # log everything (it would otherwise log just warnings+errors)
-        if not self.log.handlers:
-            # we only need to set the handler once
-            # (otherwise we would get things logged multiple times as loggers are cached)
-            log_handler = logging.FileHandler(os.path.join(self.meta_dir, "client-log.txt"))
-            log_handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
-            self.log.addHandler(log_handler)
+        self.setup_logging(directory)
 
         # redirect any geodiff output to our log file
         if self.geodiff:
@@ -73,6 +65,25 @@ class MerginProject:
                     self.log.info("GEODIFF: " + text)
             self.geodiff.set_logger_callback(_logger_callback)
             self.geodiff.set_maximum_logger_level(pygeodiff.GeoDiff.LevelDebug)
+
+    def setup_logging(self, logger_name):
+        """Setup logging into project directory's .mergin/client-log.txt file."""
+        self.log = logging.getLogger('mergin.project.' + logger_name)
+        self.log.setLevel(logging.DEBUG)  # log everything (it would otherwise log just warnings+errors)
+        if not self.log.handlers:
+            # we only need to set the handler once
+            # (otherwise we would get things logged multiple times as loggers are cached)
+            log_handler = logging.FileHandler(os.path.join(self.meta_dir, "client-log.txt"))
+            log_handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
+            self.log.addHandler(log_handler)
+
+    def remove_logging_handler(self):
+        """Check if there is a logger handler defined for the project and remove it. There should be only one."""
+        if len(self.log.handlers) > 0:
+            handler = self.log.handlers[0]
+            self.log.removeHandler(handler)
+            handler.flush()
+            handler.close()
 
     def fpath(self, file, other_dir=None):
         """
