@@ -85,7 +85,7 @@ def pretty_summary(summary):
         )
 
 
-def get_token(url, username, password, show_token=True):
+def get_token(url, username, password):
     """Get authorization token for given user and password."""
     mc = MerginClient(url)
     if not mc.is_server_compatible():
@@ -96,15 +96,17 @@ def get_token(url, username, password, show_token=True):
     except LoginError as e:
         click.secho("Unable to log in: " + str(e), fg="red")
         return None
-    if show_token:
-        click.secho(f'To set the MERGIN_AUTH variable run:\nexport MERGIN_AUTH="{session["token"]}"')
     return session["token"]
 
 
 def get_client(url=None, auth_token=None, username=None, password=None):
     """Return Mergin client."""
     if auth_token is not None:
-        mc = MerginClient(url, auth_token=f"Bearer {auth_token}")
+        try:
+            mc = MerginClient(url, auth_token=auth_token)
+        except ClientError as e:
+            click.secho(str(e), fg="red")
+            return None
         # Check if the token has expired or is just about to expire
         delta = mc._auth_session["expire"] - datetime.now(timezone.utc)
         if delta.total_seconds() > 5:
@@ -164,6 +166,8 @@ def login(ctx):
     mc = ctx.obj["client"]
     if mc is not None:
         click.secho("Login successful!", fg="green")
+        token = mc._auth_session["token"]
+        click.secho(f'To set the MERGIN_AUTH variable run:\nexport MERGIN_AUTH="{token}"')
 
 
 @cli.command()

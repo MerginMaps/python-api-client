@@ -69,6 +69,7 @@ class MerginClient:
                 self._user_info = {"username": token_data["username"]}
             except TokenError as e:
                 self.log.error(e)
+                raise ClientError("Auth token error: " + str(e))
         handlers = []
 
         # Create handlers for proxy, if needed
