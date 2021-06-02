@@ -40,7 +40,7 @@ def decode_token_data(token):
         raise TokenError(f"Invalid token data: {token}")
 
 
-class MerginClient(object):
+class MerginClient():
     """
     Client for Mergin service.
 
