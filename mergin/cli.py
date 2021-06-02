@@ -423,6 +423,8 @@ def clone(ctx, source_project_path, cloned_project_name, cloned_project_namespac
     try:
         mc.clone_project(source_project_path, cloned_project_name, cloned_project_namespace)
         click.echo("Done")
+    except ClientError as e:
+        click.secho("Error: " + str(e), fg="red")
     except Exception as e:
         _print_unhandled_exception()
 
@@ -449,6 +451,8 @@ def remove(ctx, project):
     try:
         mc.delete_project(f"{namespace}/{project}")
         click.echo("Remote project removed")
+    except ClientError as e:
+        click.secho("Error: " + str(e), fg="red")
     except Exception as e:
         _print_unhandled_exception()
 
