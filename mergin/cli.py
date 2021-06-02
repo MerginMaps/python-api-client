@@ -85,7 +85,7 @@ def pretty_summary(summary):
         )
 
 
-def get_token(url, username, password, show_token=False):
+def get_token(url, username, password, show_token=True):
     """Get authorization token for given user and password."""
     mc = MerginClient(url)
     if not mc.is_server_compatible():
@@ -97,24 +97,22 @@ def get_token(url, username, password, show_token=False):
         click.secho("Unable to log in: " + str(e), fg="red")
         return None
     if show_token:
-        click.secho(f'export MERGIN_AUTH="{session["token"]}"')
-    else:
-        click.secho(f"auth_token created (use --show_token option to see the token).")
+        click.secho(f'To set the MERGIN_AUTH variable run:\nexport MERGIN_AUTH="{session["token"]}"')
     return session["token"]
 
 
-def get_client(url=None, auth_token=None, username=None, password=None, show_token=False):
+def get_client(url=None, auth_token=None, username=None, password=None):
     """Return Mergin client."""
     if auth_token is not None:
         mc = MerginClient(url, auth_token=f"Bearer {auth_token}")
         # Check if the token has expired or is just about to expire
         delta = mc._auth_session["expire"] - datetime.now(timezone.utc)
         if delta.total_seconds() > 5:
-            if show_token:
-                click.secho(f'export MERGIN_AUTH="{auth_token}"')
             return mc
     if username and password:
-        auth_token = get_token(url, username, password, show_token=show_token)
+        auth_token = get_token(url, username, password)
+        if auth_token is None:
+            return None
         mc = MerginClient(url, auth_token=f"Bearer {auth_token}")
     else:
         click.secho(
@@ -139,40 +137,41 @@ def _print_unhandled_exception():
 @click.option(
     "--url",
     envvar="MERGIN_URL",
-    default="https://public.cloudmergin.com",
-    help="Mergin server URL. Default is: https://public.cloudmergin.com",
+    default=MerginClient.default_url(),
+    help=f"Mergin server URL. Default is: {MerginClient.default_url()}",
 )
-@click.option("--auth_token", envvar="MERGIN_AUTH", help="Mergin authentication token string")
+@click.option("--auth-token", envvar="MERGIN_AUTH", help="Mergin authentication token string")
 @click.option("--username", envvar="MERGIN_USERNAME")
 @click.option("--password", cls=OptionPasswordIfUser, prompt=True, hide_input=True, envvar="MERGIN_PASSWORD")
-@click.option(
-    "--show_token",
-    is_flag=True,
-    help="Flag for echoing the authentication token. Useful for setting the MERGIN_AUTH environment variable.",
-)
 @click.pass_context
-def cli(ctx, url, auth_token, username, password, show_token):
+def cli(ctx, url, auth_token, username, password):
     """
     Command line interface for the Mergin client module.
-    For user authentication on server, username and password need to be given either as environment variables
-    (MERGIN_USERNAME, MERGIN_PASSWORD), or as options (--username, --password).
-    To set MERGIN_AUTH variable, run the command with --show_token option to see the token and how to set it manually.
+    For user authentication on server there are two options:
+     1. authorization token environment variable (MERGIN_AUTH) is defined, or
+     2. username and password need to be given either as environment variables (MERGIN_USERNAME, MERGIN_PASSWORD),
+     or as command options (--username, --password).
+    Run `mergin --username <your_user> login` to see how to set the token variable manually.
     """
-    mc = get_client(url=url, auth_token=auth_token, username=username, password=password, show_token=show_token)
+    mc = get_client(url=url, auth_token=auth_token, username=username, password=password)
     ctx.obj = {"client": mc}
+
+
+@cli.command()
+@click.pass_context
+def login(ctx):
+    """Login to the service and see how to set the token environment variable."""
+    mc = ctx.obj["client"]
+    if mc is not None:
+        click.secho("Login successful!", fg="green")
 
 
 @cli.command()
 @click.argument("project")
 @click.option("--public", is_flag=True, default=False, help="Public project, visible to everyone")
-@click.option("--namespace", help="Namespace for the new project. Default is current Mergin user namespace.")
 @click.pass_context
-def create(ctx, project, public, namespace):
-    """
-    Create a new project on Mergin server.
-    `project` can be a combination of namespace/project. Namespace can also be specified as an option, however if
-    namespace is specified as a part of `project` argument, the option is ignored.
-    """
+def create(ctx, project, public):
+    """Create a new project on Mergin server. `project` needs to be a combination of namespace/project."""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -184,6 +183,9 @@ def create(ctx, project, public, namespace):
         except (ValueError, AssertionError) as e:
             click.secho(f"Incorrect namespace/project format: {e}", fg="red")
             return
+    else:
+        # namespace not specified, use current user namespace
+        namespace = mc.username()
     try:
         mc.create_project(project, is_public=public, namespace=namespace)
         click.echo("Remote project created")
@@ -405,24 +407,6 @@ def show_file_changeset(ctx, path, version):
 
 
 @cli.command()
-@click.argument("directory", required=False)
-def modtime(directory):
-    """
-    Show files modification time info. For debug purposes only.
-    """
-    directory = os.path.abspath(directory or os.getcwd())
-    strip_len = len(directory) + 1
-    for root, dirs, files in os.walk(directory, topdown=True):
-        for entry in dirs + files:
-            abs_path = os.path.abspath(os.path.join(root, entry))
-            click.echo(abs_path[strip_len:])
-            # click.secho('atime %s' % datetime.fromtimestamp(os.path.getatime(abs_path)), fg="cyan")
-            click.secho("mtime %s" % datetime.fromtimestamp(os.path.getmtime(abs_path)), fg="cyan")
-            # click.secho('ctime %s' % datetime.fromtimestamp(os.path.getctime(abs_path)), fg="cyan")
-            click.echo()
-
-
-@cli.command()
 @click.argument("source_project_path", required=True)
 @click.argument("cloned_project_name", required=True)
 @click.argument("cloned_project_namespace", required=False)
@@ -447,8 +431,19 @@ def remove(ctx, project):
     mc = ctx.obj["client"]
     if mc is None:
         return
+    if "/" in project:
+        try:
+            namespace, project = project.split("/")
+            assert namespace, "No namespace given"
+            assert project, "No project name given"
+        except (ValueError, AssertionError) as e:
+            click.secho(f"Incorrect namespace/project format: {e}", fg="red")
+            return
+    else:
+        # namespace not specified, use current user namespace
+        namespace = mc.username()
     try:
-        mc.delete_project(project)
+        mc.delete_project(f"{namespace}/{project}")
         click.echo("Remote project removed")
     except Exception as e:
         _print_unhandled_exception()
