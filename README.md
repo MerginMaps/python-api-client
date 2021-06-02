@@ -110,7 +110,8 @@ For using mergin client with its dependencies packaged locally run:
     python3 setup.py sdist bdist_wheel
     mkdir -p mergin/deps
     pip wheel -r mergin_client.egg-info/requires.txt -w mergin/deps
-    unzip mergin/deps/pygeodiff-*.whl -d mergin/deps 
+    unzip mergin/deps/pygeodiff-*.whl -d mergin/deps
+    pip install --editable .
 
 ### Tests
 For running test do:
