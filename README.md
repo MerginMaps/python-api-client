@@ -33,35 +33,45 @@ When the module is installed, it comes with `mergin` command line tool.
 $ mergin --help
 Usage: mergin [OPTIONS] COMMAND [ARGS]...
 
+  Command line interface for the Mergin client module. For user
+  authentication on server there are two options:  1. authorization token
+  environment variable (MERGIN_AUTH) is defined, or  2. username and
+  password need to be given either as environment variables
+  (MERGIN_USERNAME, MERGIN_PASSWORD),  or as command options (--username,
+  --password). Run `mergin --username <your_user> login` to see how to set
+  the token variable manually.
+
 Options:
-  --help  Show this message and exit.
+  --url TEXT         Mergin server URL. Default is:
+                     https://public.cloudmergin.com
+  --auth-token TEXT  Mergin authentication token string
+  --username TEXT
+  --password TEXT
+  --help             Show this message and exit.
 
 Commands:
-  create         Create a new project on Mergin server
-  download       Download last version of mergin project
-  list-projects  List projects on the server
-  login          Fetch new authentication token.
-  modtime        Show files modification time info.
-  pull           Fetch changes from Mergin repository
-  push           Upload local changes into Mergin repository
-  remove         Remove project from server and locally (if exists).
-  status         Show all changes in project files - upstream and local
+  clone                Clone project from server.
+  create               Create a new project on Mergin server.
+  download             Download last version of mergin project
+  list-projects        List projects on the server
+  login                Login to the service and see how to set the token...
+  pull                 Fetch changes from Mergin repository
+  push                 Upload local changes into Mergin repository
+  remove               Remove project from server.
+  show-file-changeset  Displays information about project changes.
+  show-file-history    Displays information about a single version of a...
+  show-version         Displays information about a single version of a...
+  status               Show all changes in project files - upstream and...
 ```
 
-To start using `mergin`, first run its "login" command to get authorization token:
+For example, to download a project:
 
 ```
-$ mergin login
+$ mergin --username john download john/project1 ~/mergin/project1
 ```
 
-It will ask for username and password and then output environment variables
-with authorization. The returned token is not permanent - it will expire after
-several hours. When the variables are set, it is possible to run other commands,
-for example, to download a project:
-
-```
-$ mergin download username/project1 ~/mergin/project1
-```
+If you do not want to specify username on the command line and be asked for you password every time,
+it is possible to set env variables MERGIN_USERNAME and MERGIN_PASSWORD.
 
 When a project is downloaded, `mergin` commands can be run in the project's
 working directory:
@@ -78,6 +88,23 @@ working directory:
    ```
    $ mergin push
    ```
+
+### Using CLI with auth token
+
+If you plan to run `mergin` command multiple times and you wish to avoid logging in every time,
+you can use "login" command to get authorization token.
+It will ask for password and then output environment variable with auth token. The returned token
+is not permanent - it will expire after several hours.
+```
+$ mergin --username john login
+Password: topsecret
+Login successful!
+To set the MERGIN_AUTH variable run:
+export MERGIN_AUTH="Bearer ......."
+```
+
+When the MERGIN_AUTH env variable is set (or passed with `--auth-token` command line argument),
+it is possible to run other commands without specifying username/password.
 
 
 ## Development
