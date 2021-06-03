@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.12
+
+- CLI: simplified authentication, with multiple options now (#76)
+  - user can pass MERGIN_USERNAME and MERGIN_PASSWORD env variables to commands
+  - user can pass --username (and optionally --password) command line arguments to commands
+  - user can still use "mergin login" command to first get auth token and set MERGIN_AUTH_TOKEN or pass --auth-token command line argument
+- CLI: it is possible to create a project in a different namespace (#81)
+- Fixed removal of projects in CLI (#82)
+- Fixed possible error when removing project on Windows (#57)
+- Fixed issue when a file was deleted both locally and on the server (qgis-mergin-plugin#232)
+- Added optional global log (in addition to per-project logs)
+- Improved handling of auth token problems
+- Better error reporting
+
 ## 0.5.11
 
 - Update to geodiff 0.8.8 (fixed issues with unicode paths, better error reporting)
