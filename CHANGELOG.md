@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0
+
+- Moved to pygeodiff 1.0.0 - adding various new APIs
+
 ## 0.5.12
 
 - CLI: simplified authentication, with multiple options now (#76)
