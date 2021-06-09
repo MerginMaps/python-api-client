@@ -388,7 +388,7 @@ def test_sync_diff(mc, push_geodiff_enabled, pull_geodiff_enabled):
 
 
 def test_list_of_push_changes(mc):
-    PUSH_CHANGES_SUMMARY = "{'base.gpkg': {'geodiff_summary': [{'table': 'gpkg_contents', 'insert': 0, 'update': 1, 'delete': 0}, {'table': 'simple', 'insert': 1, 'update': 0, 'delete': 0}]}}"
+    PUSH_CHANGES_SUMMARY = "{'base.gpkg': {'geodiff_summary': [{'table': 'simple', 'insert': 1, 'update': 0, 'delete': 0}]}}"
 
     test_project = 'test_list_of_push_changes'
     project = API_USER + '/' + test_project
