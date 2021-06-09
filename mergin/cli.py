@@ -21,6 +21,7 @@ from mergin import (
     LoginError,
     MerginClient,
     MerginProject,
+    __version__,
 )
 from mergin.client_pull import (
     download_project_async,
@@ -30,6 +31,8 @@ from mergin.client_pull import (
 )
 from mergin.client_pull import pull_project_async, pull_project_is_running, pull_project_finalize, pull_project_cancel
 from mergin.client_push import push_project_async, push_project_is_running, push_project_finalize, push_project_cancel
+
+from pygeodiff import GeoDiff
 
 
 class OptionPasswordIfUser(click.Option):
@@ -135,7 +138,7 @@ def _print_unhandled_exception():
         click.echo(line)
 
 
-@click.group()
+@click.group(epilog=f"Copyright (C) 2019-2021 Lutra Consulting\n\n(mergin-py-client v{__version__} / pygeodiff v{GeoDiff().version()})")
 @click.option(
     "--url",
     envvar="MERGIN_URL",
@@ -150,9 +153,11 @@ def cli(ctx, url, auth_token, username, password):
     """
     Command line interface for the Mergin client module.
     For user authentication on server there are two options:
+
      1. authorization token environment variable (MERGIN_AUTH) is defined, or
      2. username and password need to be given either as environment variables (MERGIN_USERNAME, MERGIN_PASSWORD),
      or as command options (--username, --password).
+
     Run `mergin --username <your_user> login` to see how to set the token variable manually.
     """
     mc = get_client(url=url, auth_token=auth_token, username=username, password=password)
