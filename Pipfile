@@ -5,9 +5,8 @@ name = "pypi"
 
 [packages]
 python-dateutil = "==2.6.0"
-pygeodiff = "==0.8.6"
+pygeodiff = "==1.0.0"
 pytz = "==2019.3"
-
 
 [dev-packages]
 pytest = "==3.10.1"
