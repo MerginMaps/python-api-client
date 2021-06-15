@@ -247,8 +247,7 @@ class UpdateTask:
         file_to_merge.merge()
 
         if mp.is_versioned_file(self.file_path):
-            shutil.copy(mp.fpath(self.file_path), mp.fpath_meta(self.file_path))
-
+            mp.geodiff.make_copy_sqlite(mp.fpath(self.file_path), mp.fpath_meta(self.file_path))
 
 
 class DownloadQueueItem:
