@@ -398,18 +398,17 @@ class MerginProject:
 
                         # temporary backup of file pulled from server for recovery
                         f_server_backup = self.fpath(f'{path}-server_backup', temp_dir)
-                        shutil.copy(src, f_server_backup)
+                        self.geodiff.make_copy_sqlite(src, f_server_backup)
 
                         # create temp backup (ideally with geodiff) of locally modified file if needed later
                         f_conflict_file = self.fpath(f'{path}-local_backup', temp_dir)
                         try:
                             self.geodiff.create_changeset(basefile, dest, local_diff)
-                            shutil.copy(basefile, f_conflict_file)
+                            self.geodiff.make_copy_sqlite(basefile, f_conflict_file)
                             self.geodiff.apply_changeset(f_conflict_file, local_diff)
                         except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
-                            self.log.warning("backup of local file with geodiff failed - need to do hard copy (dangerous!)")
-                            # FIXME hard copy can lead to data loss if changes from -wal file were not flushed !!!
-                            shutil.copy(dest, f_conflict_file)
+                            self.log.info("backup of local file with geodiff failed - need to do hard copy")
+                            self.geodiff.make_copy_sqlite(dest, f_conflict_file)
 
                         # in case there will be any conflicting operations found during rebase,
                         # they will be stored in a JSON file - if there are no conflicts, the file
@@ -425,13 +424,13 @@ class MerginProject:
                             self.log.info("rebase successful!")
                         except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as err:
                             self.log.warning("rebase failed! going to create conflict file")
-                            # it would not be possible to commit local changes, they need to end up in new conflict file
-                            shutil.copy(f_conflict_file, dest)  # revert file
+                            # it was not be possible to commit local changes, they need to end up in new conflict file
+                            self.geodiff.make_copy_sqlite(f_conflict_file, dest)
                             conflict = self.backup_file(path)
                             conflicts.append(conflict)
                             # original file synced with server
-                            shutil.copy(f_server_backup, basefile)
-                            shutil.copy(f_server_backup, dest)
+                            self.geodiff.make_copy_sqlite(f_server_backup, basefile)
+                            self.geodiff.make_copy_sqlite(f_server_backup, dest)
                             # changes in -wal have been already applied in conflict file or LOST (see above)
                             if os.path.exists(f'{dest}-wal'):
                                 os.remove(f'{dest}-wal')
@@ -452,12 +451,11 @@ class MerginProject:
                             self.geodiff.apply_changeset(basefile, server_diff)
                             self.log.info("update successful")
                         except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
-                            self.log.warning("update failed! going to copy file (dangerous!)")
+                            self.log.info("update failed! going to copy file")
                             # something bad happened and we have failed to patch our local files - this should not happen if there
                             # wasn't a schema change or something similar that geodiff can't handle.
-                            # FIXME: this is a last resort and may corrupt data! (we should warn user)
-                            shutil.copy(src, dest)
-                            shutil.copy(src, basefile)
+                            self.geodiff.make_copy_sqlite(src, dest)
+                            self.geodiff.make_copy_sqlite(src, basefile)
                 else:
                     # backup if needed
                     if path in modified and item['checksum'] != local_files_map[path]['checksum']:
@@ -473,9 +471,10 @@ class MerginProject:
                         if self.is_versioned_file(path):
                             os.remove(basefile)
                     else:
-                        shutil.copy(src, dest)
                         if self.is_versioned_file(path):
-                            shutil.copy(src, basefile)
+                            self.geodiff.make_copy_sqlite(src, basefile)
+                        else:
+                            shutil.copy(src, dest)
 
         return conflicts
 
@@ -496,12 +495,12 @@ class MerginProject:
                 if k == 'removed':
                     os.remove(basefile)
                 elif k == 'added':
-                    shutil.copy(self.fpath(path), basefile)
+                    self.geodiff.make_copy_sqlite(self.fpath(path), basefile)
                 elif k == 'updated':
                     # in case for geopackage cannot be created diff (e.g. forced update with committed changes from wal file)
                     if "diff" not in item:
                         self.log.info("updating basefile (copy) for: " + path)
-                        shutil.copy(self.fpath(path), basefile)
+                        self.geodiff.make_copy_sqlite(self.fpath(path), basefile)
                     else:
                         self.log.info("updating basefile (diff) for: " + path)
                         # better to apply diff to previous basefile to avoid issues with geodiff tmp files
@@ -531,7 +530,10 @@ class MerginProject:
         while os.path.exists(backup_path):
             backup_path = self.fpath(f'{file}_conflict_copy{index}')
             index += 1
-        shutil.copy(src, backup_path)
+        if self.is_versioned_file(file):
+            self.geodiff.make_copy_sqlite(src, backup_path)
+        else:
+            shutil.copy(src, backup_path)
         return backup_path
 
     def apply_diffs(self, basefile, diffs):
