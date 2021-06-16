@@ -362,7 +362,7 @@ class MerginProject:
         Update project files according to file changes. Apply changes to geodiff basefiles as well
         so they are up to date with server. In case of conflicts create backups from locally modified versions.
 
-        .. seealso:: self.pull_changes
+        .. seealso:: self.get_pull_changes
 
         :param changes: metadata for pulled files
         :type changes: dict[str, list[dict]]
@@ -424,18 +424,13 @@ class MerginProject:
                             self.log.info("rebase successful!")
                         except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as err:
                             self.log.warning("rebase failed! going to create conflict file")
-                            # it was not be possible to commit local changes, they need to end up in new conflict file
+                            # it would not be possible to commit local changes, they need to end up in new conflict file
                             self.geodiff.make_copy_sqlite(f_conflict_file, dest)
                             conflict = self.backup_file(path)
                             conflicts.append(conflict)
                             # original file synced with server
                             self.geodiff.make_copy_sqlite(f_server_backup, basefile)
                             self.geodiff.make_copy_sqlite(f_server_backup, dest)
-                            # changes in -wal have been already applied in conflict file or LOST (see above)
-                            if os.path.exists(f'{dest}-wal'):
-                                os.remove(f'{dest}-wal')
-                            if os.path.exists(f'{dest}-shm'):
-                                os.remove(f'{dest}-shm')
                     else:
                         # The local file is not modified -> no rebase needed.
                         # We just apply the diff between our copy and server to both the local copy and its basefile
@@ -451,7 +446,7 @@ class MerginProject:
                             self.geodiff.apply_changeset(basefile, server_diff)
                             self.log.info("update successful")
                         except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
-                            self.log.info("update failed! going to copy file")
+                            self.log.warning("update failed! going to copy file")
                             # something bad happened and we have failed to patch our local files - this should not happen if there
                             # wasn't a schema change or something similar that geodiff can't handle.
                             self.geodiff.make_copy_sqlite(src, dest)
@@ -472,6 +467,7 @@ class MerginProject:
                             os.remove(basefile)
                     else:
                         if self.is_versioned_file(path):
+                            self.geodiff.make_copy_sqlite(src, dest)
                             self.geodiff.make_copy_sqlite(src, basefile)
                         else:
                             shutil.copy(src, dest)
