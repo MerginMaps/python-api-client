@@ -5,10 +5,13 @@ import shutil
 from datetime import datetime, timedelta
 import pytest
 import pytz
+import sqlite3
 
 from ..client import MerginClient, ClientError, MerginProject, LoginError, decode_token_data, TokenError
 from ..client_push import push_project_async, push_project_cancel
 from ..utils import generate_checksum
+from ..merginproject import pygeodiff
+
 
 SERVER_URL = os.environ.get('TEST_MERGIN_URL')
 API_USER = os.environ.get('TEST_API_USERNAME')
@@ -805,3 +808,302 @@ def test_logging(mc):
 def test_server_compatibility(mc):
     """Test server compatibility."""
     assert mc.is_server_compatible()
+
+
+def _use_wal(db_file):
+    """ Ensures that sqlite database is using WAL journal mode """
+    con = sqlite3.connect(db_file)
+    cursor = con.cursor()
+    cursor.execute('PRAGMA journal_mode=wal;')
+
+def _create_test_table(db_file):
+    """ Creates a table called 'test' in sqlite database. Useful to simulate change of database schema. """
+    con = sqlite3.connect(db_file)
+    cursor = con.cursor()
+    cursor.execute('CREATE TABLE test (fid SERIAL, txt TEXT);')
+    cursor.execute('INSERT INTO test VALUES (123, \'hello\');')
+    cursor.execute('COMMIT;')
+
+def _check_test_table(db_file):
+    """ Checks whether the 'test' table exists and has one row - otherwise fails with an exception. """
+    #con_verify = sqlite3.connect(db_file)
+    #cursor_verify = con_verify.cursor()
+    #cursor_verify.execute('select count(*) from test;')
+    #assert cursor_verify.fetchone()[0] == 1
+    assert _get_table_row_count(db_file, 'test') == 1
+
+
+def _get_table_row_count(db_file, table):
+    con_verify = sqlite3.connect(db_file)
+    cursor_verify = con_verify.cursor()
+    cursor_verify.execute('select count(*) from {};'.format(table))
+    return cursor_verify.fetchone()[0]
+
+
+def _is_file_updated(filename, changes_dict):
+    """ checks whether a file is listed among updated files (for pull or push changes) """
+    for f in changes_dict['updated']:
+        if f['path'] == filename:
+            return True
+    return False
+
+
+def test_gpkg_change_without_geodiff(mc):
+    """ Test that changes in GPKG get picked up if there were recent changes to it by another
+    client and at the same time geodiff fails to find changes (a new table is added)
+    """
+
+    test_project = 'test_gpkg_change'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    test_gpkg = os.path.join(project_dir, 'test.gpkg')
+    test_gpkg_basefile = os.path.join(project_dir, '.mergin', 'test.gpkg')
+    project_dir_verify = os.path.join(TMP_DIR, test_project + '_verify')
+    test_gpkg_verify = os.path.join(project_dir_verify, 'test.gpkg')
+
+    cleanup(mc, project, [project_dir, project_dir_verify])
+    # create remote project
+    os.makedirs(project_dir)
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'base.gpkg'), test_gpkg)
+    #shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
+
+    mp = MerginProject(project_dir)
+
+    mp.log.info(' // create changeset')
+
+    mp.geodiff.create_changeset(mp.fpath('test.gpkg'), mp.fpath_meta('test.gpkg'), mp.fpath_meta('diff-0'))
+
+    mp.log.info(' // use wal')
+
+    _use_wal(test_gpkg)
+
+    mp.log.info(' // make changes to DB')
+
+    # open a connection and keep it open (qgis does this with a pool of connections too)
+    con2 = sqlite3.connect(test_gpkg)
+    cursor2 = con2.cursor()
+    cursor2.execute('select count(*) from simple;')
+
+    # add a new table to ensure that geodiff will fail due to unsupported change
+    # (this simulates an independent reader/writer like GDAL)
+    _create_test_table(test_gpkg)
+
+    _check_test_table(test_gpkg)
+    with pytest.raises(sqlite3.OperationalError):
+        _check_test_table(test_gpkg_basefile)
+
+    mp.log.info(' // create changeset (2)')
+
+    # why already here there is wal recovery - it could be because of two sqlite libs linked in one executable
+    # INDEED THAT WAS THE PROBLEM, now running geodiff 1.0 with shared sqlite lib seems to work fine.
+    with pytest.raises(pygeodiff.geodifflib.GeoDiffLibError):
+        mp.geodiff.create_changeset(mp.fpath('test.gpkg'), mp.fpath_meta('test.gpkg'), mp.fpath_meta('diff-1'))
+
+    _check_test_table(test_gpkg)
+    with pytest.raises(sqlite3.OperationalError):
+        _check_test_table(test_gpkg_basefile)
+
+    mp.log.info(' // push project')
+
+    # push pending changes (it should include addition of the new table)
+    # at this point we still have an open sqlite connection to the GPKG, so checkpointing will not work correctly)
+    mc.push_project(project_dir)
+
+    # WITH TWO SQLITE copies: fails here  (sqlite3.OperationalError: disk I/O error)  + in geodiff log: SQLITE3: (283)recovered N frames from WAL file
+    _check_test_table(test_gpkg)
+
+    # OLD: fails here when con2 is still alive: checkpointing fails and basefile has incorrect value
+    _check_test_table(test_gpkg_basefile)
+
+    # download the project to a new directory and verify the change was pushed correctly
+    mc.download_project(project, project_dir_verify)
+
+    # OLD: fails here
+    _check_test_table(test_gpkg_verify)
+
+
+@pytest.mark.parametrize("extra_connection", [False, True])
+def test_rebase_local_schema_change(mc, extra_connection):
+    """
+    Checks whether a pull with failed rebase (due to local DB schema change) is handled correctly,
+    i.e. a conflict file is created with the content of the local changes.
+    """
+
+    test_project = 'test_rebase_local_schema_change'
+    if extra_connection:
+        test_project += '_extra_conn'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
+    project_dir_2 = os.path.join(TMP_DIR, test_project+'_2')  # concurrent project dir
+    test_gpkg = os.path.join(project_dir, 'test.gpkg')
+    test_gpkg_basefile = os.path.join(project_dir, '.mergin', 'test.gpkg')
+    test_gpkg_conflict = test_gpkg + '_conflict_copy'
+    cleanup(mc, project, [project_dir, project_dir_2])
+
+    os.makedirs(project_dir)
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'base.gpkg'), test_gpkg)
+    _use_wal(test_gpkg)  # make sure we use WAL, that's the more common and more difficult scenario
+    mc.create_project_and_push(test_project, project_dir)
+
+    if extra_connection:
+        # open a connection and keep it open (qgis does this with a pool of connections too)
+        con_extra = sqlite3.connect(test_gpkg)
+        cursor_extra = con_extra.cursor()
+        cursor_extra.execute('select count(*) from simple;')
+
+    # Download project to the concurrent dir + add a feature + push a new version
+    mc.download_project(project, project_dir_2)  # download project to concurrent dir
+    mp_2 = MerginProject(project_dir_2)
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'inserted_1_A.gpkg'), mp_2.fpath('test.gpkg'))
+    mc.push_project(project_dir_2)
+
+    # Change schema in the primary project dir
+    _create_test_table(test_gpkg)
+
+    pull_changes, push_changes, _ = mc.project_status(project_dir)
+    assert _is_file_updated('test.gpkg', pull_changes)
+    assert _is_file_updated('test.gpkg', push_changes)
+
+    assert not os.path.exists(test_gpkg_conflict)
+
+    mc.pull_project(project_dir)
+
+    assert os.path.exists(test_gpkg_conflict)
+
+    # check the results after pull:
+    # - conflict copy should contain the new table
+    # - local file + basefile should not contain the new table
+
+    _check_test_table(test_gpkg_conflict)
+    with pytest.raises(sqlite3.OperationalError):
+        _check_test_table(test_gpkg_basefile)
+    with pytest.raises(sqlite3.OperationalError):
+        _check_test_table(test_gpkg)
+
+    # check that the local file + basefile contain the new row, and the conflict copy doesn't
+
+    assert _get_table_row_count(test_gpkg, 'simple') == 4
+    assert _get_table_row_count(test_gpkg_basefile, 'simple') == 4
+    assert _get_table_row_count(test_gpkg_conflict, 'simple') == 3
+
+
+@pytest.mark.parametrize("extra_connection", [False, True])
+def test_rebase_remote_schema_change(mc, extra_connection):
+    """
+    Checks whether a pull with failed rebase (due to remote DB schema change) is handled correctly,
+    i.e. a conflict file is created with the content of the local changes.
+    """
+
+    test_project = 'test_rebase_remote_schema_change'
+    if extra_connection:
+        test_project += '_extra_conn'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
+    project_dir_2 = os.path.join(TMP_DIR, test_project+'_2')  # concurrent project dir
+    test_gpkg = os.path.join(project_dir, 'test.gpkg')
+    test_gpkg_2 = os.path.join(project_dir_2, 'test.gpkg')
+    test_gpkg_basefile = os.path.join(project_dir, '.mergin', 'test.gpkg')
+    test_gpkg_conflict = test_gpkg + '_conflict_copy'
+    cleanup(mc, project, [project_dir, project_dir_2])
+
+    os.makedirs(project_dir)
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'base.gpkg'), test_gpkg)
+    _use_wal(test_gpkg)  # make sure we use WAL, that's the more common and more difficult scenario
+    mc.create_project_and_push(test_project, project_dir)
+
+    # Download project to the concurrent dir + change DB schema + push a new version
+    mc.download_project(project, project_dir_2)
+    _create_test_table(test_gpkg_2)
+    mc.push_project(project_dir_2)
+
+    # do changes in the local DB (added a row)
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'inserted_1_A.gpkg'), test_gpkg)
+    _use_wal(test_gpkg)  # make sure we use WAL
+
+    if extra_connection:
+        # open a connection and keep it open (qgis does this with a pool of connections too)
+        con_extra = sqlite3.connect(test_gpkg)
+        cursor_extra = con_extra.cursor()
+        cursor_extra.execute('select count(*) from simple;')
+
+    pull_changes, push_changes, _ = mc.project_status(project_dir)
+    assert _is_file_updated('test.gpkg', pull_changes)
+    assert _is_file_updated('test.gpkg', push_changes)
+
+    assert not os.path.exists(test_gpkg_conflict)
+
+    mc.pull_project(project_dir)
+
+    assert os.path.exists(test_gpkg_conflict)
+
+    # check the results after pull:
+    # - conflict copy should not contain the new table
+    # - local file + basefile should contain the new table
+
+    _check_test_table(test_gpkg)
+    _check_test_table(test_gpkg_basefile)
+    with pytest.raises(sqlite3.OperationalError):
+        _check_test_table(test_gpkg_conflict)
+
+    # check that the local file + basefile don't contain the new row, and the conflict copy does
+
+    assert _get_table_row_count(test_gpkg, 'simple') == 3
+    assert _get_table_row_count(test_gpkg_basefile, 'simple') == 3
+    assert _get_table_row_count(test_gpkg_conflict, 'simple') == 4
+
+
+@pytest.mark.parametrize("extra_connection", [False, True])
+def test_rebase_success(mc, extra_connection):
+    """
+    Checks whether a pull with successful rebase is handled correctly.
+    i.e. changes are merged together and no conflict files are created.
+    """
+
+    test_project = 'test_rebase_success'
+    if extra_connection:
+        test_project += '_extra_conn'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
+    project_dir_2 = os.path.join(TMP_DIR, test_project+'_2')  # concurrent project dir
+    test_gpkg = os.path.join(project_dir, 'test.gpkg')
+    test_gpkg_2 = os.path.join(project_dir_2, 'test.gpkg')
+    test_gpkg_basefile = os.path.join(project_dir, '.mergin', 'test.gpkg')
+    test_gpkg_conflict = test_gpkg + '_conflict_copy'
+    cleanup(mc, project, [project_dir, project_dir_2])
+
+    os.makedirs(project_dir)
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'base.gpkg'), test_gpkg)
+    _use_wal(test_gpkg)  # make sure we use WAL, that's the more common and more difficult scenario
+    mc.create_project_and_push(test_project, project_dir)
+
+    # Download project to the concurrent dir + add a row + push a new version
+    mc.download_project(project, project_dir_2)
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'inserted_1_A.gpkg'), test_gpkg_2)
+    _use_wal(test_gpkg)  # make sure we use WAL
+    mc.push_project(project_dir_2)
+
+    # do changes in the local DB (added a row)
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'inserted_1_B.gpkg'), test_gpkg)
+    _use_wal(test_gpkg)  # make sure we use WAL
+
+    if extra_connection:
+        # open a connection and keep it open (qgis does this with a pool of connections too)
+        con_extra = sqlite3.connect(test_gpkg)
+        cursor_extra = con_extra.cursor()
+        cursor_extra.execute('select count(*) from simple;')
+
+    pull_changes, push_changes, _ = mc.project_status(project_dir)
+    assert _is_file_updated('test.gpkg', pull_changes)
+    assert _is_file_updated('test.gpkg', push_changes)
+
+    assert not os.path.exists(test_gpkg_conflict)
+
+    mc.pull_project(project_dir)
+
+    assert not os.path.exists(test_gpkg_conflict)
+
+    # check that the local file + basefile don't contain the new row, and the conflict copy does
+
+    assert _get_table_row_count(test_gpkg, 'simple') == 5
+    assert _get_table_row_count(test_gpkg_basefile, 'simple') == 4
