@@ -26,6 +26,8 @@ from mergin import (
 from mergin.client_pull import (
     download_project_async,
     download_project_cancel,
+    download_project_file,
+    download_file_finalize,
     download_project_finalize,
     download_project_is_running,
 )
@@ -250,6 +252,53 @@ def download(ctx, project, directory, version):
                 bar.update(new_transferred_size - last_transferred_size)  # the update() needs increment only
                 last_transferred_size = new_transferred_size
         download_project_finalize(job)
+        click.echo("Done")
+    except KeyboardInterrupt:
+        click.secho("Cancelling...")
+        download_project_cancel(job)
+    except ClientError as e:
+        click.secho("Error: " + str(e), fg="red")
+    except Exception as e:
+        _print_unhandled_exception()
+
+
+@cli.command()
+@click.argument("project")
+@click.argument("filepath")
+@click.argument("output")
+@click.option("--version", help="Project version tag, for example 'v3'")
+@click.pass_context
+def download_file(ctx, project, filepath, output, version):
+    """
+    Download project file at specified version. `project` needs to be a combination of namespace/project.
+    If no version is given, the latest will be fetched.
+    """
+    mc = ctx.obj["client"]
+    if mc is None:
+        return
+
+    click.echo(f"project: {project}")
+    click.echo(f"filepath: {filepath}")
+    click.echo(f"output: {output}")
+    click.echo(f"version: {version}")
+
+    try:
+        namespace, project = project.split("/")
+        assert namespace, "No namespace given"
+        assert project, "No project name given"
+    except (ValueError, AssertionError) as e:
+        click.secho(f"Incorrect namespace/project format: {e}", fg="red")
+        return
+    try:
+        job = download_project_file(mc, f"{namespace}/{project}", filepath, output, version)
+        with click.progressbar(length=job.total_size) as bar:
+            last_transferred_size = 0
+            while download_project_is_running(job):
+                time.sleep(1 / 10)  # 100ms
+                new_transferred_size = job.transferred_size
+                bar.update(new_transferred_size - last_transferred_size)  # the update() needs increment only
+                last_transferred_size = new_transferred_size
+        download_file_finalize(job)
         click.echo("Done")
     except KeyboardInterrupt:
         click.secho("Cancelling...")

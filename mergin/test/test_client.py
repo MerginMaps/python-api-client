@@ -810,11 +810,80 @@ def test_server_compatibility(mc):
     assert mc.is_server_compatible()
 
 
+def create_versioned_project(mc, project_name, project_dir, updated_file, remove=True):
+    project = API_USER + '/' + project_name
+    cleanup(mc, project, [project_dir])
+
+    # create remote project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project_and_push(project_name, project_dir)
+
+    mp = MerginProject(project_dir)
+
+    # create versions 2-5
+    changes = ("inserted_1_A.gpkg", "inserted_1_A_mod.gpkg", "inserted_1_B.gpkg",)
+    for change in changes:
+        shutil.copy(mp.fpath(change), mp.fpath(updated_file))
+        mc.push_project(project_dir)
+
+    if remove:
+        os.remove(os.path.join(project_dir, updated_file))
+        mc.push_project(project_dir)
+
+    return mp
+
+
+def test_download_file(mc):
+    """Test downloading single file at specified versions."""
+    test_project = 'test_download_file'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    download_dir = os.path.join(project_dir, "versions")  # project for downloading files at various versions
+    f_updated = "base.gpkg"
+
+    mp = create_versioned_project(mc, test_project, project_dir, f_updated)
+
+    project_info = mc.project_info(project)
+    assert project_info["version"] == "v5"
+
+    # Download the base file at versions 2-4 and check their checksums
+    f_versioned = os.path.join(download_dir, f_updated)
+    for ver in range(2, 5):
+        mc.download_file(project, f_updated, f_versioned, version=f"v{ver}")
+        f_downloaded_checksum = generate_checksum(f_versioned)
+        proj_info = mc.project_info(project, version=f"v{ver}")
+        f_remote_checksum = next((f['checksum'] for f in proj_info['files'] if f['path'] == f_updated), None)
+        assert f_remote_checksum == f_downloaded_checksum
+
+    with pytest.raises(ClientError, match=f"No {f_updated} exists at version v5"):
+        mc.download_file(project, f_updated, f_versioned, version=f"v5")
+
+
+def test_download_diffs(mc):
+    """Test download diffs for a project file between specified project versions."""
+    test_project = 'test_download_diffs'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    download_dir = os.path.join(project_dir, "diffs")  # project for downloading files at various versions
+    f_updated = "base.gpkg"
+    diff = os.path.join(download_dir, f_updated + ".diff")
+
+    mp = create_versioned_project(mc, test_project, project_dir, f_updated, remove=False)
+
+    project_info = mc.project_info(project)
+    assert project_info["version"] == "v4"
+
+    # Download diffs of updated file between versions 2 and 4
+    mc.get_file_diff(project, project_dir, f_updated, diff, "v1", "v4")
+    assert os.path.exists(diff)
+
+
 def _use_wal(db_file):
     """ Ensures that sqlite database is using WAL journal mode """
     con = sqlite3.connect(db_file)
     cursor = con.cursor()
     cursor.execute('PRAGMA journal_mode=wal;')
+
 
 def _create_test_table(db_file):
     """ Creates a table called 'test' in sqlite database. Useful to simulate change of database schema. """
@@ -823,6 +892,7 @@ def _create_test_table(db_file):
     cursor.execute('CREATE TABLE test (fid SERIAL, txt TEXT);')
     cursor.execute('INSERT INTO test VALUES (123, \'hello\');')
     cursor.execute('COMMIT;')
+
 
 def _check_test_table(db_file):
     """ Checks whether the 'test' table exists and has one row - otherwise fails with an exception. """
