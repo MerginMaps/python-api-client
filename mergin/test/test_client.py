@@ -874,7 +874,7 @@ def test_download_diffs(mc):
     assert project_info["version"] == "v4"
 
     # Download diffs of updated file between versions 2 and 4
-    mc.get_file_diff(project, project_dir, f_updated, diff, "v1", "v4")
+    mc.get_file_diff(project_dir, f_updated, diff, "v1", "v4")
     assert os.path.exists(diff)
 
 

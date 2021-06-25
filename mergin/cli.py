@@ -276,12 +276,6 @@ def download_file(ctx, project, filepath, output, version):
     mc = ctx.obj["client"]
     if mc is None:
         return
-
-    click.echo(f"project: {project}")
-    click.echo(f"filepath: {filepath}")
-    click.echo(f"output: {output}")
-    click.echo(f"version: {version}")
-
     try:
         namespace, project = project.split("/")
         assert namespace, "No namespace given"

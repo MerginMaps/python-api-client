@@ -257,7 +257,7 @@ class UpdateTask:
         file_to_merge = FileToMerge(dest_file_path, self.download_queue_items)
         file_to_merge.merge()
 
-        if mp is None or dest_file_path is not None:
+        if mp is None or self.destination_file is not None:
             # Some tasks (downloading single file) do not require the project to be downloaded.
             # In that case mp = None and there is no need to copy the file.
             # Also skip copying if user specified the destination path for the downloaded file

@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 import dateutil.parser
 import ssl
 
-from .common import ClientError, LoginError
+from .common import ClientError, LoginError, InvalidProject
 from .merginproject import MerginProject
 from .client_pull import (
     download_file_finalize,
@@ -678,8 +678,28 @@ class MerginClient:
         version_numbers_to_fetch = all_version_numbers[idx_from:idx_to + 1]
         return {k: v for k, v in file_history.items() if int(k[1:]) in version_numbers_to_fetch}
 
-    def get_file_diff(self, project_path, project_dir, file_path, output_diff, version_from, version_to):
-        """ Create concatenated diff for project file diffs between versions version_from and version_to. """
+    def get_file_diff(self, project_dir, file_path, output_diff, version_from, version_to):
+        """ Create concatenated diff for project file diffs between versions version_from and version_to.
+
+        :param project_dir: project local directory
+        :type project_dir: String
+        :param file_path: relative path of file to download in the project directory
+        :type file_path: String
+        :param output_diff: full destination path for concatenated diff file
+        :type output_diff: String
+        :param version_from: starting project version tag for getting diff
+        :type version_from: String
+        :param version_to: ending project version tag for getting diff
+        :type version_to: String
+        """
+        try:
+            mp = MerginProject(project_dir)
+        except InvalidProject as e:
+            err = f"Couldn't create Mergin project for {project_dir}: {repr(e)}"
+            self.log.error(err)
+            raise ClientError(err)
+
+        project_path = mp.metadata["name"]
         self.log.info(f"Getting diffs for file {file_path} of {project_path}")
         file_history = self.project_file_history_info(project_path, file_path)["history"]
         version_from = int(version_from[1:]) if isinstance(version_from, str) else version_from
