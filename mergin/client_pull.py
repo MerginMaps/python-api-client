@@ -591,7 +591,7 @@ def download_project_file(mc, project_path, file_path, output_file, version):
     for file in project_info['files']:
         if file["path"] == file_path:
             file['version'] = version
-            items = _download_items(file, project_path)
+            items = _download_items(file, temp_dir)
             task = UpdateTask(file['path'], items, output_file)
             download_list.extend(task.download_queue_items)
             for item in task.download_queue_items:
