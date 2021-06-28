@@ -12,6 +12,7 @@ To finish the upload job, we have to call push_project_finalize(job).
 import json
 import hashlib
 import pprint
+import tempfile
 import concurrent.futures
 
 from .common import UPLOAD_CHUNK_SIZE, ClientError
@@ -21,7 +22,7 @@ from .merginproject import MerginProject
 class UploadJob:
     """ Keeps all the important data about a pending upload job """
     
-    def __init__(self, project_path, changes, transaction_id, mp, mc):
+    def __init__(self, project_path, changes, transaction_id, mp, mc, tmp_dir):
         self.project_path = project_path       # full project name ("username/projectname")
         self.changes = changes                 # dictionary of local changes to the project
         self.transaction_id = transaction_id   # ID of the transaction assigned by the server
@@ -30,6 +31,7 @@ class UploadJob:
         self.upload_queue_items = []           # list of items to upload in the background
         self.mp = mp                           # MerginProject instance
         self.mc = mc                           # MerginClient instance
+        self.tmp_dir = tmp_dir                 # TemporaryDirectory instance for any temp file we need
         self.is_cancelled = False              # whether upload has been cancelled
         self.executor = None                   # ThreadPoolExecutor that manages background upload tasks
         self.futures = []                      # list of futures submitted to the executor
@@ -105,6 +107,21 @@ def push_project_async(mc, directory):
     changes = mp.get_push_changes()
     mp.log.debug("push changes:\n" + pprint.pformat(changes))
 
+    tmp_dir = tempfile.TemporaryDirectory(prefix="mergin-py-client-")
+
+    # If there are any versioned files (aka .gpkg) that are not updated through a diff,
+    # we need to make a temporary copy somewhere to be sure that we are uploading full content.
+    # That's because if there are pending transactions, checkpointing or switching from WAL mode
+    # won't work, and we would end up with some changes left in -wal file which do not get
+    # uploaded. The temporary copy using geodiff uses sqlite backup API and should copy everything.
+    for f in changes["updated"]:
+        if mp.is_versioned_file(f["path"]) and "diff" not in f:
+            mp.copy_versioned_file_for_upload(f, tmp_dir.name)
+
+    for f in changes["added"]:
+        if mp.is_versioned_file(f["path"]):
+            mp.copy_versioned_file_for_upload(f, tmp_dir.name)
+
     # currently proceed storage limit check only if a project is own by a current user.
     if username == project_path.split("/")[0]:
         enough_free_space, freespace = mc.enough_storage_available(changes)
@@ -136,7 +153,7 @@ def push_project_async(mc, directory):
     upload_files = data['changes']["added"] + data['changes']["updated"]
 
     transaction_id = server_resp["transaction"] if upload_files else None
-    job = UploadJob(project_path, changes, transaction_id, mp, mc)
+    job = UploadJob(project_path, changes, transaction_id, mp, mc, tmp_dir)
 
     if not upload_files:
         mp.log.info("not uploading any files")
@@ -150,12 +167,22 @@ def push_project_async(mc, directory):
     total_size = 0
     # prepare file chunks for upload
     for file in upload_files:
-        file['location'] = mp.fpath_meta(file['diff']['path']) if 'diff' in file else mp.fpath(file['path'])
-        file_size = file['diff']['size'] if 'diff' in file else file['size']
+        if 'diff' in file:
+            # versioned file - uploading diff
+            file_location = mp.fpath_meta(file['diff']['path'])
+            file_size = file['diff']['size']
+        elif "upload_file" in file:
+            # versioned file - uploading full (a temporary copy)
+            file_location = file["upload_file"]
+            file_size = file["size"]
+        else:
+            # non-versioned file
+            file_location = mp.fpath(file['path'])
+            file_size = file['size']
 
         for chunk_index, chunk_id in enumerate(file["chunks"]):
             size = min(UPLOAD_CHUNK_SIZE, file_size - chunk_index * UPLOAD_CHUNK_SIZE)
-            upload_queue_items.append(UploadQueueItem(file['location'], size, transaction_id, chunk_id, chunk_index))
+            upload_queue_items.append(UploadQueueItem(file_location, size, transaction_id, chunk_id, chunk_index))
 
         total_size += file_size
 
@@ -247,6 +274,8 @@ def push_project_finalize(job):
         'files': job.server_resp["files"]
     }
     job.mp.apply_push_changes(job.changes)
+
+    job.tmp_dir.cleanup()   # delete our temporary dir and all its content
 
     job.mp.log.info("--- push finished - new project version " + job.server_resp['version'])
 
