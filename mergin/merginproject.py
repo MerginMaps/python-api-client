@@ -332,11 +332,28 @@ class MerginProject:
                     not_updated.append(file)
             except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as e:
                 self.log.warning("failed to create changeset for " + path)
-                # changes from wal file already committed
+                # probably the database schema has been modified if geodiff cannot create changeset.
+                # we will need to do full upload of the file
                 pass
 
         changes['updated'] = [f for f in changes['updated'] if f not in not_updated]
         return changes
+
+    def copy_versioned_file_for_upload(self, f, tmp_dir):
+        """
+        Make a temporary copy of the versioned file using geodiff, to make sure that we have full
+        content in a single file (nothing left in WAL journal)
+        """
+        path = f["path"]
+        self.log.info("Making a temporary copy (full upload): " + path)
+        tmp_file = os.path.join(tmp_dir, path)
+        os.makedirs(tmp_file, exist_ok=True)
+        self.geodiff.make_copy_sqlite(self.fpath(path), tmp_file)
+        f["size"] = os.path.getsize(tmp_file)
+        f["checksum"] = generate_checksum(tmp_file)
+        f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["size"] / UPLOAD_CHUNK_SIZE))]
+        f["upload_file"] = tmp_file
+        return tmp_file
 
     def get_list_of_push_changes(self, push_changes):
         changes = {}

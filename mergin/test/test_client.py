@@ -848,12 +848,12 @@ def _is_file_updated(filename, changes_dict):
     return False
 
 
-def test_gpkg_change_without_geodiff(mc):
+def test_push_gpkg_schema_change(mc):
     """ Test that changes in GPKG get picked up if there were recent changes to it by another
     client and at the same time geodiff fails to find changes (a new table is added)
     """
 
-    test_project = 'test_gpkg_change'
+    test_project = 'test_push_gpkg_schema_change'
     project = API_USER + '/' + test_project
     project_dir = os.path.join(TMP_DIR, test_project)
     test_gpkg = os.path.join(project_dir, 'test.gpkg')
