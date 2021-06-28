@@ -411,7 +411,6 @@ def test_force_gpkg_update(mc):
     project_info = mc.project_info(project)
     assert project_info['version'] == 'v2'
     f_remote = next((f for f in project_info['files'] if f['path'] == f_updated), None)
-    assert f_remote['checksum'] == updated_checksum
     assert 'diff' not in f_remote
 
 
