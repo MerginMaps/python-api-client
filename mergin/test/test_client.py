@@ -1,6 +1,7 @@
 import logging
 import os
 import tempfile
+import subprocess
 import shutil
 from datetime import datetime, timedelta
 import pytest
@@ -847,6 +848,32 @@ def _is_file_updated(filename, changes_dict):
     return False
 
 
+class AnotherSqliteConn:
+    """ This simulates another app (e.g. QGIS) having a connection open, potentially
+    with some active reader/writer.
+
+    Note: we use a subprocess here instead of just using sqlite3 module from python
+    because pygeodiff and python's sqlite3 module have their own sqlite libraries,
+    and this does not work well when they are used in a single process. But if we
+    use another process, things are fine. This is a limitation of how we package
+    pygeodiff currently.
+    """
+    def __init__(self, filename):
+        self.proc = subprocess.Popen(
+            ['python3', os.path.join(os.path.dirname(__file__), 'sqlite_con.py'), filename],
+            stdin=subprocess.PIPE,
+            stderr=subprocess.PIPE)
+
+    def run(self, cmd):
+        self.proc.stdin.write(cmd.encode()+b'\n')
+        self.proc.stdin.flush()
+
+    def close(self):
+        out,err = self.proc.communicate(b'stop\n')
+        if self.proc.returncode != 0:
+            raise ValueError("subprocess error:\n" + err.decode('utf-8'))
+
+
 def test_push_gpkg_schema_change(mc):
     """ Test that changes in GPKG get picked up if there were recent changes to it by another
     client and at the same time geodiff fails to find changes (a new table is added)
@@ -880,9 +907,8 @@ def test_push_gpkg_schema_change(mc):
     mp.log.info(' // make changes to DB')
 
     # open a connection and keep it open (qgis does this with a pool of connections too)
-    con2 = sqlite3.connect(test_gpkg)
-    cursor2 = con2.cursor()
-    cursor2.execute('select count(*) from simple;')
+    acon2 = AnotherSqliteConn(test_gpkg)
+    acon2.run('select count(*) from simple;')
 
     # add a new table to ensure that geodiff will fail due to unsupported change
     # (this simulates an independent reader/writer like GDAL)
@@ -920,6 +946,8 @@ def test_push_gpkg_schema_change(mc):
 
     # OLD: fails here
     _check_test_table(test_gpkg_verify)
+
+    acon2.close()
 
 
 @pytest.mark.parametrize("extra_connection", [False, True])
