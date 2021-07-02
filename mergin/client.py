@@ -16,15 +16,15 @@ from .merginproject import MerginProject
 from .client_pull import (
     download_file_finalize,
     download_project_async,
-    download_project_file,
-    download_project_file_diffs,
+    download_file_async,
+    download_diffs_async,
     download_project_finalize,
     download_project_wait,
-    pull_diffs_finalize,
+    download_diffs_finalize,
 )
 from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
 from .client_push import push_project_async, push_project_wait, push_project_finalize
-from .utils import DateTimeEncoder
+from .utils import DateTimeEncoder, get_versions_with_file_changes
 from .version import __version__
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
@@ -627,12 +627,12 @@ class MerginClient:
         resp = self.post("/v1/project/by_names", {"projects": projects}, {"Content-Type": "application/json"})
         return json.load(resp)
 
-    def download_file(self, project_path, file_path, output_filename, version=None):
+    def download_file(self, project_dir, file_path, output_filename, version=None):
         """
         Download project file at specified version. Get the latest if no version specified.
 
-        :param project_path: project full name (<namespace>/<name>)
-        :type project_path: String
+        :param project_dir: project local directory
+        :type project_dir: String
         :param file_path: relative path of file to download in the project directory
         :type file_path: String
         :param output_filename: full destination path for saving the downloaded file
@@ -640,43 +640,21 @@ class MerginClient:
         :param version: optional version tag for downloaded file
         :type version: String
         """
+        try:
+            mp = MerginProject(project_dir)
+        except InvalidProject as e:
+            err = f"Couldn't create Mergin project for {project_dir}: {repr(e)}"
+            self.log.error(err)
+            raise ClientError(err)
+
+        project_path = mp.metadata["name"]
         ver_info = f"at version {version}" if version is not None else "at latest version"
         self.log.info(f"Getting {file_path} from {project_path} {ver_info}")
-        job = download_project_file(self, project_path, file_path, output_filename, version=version)
+        job = download_file_async(self, project_path, file_path, output_filename, version=version)
         if job is None:
             return
         pull_project_wait(job)
         return download_file_finalize(job)
-
-    def get_versions_with_file_diffs(
-            self, project_path, file_path, version_from=None, version_to=None, file_history=None):
-        """
-        Get versions history in which the file was changed.
-        If version_from and version_to are not given get all changed versions. Versions can be integers or tags ('v2').
-
-        :returns: dictionary {version number: version history item}
-        :rtype: dict
-        """
-        if file_history is None:
-            file_history = self.project_file_history_info(project_path, file_path)["history"]
-        all_version_numbers = sorted([int(k[1:]) for k in file_history.keys()])
-        version_from = all_version_numbers[0] if version_from is None else version_from
-        version_to = all_version_numbers[-1] if version_to is None else version_to
-        if version_from not in all_version_numbers or version_to not in all_version_numbers:
-            warn = f"Wrong version parameter: {version_from}-{version_to} while getting diffs for {file_path}"
-            self.log.warning(warn)
-            raise ClientError(warn)
-
-        # Find versions to fetch between the 'from' and 'to' versions
-        idx_from = idx_to = None
-        for idx, version in enumerate(all_version_numbers):
-            if version == version_from:
-                idx_from = idx
-            elif version == version_to:
-                idx_to = idx
-                break
-        version_numbers_to_fetch = all_version_numbers[idx_from:idx_to + 1]
-        return {k: v for k, v in file_history.items() if int(k[1:]) in version_numbers_to_fetch}
 
     def get_file_diff(self, project_dir, file_path, output_diff, version_from, version_to):
         """ Create concatenated diff for project file diffs between versions version_from and version_to.
@@ -687,7 +665,7 @@ class MerginClient:
         :type file_path: String
         :param output_diff: full destination path for concatenated diff file
         :type output_diff: String
-        :param version_from: starting project version tag for getting diff
+        :param version_from: starting project version tag for getting diff, for example 'v3'
         :type version_from: String
         :param version_to: ending project version tag for getting diff
         :type version_to: String
@@ -701,16 +679,14 @@ class MerginClient:
 
         project_path = mp.metadata["name"]
         self.log.info(f"Getting diffs for file {file_path} of {project_path}")
-        file_history = self.project_file_history_info(project_path, file_path)["history"]
-        version_from = int(version_from[1:]) if isinstance(version_from, str) else version_from
-        version_to = int(version_to[1:]) if isinstance(version_to, str) else version_to
-        versions_to_fetch = self.get_versions_with_file_diffs(
-            project_path, file_path, version_from=version_from, version_to=version_to, file_history=file_history
+        file_history = self.project_file_history_info(project_path, file_path)
+        versions_to_fetch = get_versions_with_file_changes(
+            self, project_path, file_path, version_from=version_from, version_to=version_to, file_history=file_history
         )
-        job = download_project_file_diffs(self, project_dir, file_path, versions_to_fetch)
+        job = download_diffs_async(self, project_dir, file_path, versions_to_fetch, file_history=file_history)
         if job is None:
             return
         pull_project_wait(job)
 
         # finalize getting diffs
-        return pull_diffs_finalize(job, output_diff)
+        download_diffs_finalize(job, output_diff)

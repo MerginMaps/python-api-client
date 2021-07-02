@@ -26,7 +26,7 @@ from mergin import (
 from mergin.client_pull import (
     download_project_async,
     download_project_cancel,
-    download_project_file,
+    download_file_async,
     download_file_finalize,
     download_project_finalize,
     download_project_is_running,
@@ -263,12 +263,11 @@ def download(ctx, project, directory, version):
 
 
 @cli.command()
-@click.argument("project")
 @click.argument("filepath")
 @click.argument("output")
 @click.option("--version", help="Project version tag, for example 'v3'")
 @click.pass_context
-def download_file(ctx, project, filepath, output, version):
+def download_file(ctx, filepath, output, version):
     """
     Download project file at specified version. `project` needs to be a combination of namespace/project.
     If no version is given, the latest will be fetched.
@@ -276,15 +275,10 @@ def download_file(ctx, project, filepath, output, version):
     mc = ctx.obj["client"]
     if mc is None:
         return
+    mp = MerginProject(os.getcwd())
+    project_path = mp.metadata["name"]
     try:
-        namespace, project = project.split("/")
-        assert namespace, "No namespace given"
-        assert project, "No project name given"
-    except (ValueError, AssertionError) as e:
-        click.secho(f"Incorrect namespace/project format: {e}", fg="red")
-        return
-    try:
-        job = download_project_file(mc, f"{namespace}/{project}", filepath, output, version)
+        job = download_file_async(mc, project_path, filepath, output, version)
         with click.progressbar(length=job.total_size) as bar:
             last_transferred_size = 0
             while download_project_is_running(job):

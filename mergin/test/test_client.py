@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import tempfile
@@ -10,7 +11,7 @@ import sqlite3
 
 from ..client import MerginClient, ClientError, MerginProject, LoginError, decode_token_data, TokenError
 from ..client_push import push_project_async, push_project_cancel
-from ..utils import generate_checksum
+from ..utils import generate_checksum, get_versions_with_file_changes
 from ..merginproject import pygeodiff
 
 
@@ -833,12 +834,37 @@ def create_versioned_project(mc, project_name, project_dir, updated_file, remove
     return mp
 
 
+def test_get_versions_with_file_changes(mc):
+    """Test getting versions where the file was changed."""
+    test_project = 'test_file_modified_versions'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    f_updated = "base.gpkg"
+
+    mp = create_versioned_project(mc, test_project, project_dir, f_updated, remove=False)
+
+    project_info = mc.project_info(project)
+    assert project_info["version"] == "v4"
+    file_history = mc.project_file_history_info(project, f_updated)
+
+    wrong_versions_err = "Wrong version parameter: 1-5 while getting diffs for base.gpkg. Available versions: [1, 2, 3, 4]"
+    with pytest.raises(ClientError) as err:
+        mod_versions = get_versions_with_file_changes(
+            mc, project, f_updated, version_from="v1", version_to="v5", file_history=file_history
+        )
+    assert err.value.args[0] == wrong_versions_err
+
+    mod_versions = get_versions_with_file_changes(
+        mc, project, f_updated, version_from="v2", version_to="v4", file_history=file_history
+    )
+    assert mod_versions == [f"v{i}" for i in range(2, 5)]
+
+
 def test_download_file(mc):
     """Test downloading single file at specified versions."""
     test_project = 'test_download_file'
     project = API_USER + '/' + test_project
     project_dir = os.path.join(TMP_DIR, test_project)
-    download_dir = os.path.join(project_dir, "versions")  # project for downloading files at various versions
     f_updated = "base.gpkg"
 
     mp = create_versioned_project(mc, test_project, project_dir, f_updated)
@@ -846,17 +872,40 @@ def test_download_file(mc):
     project_info = mc.project_info(project)
     assert project_info["version"] == "v5"
 
-    # Download the base file at versions 2-4 and check their checksums
-    f_versioned = os.path.join(download_dir, f_updated)
+    # Download the base file at versions 2-4 and check the changes
+    expected = {
+        2: {"table": "simple", "change": "insert", "nr_of_changes": 1},
+        3: {"table": "simple", "change": "update", "nr_of_changes": 2},
+        4: {"table": "simple", "change": "update", "nr_of_changes": 3},
+    }
+    f_versioned = os.path.join(project_dir, f_updated)
     for ver in range(2, 5):
-        mc.download_file(project, f_updated, f_versioned, version=f"v{ver}")
-        f_downloaded_checksum = generate_checksum(f_versioned)
-        proj_info = mc.project_info(project, version=f"v{ver}")
-        f_remote_checksum = next((f['checksum'] for f in proj_info['files'] if f['path'] == f_updated), None)
-        assert f_remote_checksum == f_downloaded_checksum
+        if not os.path.exists(f_versioned):
+            shutil.copy(os.path.join(TEST_DATA_DIR, f_updated), mp.fpath_meta(f_updated))
+        else:
+            shutil.copy(f_versioned, mp.fpath_meta(f_updated))
+        mc.download_file(project_dir, f_updated, f_versioned, version=f"v{ver}")
+        diff_file = mp.fpath_meta(f"changes_v{ver}.diff")
+        mp.geodiff.create_changeset(
+            mp.fpath_meta(f_updated), f_versioned, mp.fpath_meta(diff_file))
 
+        assert mp.geodiff.has_changes(diff_file)
+        assert mp.geodiff.changes_count(diff_file) == expected[ver]["nr_of_changes"]
+
+        changes_file = diff_file + ".changes"
+        mp.geodiff.list_changes_summary(diff_file, changes_file)
+        with open(changes_file, 'r') as f:
+            expected_changed_table = expected[ver]["table"]
+            expected_change = expected[ver]["change"]
+            expected_nr_of_changes = expected[ver]["nr_of_changes"]
+            changes = json.loads(f.read())["geodiff_summary"][0]
+            assert changes["table"] == expected_changed_table
+            assert expected_change in changes
+            assert changes[expected_change] == expected_nr_of_changes
+
+    # make sure there will be exception raised if a file doesn't exist in the version
     with pytest.raises(ClientError, match=f"No {f_updated} exists at version v5"):
-        mc.download_file(project, f_updated, f_versioned, version=f"v5")
+        mc.download_file(project_dir, f_updated, f_versioned, version=f"v5")
 
 
 def test_download_diffs(mc):
@@ -866,16 +915,33 @@ def test_download_diffs(mc):
     project_dir = os.path.join(TMP_DIR, test_project)
     download_dir = os.path.join(project_dir, "diffs")  # project for downloading files at various versions
     f_updated = "base.gpkg"
-    diff = os.path.join(download_dir, f_updated + ".diff")
+    diff_file = os.path.join(download_dir, f_updated + ".diff")
 
     mp = create_versioned_project(mc, test_project, project_dir, f_updated, remove=False)
 
     project_info = mc.project_info(project)
     assert project_info["version"] == "v4"
 
+    # Download diffs of updated file between versions 1 and 2
+    mc.get_file_diff(project_dir, f_updated, diff_file, "v1", "v2")
+    assert os.path.exists(diff_file)
+    assert mp.geodiff.has_changes(diff_file)
+    assert mp.geodiff.changes_count(diff_file) == 1
+    changes_file = diff_file + ".changes1-2"
+    mp.geodiff.list_changes_summary(diff_file, changes_file)
+    with open(changes_file, 'r') as f:
+        changes = json.loads(f.read())["geodiff_summary"][0]
+        assert changes["insert"] == 1
+        assert changes["update"] == 0
+
     # Download diffs of updated file between versions 2 and 4
-    mc.get_file_diff(project_dir, f_updated, diff, "v1", "v4")
-    assert os.path.exists(diff)
+    mc.get_file_diff(project_dir, f_updated, diff_file, "v2", "v4")
+    changes_file = diff_file + ".changes2-4"
+    mp.geodiff.list_changes_summary(diff_file, changes_file)
+    with open(changes_file, 'r') as f:
+        changes = json.loads(f.read())["geodiff_summary"][0]
+        assert changes["insert"] == 0
+        assert changes["update"] == 1
 
 
 def _use_wal(db_file):

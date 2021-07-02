@@ -5,6 +5,7 @@ import hashlib
 import re
 import sqlite3
 from datetime import datetime
+from .common import ClientError
 
 
 def generate_checksum(file, chunk_size=4096):
@@ -99,3 +100,44 @@ def do_sqlite_checkpoint(path, log=None):
             log.info("checkpoint - new size {} checksum {}".format(new_size, new_checksum))
 
     return new_size, new_checksum
+
+
+def get_versions_with_file_changes(
+        mc, project_path, file_path, version_from=None, version_to=None, file_history=None):
+    """
+    Get the project version tags where the file was added, modified or deleted.
+
+    Args:
+        mc (MerginClient): MerginClient instance
+        project_path (str): project full name (<namespace>/<name>)
+        file_path (str): relative path of file to download in the project directory
+        version_from (str): optional minimum version to fetch, for example "v3"
+        version_to (str): optional maximum version to fetch
+        file_history (dict): optional file history info, result of project_file_history_info().
+
+    Returns:
+        list of version tags, for example ["v4", "v7", "v8"]
+    """
+    if file_history is None:
+        file_history = mc.project_file_history_info(project_path, file_path)
+    all_version_numbers = sorted([int(k[1:]) for k in file_history["history"].keys()])
+    if "v" not in version_from or "v" not in version_to:
+        err = f"Wrong version parameter: {version_from}-{version_to} while getting diffs for {file_path}. "
+        err += f"Version tags required in the form: 'v2', 'v11', etc."
+        raise ClientError(err)
+    version_from = all_version_numbers[0] if version_from is None else int(version_from[1:])
+    version_to = all_version_numbers[-1] if version_to is None else int(version_to[1:])
+    if version_from not in all_version_numbers or version_to not in all_version_numbers:
+        err = f"Wrong version parameter: {version_from}-{version_to} while getting diffs for {file_path}. "
+        err += f"Available versions: {all_version_numbers}"
+        raise ClientError(err)
+
+    # Find versions to fetch between the 'from' and 'to' versions
+    idx_from = idx_to = None
+    for idx, version in enumerate(all_version_numbers):
+        if version == version_from:
+            idx_from = idx
+        elif version == version_to:
+            idx_to = idx
+            break
+    return [f"v{ver_nr}" for ver_nr in all_version_numbers[idx_from:idx_to + 1]]

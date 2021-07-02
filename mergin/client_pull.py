@@ -571,7 +571,7 @@ def pull_project_finalize(job):
     return conflicts
 
 
-def download_project_file(mc, project_path, file_path, output_file, version):
+def download_file_async(mc, project_path, file_path, output_file, version):
     """
     Starts background download project file at specified versions.
     Returns handle to the pending download.
@@ -618,7 +618,7 @@ def download_project_file(mc, project_path, file_path, output_file, version):
 
 def download_file_finalize(job):
     """
-    To be called when download_project_file is finished
+    To be called when download_file_async is finished
     """
     job.executor.shutdown(wait=True)
 
@@ -633,10 +633,20 @@ def download_file_finalize(job):
         task.apply(job.directory, job.mp)
 
 
-def download_project_file_diffs(mc, project_directory, file_path, versions):
+def download_diffs_async(mc, project_directory, file_path, versions, file_history=None):
     """
     Starts background download project file diffs for specified versions.
     Returns handle to the pending download.
+
+    Args:
+        mc (MerginClient): MerginClient instance.
+        project_directory (str): local project directory.
+        file_path (str): file path relative to Mergin project root.
+        versions ([str]): list of tags of versions to fetch, for example: ["v2", "v5"].
+        file_history (dict): optional file history info, result of MerginClient.project_file_history_info()
+
+    Returns:
+        PullJob/None: a handle for the pending download.
     """
     try:
         mp = MerginProject(project_directory)
@@ -649,36 +659,33 @@ def download_project_file_diffs(mc, project_directory, file_path, versions):
 
     try:
         server_info = mc.project_info(project_path)
+        if file_history is None:
+            file_history = mc.project_file_history_info(project_path, file_path)
     except ClientError as err:
         mp.log.error("Error getting project info: " + str(err))
         mp.log.info("--- pull aborted")
         raise
 
-    version_numbers = sorted([int(v[1:]) for v in versions])
     temp_dir = os.path.join(tempfile.gettempdir(), "mergin_temp")
     os.makedirs(temp_dir, exist_ok=True)
     fetch_files = []
 
-    for version, version_data in versions.items():
-        if int(version[1:]) == version_numbers[0]:
-            continue
-        diff_file = copy.deepcopy(version_data)
-        diff_file['version'] = version
-        diff_file['diff'] = version_data['diff']
-        fetch_files.append(diff_file)
+    for version in versions[1:]:
+        version_data = file_history["history"][version]
+        diff_data = copy.deepcopy(version_data)
+        diff_data['version'] = version
+        diff_data['diff'] = version_data['diff']
+        fetch_files.append(diff_data)
 
     files_to_merge = []  # list of FileToMerge instances
+    download_list = []  # list of all items to be downloaded
+    total_size = 0
     for file in fetch_files:
         items = _download_items(file, temp_dir, diff_only=True)
         dest_file_path = os.path.normpath(os.path.join(temp_dir, os.path.basename(file['diff']['path'])))
         files_to_merge.append(FileToMerge(dest_file_path, items))
-
-    # make a single list of items to download
-    total_size = 0
-    download_list = []
-    for file_to_merge in files_to_merge:
-        download_list.extend(file_to_merge.downloaded_items)
-        for item in file_to_merge.downloaded_items:
+        download_list.extend(items)
+        for item in items:
             total_size += item.size
 
     mp.log.info(f"will download {len(download_list)} chunks, total size {total_size}")
@@ -696,8 +703,8 @@ def download_project_file_diffs(mc, project_directory, file_path, versions):
     return job
 
 
-def pull_diffs_finalize(job, output_diff):
-    """ To be called after download_project_file_diffs """
+def download_diffs_finalize(job, output_diff):
+    """ To be called after download_diffs_async """
 
     job.executor.shutdown(wait=True)
 
@@ -721,12 +728,17 @@ def pull_diffs_finalize(job, output_diff):
 
     job.mp.log.info("--- diffs pull finished")
 
-    # Concatenate diffs
+    # Concatenate diffs, if needed
     diffs = []
     for file_to_merge in job.files_to_merge:
         diffs.append(file_to_merge.dest_file)
+
     output_dir = os.path.dirname(output_diff)
-    os.makedirs(output_dir, exist_ok=True)
-    job.mp.geodiff.concat_changes(diffs, output_diff)
+    if len(diffs) >= 1:
+        os.makedirs(output_dir, exist_ok=True)
+        if len(diffs) > 1:
+            job.mp.geodiff.concat_changes(diffs, output_diff)
+        elif len(diffs) == 1:
+            shutil.copy(diffs[0], output_diff)
     for diff in diffs:
         os.remove(diff)
