@@ -36,7 +36,10 @@ from .utils import save_to_file
 
 
 class DownloadJob:
-    """ Keeps all the important data about a pending download job """
+    """
+    Keeps all the important data about a pending download job.
+    Used for downloading whole projects but also single files.
+    """
     
     def __init__(self, project_path, total_size, version, update_tasks, download_queue_items,
                  directory, mp, mc, project_info):
@@ -576,7 +579,7 @@ def download_file_async(mc, project_path, file_path, output_file, version):
     Starts background download project file at specified versions.
     Returns handle to the pending download.
     """
-    mc.log.info(f"--- start download")
+    mc.log.info(f"--- start download {file_path} for {project_path}")
     project_info = mc.project_info(project_path, version=version)
 
     mc.log.info(f"Got project info. version {project_info['version']}")
