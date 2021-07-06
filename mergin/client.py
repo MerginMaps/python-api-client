@@ -11,12 +11,20 @@ from datetime import datetime, timezone
 import dateutil.parser
 import ssl
 
-from .common import ClientError, LoginError
+from .common import ClientError, LoginError, InvalidProject
 from .merginproject import MerginProject
-from .client_pull import download_project_async, download_project_wait, download_project_finalize
+from .client_pull import (
+    download_file_finalize,
+    download_project_async,
+    download_file_async,
+    download_diffs_async,
+    download_project_finalize,
+    download_project_wait,
+    download_diffs_finalize,
+)
 from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
 from .client_push import push_project_async, push_project_wait, push_project_finalize
-from .utils import DateTimeEncoder
+from .utils import DateTimeEncoder, get_versions_with_file_changes
 from .version import __version__
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
@@ -618,3 +626,38 @@ class MerginClient:
 
         resp = self.post("/v1/project/by_names", {"projects": projects}, {"Content-Type": "application/json"})
         return json.load(resp)
+
+    def download_file(self, project_dir, file_path, output_filename, version=None):
+        """
+        Download project file at specified version. Get the latest if no version specified.
+
+        :param project_dir: project local directory
+        :type project_dir: String
+        :param file_path: relative path of file to download in the project directory
+        :type file_path: String
+        :param output_filename: full destination path for saving the downloaded file
+        :type output_filename: String
+        :param version: optional version tag for downloaded file
+        :type version: String
+        """
+        job = download_file_async(self, project_dir, file_path, output_filename, version=version)
+        pull_project_wait(job)
+        download_file_finalize(job)
+
+    def get_file_diff(self, project_dir, file_path, output_diff, version_from, version_to):
+        """ Create concatenated diff for project file diffs between versions version_from and version_to.
+
+        :param project_dir: project local directory
+        :type project_dir: String
+        :param file_path: relative path of file to download in the project directory
+        :type file_path: String
+        :param output_diff: full destination path for concatenated diff file
+        :type output_diff: String
+        :param version_from: starting project version tag for getting diff, for example 'v3'
+        :type version_from: String
+        :param version_to: ending project version tag for getting diff
+        :type version_to: String
+        """
+        job = download_diffs_async(self, project_dir, file_path, version_from, version_to)
+        pull_project_wait(job)
+        download_diffs_finalize(job, output_diff)

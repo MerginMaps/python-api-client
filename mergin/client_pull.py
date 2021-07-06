@@ -14,12 +14,13 @@ import math
 import os
 import pprint
 import shutil
+import tempfile
 
 import concurrent.futures
 
 from .common import CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
-from .utils import save_to_file
+from .utils import save_to_file, get_versions_with_file_changes
 
 
 # status = download_project_async(...)
@@ -35,7 +36,10 @@ from .utils import save_to_file
 
 
 class DownloadJob:
-    """ Keeps all the important data about a pending download job """
+    """
+    Keeps all the important data about a pending download job.
+    Used for downloading whole projects but also single files.
+    """
     
     def __init__(self, project_path, total_size, version, update_tasks, download_queue_items, directory, mp, project_info):
         self.project_path = project_path
@@ -48,7 +52,7 @@ class DownloadJob:
         self.mp = mp   # MerginProject instance
         self.is_cancelled = False
         self.project_info = project_info   # parsed JSON with project info returned from the server
-        
+
     def dump(self):
         print("--- JOB ---", self.total_size, "bytes")
         for task in self.update_tasks:
@@ -104,7 +108,6 @@ def download_project_async(mc, project_path, directory, project_version=None):
     """
     Starts project download in background and returns handle to the pending project download.
     Using that object it is possible to watch progress or cancel the ongoing work.
-    
     """
 
     if '/' not in project_path:
@@ -226,27 +229,35 @@ def download_project_cancel(job):
 
 class UpdateTask:
     """
-    Entry for each file that will be updated. At the end of a successful download of new data, all the tasks are executed.
+    Entry for each file that will be updated.
+    At the end of a successful download of new data, all the tasks are executed.
     """
     
     # TODO: methods other than COPY
-    def __init__(self, file_path, download_queue_items):
+    def __init__(self, file_path, download_queue_items, destination_file=None):
         self.file_path = file_path
+        self.destination_file = destination_file
         self.download_queue_items = download_queue_items
-        
+
     def apply(self, directory, mp):
         """ assemble downloaded chunks into a single file """
         
-        basename = os.path.basename(self.file_path)   #file['diff']['path']) if diff_only else os.path.basename(file['path'])
-        file_dir = os.path.dirname(os.path.normpath(os.path.join(directory, self.file_path)))
-        dest_file_path = os.path.join(file_dir, basename)
+        if self.destination_file is None:
+            basename = os.path.basename(self.file_path)
+            file_dir = os.path.dirname(os.path.normpath(os.path.join(directory, self.file_path)))
+            dest_file_path = os.path.join(file_dir, basename)
+        else:
+            file_dir = os.path.dirname(os.path.normpath(self.destination_file))
+            dest_file_path = self.destination_file
         os.makedirs(file_dir, exist_ok=True)
 
         # merge chunks together (and delete them afterwards)
         file_to_merge = FileToMerge(dest_file_path, self.download_queue_items)
         file_to_merge.merge()
 
-        if mp.is_versioned_file(self.file_path):
+        # Make a copy of the file to meta dir only if there is no user-specified path for the file.
+        # destination_file is None for full project download and takes a meaningful value for a single file download.
+        if mp.is_versioned_file(self.file_path) and self.destination_file is None:
             mp.geodiff.make_copy_sqlite(mp.fpath(self.file_path), mp.fpath_meta(self.file_path))
 
 
@@ -287,7 +298,8 @@ class DownloadQueueItem:
 
 
 class PullJob:
-    def __init__(self, project_path, pull_changes, total_size, version, files_to_merge, download_queue_items, temp_dir, mp, project_info, basefiles_to_patch):
+    def __init__(self, project_path, pull_changes, total_size, version, files_to_merge, download_queue_items,
+                 temp_dir, mp, project_info, basefiles_to_patch):
         self.project_path = project_path
         self.pull_changes = pull_changes    # dictionary with changes (dict[str, list[dict]] - keys: "added", "updated", ...)
         self.total_size = total_size      # size of data to download (in bytes)
@@ -551,3 +563,190 @@ def pull_project_finalize(job):
 
     shutil.rmtree(job.temp_dir)
     return conflicts
+
+
+def download_file_async(mc, project_dir, file_path, output_file, version):
+    """
+    Starts background download project file at specified version.
+    Returns handle to the pending download.
+    """
+    mp = MerginProject(project_dir)
+    project_path = mp.metadata["name"]
+    ver_info = f"at version {version}" if version is not None else "at latest version"
+    mp.log.info(f"Getting {file_path} {ver_info}")
+    project_info = mc.project_info(project_path, version=version)
+    mp.log.info(f"Got project info. version {project_info['version']}")
+
+    # set temporary directory for download
+    temp_dir = tempfile.mkdtemp(prefix="mergin-py-client-")
+
+    download_list = []
+    update_tasks = []
+    total_size = 0
+    for file in project_info['files']:
+        if file["path"] == file_path:
+            file['version'] = version
+            items = _download_items(file, temp_dir)
+            task = UpdateTask(file['path'], items, output_file)
+            download_list.extend(task.download_queue_items)
+            for item in task.download_queue_items:
+                total_size += item.size
+            update_tasks.append(task)
+            break
+    if not download_list:
+        warn = f"No {file_path} exists at version {version}"
+        mp.log.warning(warn)
+        shutil.rmtree(temp_dir)
+        raise ClientError(warn)
+
+    mp.log.info(f"will download file {file_path} in {len(download_list)} chunks, total size {total_size}")
+    job = DownloadJob(
+        project_path, total_size, version, update_tasks, download_list, temp_dir, mp, project_info
+    )
+    job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+    job.futures = []
+    for item in download_list:
+        future = job.executor.submit(_do_download, item, mc, mp, project_path, job)
+        job.futures.append(future)
+
+    return job
+
+
+def download_file_finalize(job):
+    """
+    To be called when download_file_async is finished
+    """
+    job.executor.shutdown(wait=True)
+
+    # make sure any exceptions from threads are not lost
+    for future in job.futures:
+        if future.exception() is not None:
+            raise future.exception()
+
+    job.mp.log.info("--- download finished")
+
+    temp_dir = None
+    for task in job.update_tasks:
+        task.apply(job.directory, job.mp)
+        if task.download_queue_items:
+            temp_dir = os.path.dirname(task.download_queue_items[0].download_file_path)
+
+    # Remove temporary download directory
+    if temp_dir is not None:
+        shutil.rmtree(temp_dir)
+
+
+def download_diffs_async(mc, project_directory, file_path, version_from, version_to):
+    """
+    Starts background download project file diffs for specified versions.
+    Returns handle to the pending download.
+
+    Args:
+        mc (MerginClient): MerginClient instance.
+        project_directory (str): local project directory.
+        file_path (str): file path relative to Mergin project root.
+        version_from (str): starting project version tag for getting diff, for example 'v3'.
+        version_to (str): ending project version tag for getting diff.
+
+    Returns:
+        PullJob/None: a handle for the pending download.
+    """
+    mp = MerginProject(project_directory)
+    project_path = mp.metadata["name"]
+    file_history = mc.project_file_history_info(project_path, file_path)
+    versions_to_fetch = get_versions_with_file_changes(
+        mc, project_path, file_path, version_from=version_from, version_to=version_to, file_history=file_history
+    )
+    mp.log.info(f"--- version: {mc.user_agent_info()}")
+    mp.log.info(f"--- start download diffs for {file_path} of {project_path}, versions: {[v for v in versions_to_fetch]}")
+
+    try:
+        server_info = mc.project_info(project_path)
+        if file_history is None:
+            file_history = mc.project_file_history_info(project_path, file_path)
+    except ClientError as err:
+        mp.log.error("Error getting project info: " + str(err))
+        mp.log.info("--- downloading diffs aborted")
+        raise
+
+    temp_dir = tempfile.mkdtemp(prefix="mergin-py-client-")
+    fetch_files = []
+
+    for version in versions_to_fetch[1:]:
+        version_data = file_history["history"][version]
+        diff_data = copy.deepcopy(version_data)
+        diff_data['version'] = version
+        diff_data['diff'] = version_data['diff']
+        fetch_files.append(diff_data)
+
+    files_to_merge = []  # list of FileToMerge instances
+    download_list = []  # list of all items to be downloaded
+    total_size = 0
+    for file in fetch_files:
+        items = _download_items(file, temp_dir, diff_only=True)
+        dest_file_path = os.path.normpath(os.path.join(temp_dir, os.path.basename(file['diff']['path'])))
+        files_to_merge.append(FileToMerge(dest_file_path, items))
+        download_list.extend(items)
+        for item in items:
+            total_size += item.size
+
+    mp.log.info(f"will download {len(download_list)} chunks, total size {total_size}")
+
+    job = PullJob(project_path, None, total_size, None, files_to_merge, download_list, temp_dir, mp,
+                  server_info, {})
+
+    # start download
+    job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+    job.futures = []
+    for item in download_list:
+        future = job.executor.submit(_do_download, item, mc, mp, project_path, job)
+        job.futures.append(future)
+
+    return job
+
+
+def download_diffs_finalize(job, output_diff):
+    """ To be called after download_diffs_async """
+
+    job.executor.shutdown(wait=True)
+
+    # make sure any exceptions from threads are not lost
+    for future in job.futures:
+        if future.exception() is not None:
+            job.mp.log.error("Error while pulling data: " + str(future.exception()))
+            job.mp.log.info("--- diffs download aborted")
+            raise future.exception()
+
+    job.mp.log.info("finalizing diffs pull")
+
+    # merge downloaded chunks
+    try:
+        for file_to_merge in job.files_to_merge:
+            file_to_merge.merge()
+    except ClientError as err:
+        job.mp.log.error("Error merging chunks of downloaded file: " + str(err))
+        job.mp.log.info("--- diffs pull aborted")
+        raise
+
+    job.mp.log.info("--- diffs pull finished")
+
+    # Collect and finally concatenate diffs, if needed
+    diffs = []
+    for file_to_merge in job.files_to_merge:
+        diffs.append(file_to_merge.dest_file)
+
+    output_dir = os.path.dirname(output_diff)
+    temp_dir = None
+    if len(diffs) >= 1:
+        os.makedirs(output_dir, exist_ok=True)
+        temp_dir = os.path.dirname(diffs[0])
+        if len(diffs) > 1:
+            job.mp.geodiff.concat_changes(diffs, output_diff)
+        elif len(diffs) == 1:
+            shutil.copy(diffs[0], output_diff)
+    for diff in diffs:
+        os.remove(diff)
+
+    # remove the diffs download temporary directory
+    if temp_dir is not None:
+        shutil.rmtree(temp_dir)

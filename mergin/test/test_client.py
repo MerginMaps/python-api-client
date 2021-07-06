@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import tempfile
@@ -10,7 +11,7 @@ import sqlite3
 
 from ..client import MerginClient, ClientError, MerginProject, LoginError, decode_token_data, TokenError
 from ..client_push import push_project_async, push_project_cancel
-from ..utils import generate_checksum
+from ..utils import generate_checksum, get_versions_with_file_changes
 from ..merginproject import pygeodiff
 
 
@@ -810,11 +811,142 @@ def test_server_compatibility(mc):
     assert mc.is_server_compatible()
 
 
+def create_versioned_project(mc, project_name, project_dir, updated_file, remove=True):
+    project = API_USER + '/' + project_name
+    cleanup(mc, project, [project_dir])
+
+    # create remote project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project_and_push(project_name, project_dir)
+
+    mp = MerginProject(project_dir)
+
+    # create versions 2-4
+    changes = ("inserted_1_A.gpkg", "inserted_1_A_mod.gpkg", "inserted_1_B.gpkg",)
+    for change in changes:
+        shutil.copy(mp.fpath(change), mp.fpath(updated_file))
+        mc.push_project(project_dir)
+    # create version 5 with modified file removed
+    if remove:
+        os.remove(os.path.join(project_dir, updated_file))
+        mc.push_project(project_dir)
+
+    return mp
+
+
+def test_get_versions_with_file_changes(mc):
+    """Test getting versions where the file was changed."""
+    test_project = 'test_file_modified_versions'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    f_updated = "base.gpkg"
+
+    mp = create_versioned_project(mc, test_project, project_dir, f_updated, remove=False)
+
+    project_info = mc.project_info(project)
+    assert project_info["version"] == "v4"
+    file_history = mc.project_file_history_info(project, f_updated)
+
+    with pytest.raises(ClientError) as e:
+        mod_versions = get_versions_with_file_changes(
+            mc, project, f_updated, version_from="v1", version_to="v5", file_history=file_history
+        )
+    assert "Wrong version parameters: 1-5" in str(e.value)
+    assert "Available versions: [1, 2, 3, 4]" in str(e.value)
+
+    mod_versions = get_versions_with_file_changes(
+        mc, project, f_updated, version_from="v2", version_to="v4", file_history=file_history
+    )
+    assert mod_versions == [f"v{i}" for i in range(2, 5)]
+
+
+def check_gpkg_same_content(mergin_project, gpkg_path_1, gpkg_path_2):
+    """Check if the two GeoPackages have equal content."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        diff_path = os.path.join(temp_dir, "diff_file")
+        mergin_project.geodiff.create_changeset(gpkg_path_1, gpkg_path_2, diff_path)
+        return not mergin_project.geodiff.has_changes(diff_path)
+
+
+def test_download_file(mc):
+    """Test downloading single file at specified versions."""
+    test_project = 'test_download_file'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    f_updated = "base.gpkg"
+
+    mp = create_versioned_project(mc, test_project, project_dir, f_updated)
+
+    project_info = mc.project_info(project)
+    assert project_info["version"] == "v5"
+
+    # Versioned file should have the following content at versions 2-4
+    expected_content = ("inserted_1_A.gpkg", "inserted_1_A_mod.gpkg", "inserted_1_B.gpkg")
+
+    # Download the base file at versions 2-4 and check the changes
+    f_downloaded = os.path.join(project_dir, f_updated)
+    for ver in range(2, 5):
+        mc.download_file(project_dir, f_updated, f_downloaded, version=f"v{ver}")
+        expected = os.path.join(TEST_DATA_DIR, expected_content[ver - 2])  # GeoPackage with expected content
+        assert check_gpkg_same_content(mp, f_downloaded, expected)
+
+    # make sure there will be exception raised if a file doesn't exist in the version
+    with pytest.raises(ClientError, match=f"No {f_updated} exists at version v5"):
+        mc.download_file(project_dir, f_updated, f_downloaded, version=f"v5")
+
+
+def test_download_diffs(mc):
+    """Test download diffs for a project file between specified project versions."""
+    test_project = 'test_download_diffs'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    download_dir = os.path.join(project_dir, "diffs")  # project for downloading files at various versions
+    f_updated = "base.gpkg"
+    diff_file = os.path.join(download_dir, f_updated + ".diff")
+
+    mp = create_versioned_project(mc, test_project, project_dir, f_updated, remove=False)
+
+    project_info = mc.project_info(project)
+    assert project_info["version"] == "v4"
+
+    # Download diffs of updated file between versions 1 and 2
+    mc.get_file_diff(project_dir, f_updated, diff_file, "v1", "v2")
+    assert os.path.exists(diff_file)
+    assert mp.geodiff.has_changes(diff_file)
+    assert mp.geodiff.changes_count(diff_file) == 1
+    changes_file = diff_file + ".changes1-2"
+    mp.geodiff.list_changes_summary(diff_file, changes_file)
+    with open(changes_file, 'r') as f:
+        changes = json.loads(f.read())["geodiff_summary"][0]
+        assert changes["insert"] == 1
+        assert changes["update"] == 0
+
+    # Download diffs of updated file between versions 2 and 4
+    mc.get_file_diff(project_dir, f_updated, diff_file, "v2", "v4")
+    changes_file = diff_file + ".changes2-4"
+    mp.geodiff.list_changes_summary(diff_file, changes_file)
+    with open(changes_file, 'r') as f:
+        changes = json.loads(f.read())["geodiff_summary"][0]
+        assert changes["insert"] == 0
+        assert changes["update"] == 1
+
+    with pytest.raises(ClientError) as e:
+        mc.get_file_diff(project_dir, f_updated, diff_file, "v4", "v1")
+    assert "Wrong version parameters" in str(e.value)
+    assert "version_from needs to be smaller than version_to" in str(e.value)
+
+    with pytest.raises(ClientError) as e:
+        mc.get_file_diff(project_dir, f_updated, diff_file, "v4", "v5")
+    assert "Wrong version parameters" in str(e.value)
+    assert "Available versions: [1, 2, 3, 4]" in str(e.value)
+
+
 def _use_wal(db_file):
     """ Ensures that sqlite database is using WAL journal mode """
     con = sqlite3.connect(db_file)
     cursor = con.cursor()
     cursor.execute('PRAGMA journal_mode=wal;')
+
 
 def _create_test_table(db_file):
     """ Creates a table called 'test' in sqlite database. Useful to simulate change of database schema. """
@@ -823,6 +955,7 @@ def _create_test_table(db_file):
     cursor.execute('CREATE TABLE test (fid SERIAL, txt TEXT);')
     cursor.execute('INSERT INTO test VALUES (123, \'hello\');')
     cursor.execute('COMMIT;')
+
 
 def _check_test_table(db_file):
     """ Checks whether the 'test' table exists and has one row - otherwise fails with an exception. """
