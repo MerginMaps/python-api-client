@@ -821,12 +821,12 @@ def create_versioned_project(mc, project_name, project_dir, updated_file, remove
 
     mp = MerginProject(project_dir)
 
-    # create versions 2-5
+    # create versions 2-4
     changes = ("inserted_1_A.gpkg", "inserted_1_A_mod.gpkg", "inserted_1_B.gpkg",)
     for change in changes:
         shutil.copy(mp.fpath(change), mp.fpath(updated_file))
         mc.push_project(project_dir)
-
+    # create version 5 with modified file removed
     if remove:
         os.remove(os.path.join(project_dir, updated_file))
         mc.push_project(project_dir)
@@ -847,17 +847,25 @@ def test_get_versions_with_file_changes(mc):
     assert project_info["version"] == "v4"
     file_history = mc.project_file_history_info(project, f_updated)
 
-    wrong_versions_err = "Wrong version parameter: 1-5 while getting diffs for base.gpkg. Available versions: [1, 2, 3, 4]"
-    with pytest.raises(ClientError) as err:
+    with pytest.raises(ClientError) as e:
         mod_versions = get_versions_with_file_changes(
             mc, project, f_updated, version_from="v1", version_to="v5", file_history=file_history
         )
-    assert err.value.args[0] == wrong_versions_err
+    assert "Wrong version parameters: 1-5" in str(e.value)
+    assert "Available versions: [1, 2, 3, 4]" in str(e.value)
 
     mod_versions = get_versions_with_file_changes(
         mc, project, f_updated, version_from="v2", version_to="v4", file_history=file_history
     )
     assert mod_versions == [f"v{i}" for i in range(2, 5)]
+
+
+def check_gpkg_same_content(mergin_project, gpkg_path_1, gpkg_path_2):
+    """Check if the two GeoPackages have equal content."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        diff_path = os.path.join(temp_dir, "diff_file")
+        mergin_project.geodiff.create_changeset(gpkg_path_1, gpkg_path_2, diff_path)
+        return not mergin_project.geodiff.has_changes(diff_path)
 
 
 def test_download_file(mc):
@@ -872,40 +880,19 @@ def test_download_file(mc):
     project_info = mc.project_info(project)
     assert project_info["version"] == "v5"
 
+    # Versioned file should have the following content at versions 2-4
+    expected_content = ("inserted_1_A.gpkg", "inserted_1_A_mod.gpkg", "inserted_1_B.gpkg")
+
     # Download the base file at versions 2-4 and check the changes
-    expected = {
-        2: {"table": "simple", "change": "insert", "nr_of_changes": 1},
-        3: {"table": "simple", "change": "update", "nr_of_changes": 2},
-        4: {"table": "simple", "change": "update", "nr_of_changes": 3},
-    }
-    f_versioned = os.path.join(project_dir, f_updated)
+    f_downloaded = os.path.join(project_dir, f_updated)
     for ver in range(2, 5):
-        if not os.path.exists(f_versioned):
-            shutil.copy(os.path.join(TEST_DATA_DIR, f_updated), mp.fpath_meta(f_updated))
-        else:
-            shutil.copy(f_versioned, mp.fpath_meta(f_updated))
-        mc.download_file(project_dir, f_updated, f_versioned, version=f"v{ver}")
-        diff_file = mp.fpath_meta(f"changes_v{ver}.diff")
-        mp.geodiff.create_changeset(
-            mp.fpath_meta(f_updated), f_versioned, mp.fpath_meta(diff_file))
-
-        assert mp.geodiff.has_changes(diff_file)
-        assert mp.geodiff.changes_count(diff_file) == expected[ver]["nr_of_changes"]
-
-        changes_file = diff_file + ".changes"
-        mp.geodiff.list_changes_summary(diff_file, changes_file)
-        with open(changes_file, 'r') as f:
-            expected_changed_table = expected[ver]["table"]
-            expected_change = expected[ver]["change"]
-            expected_nr_of_changes = expected[ver]["nr_of_changes"]
-            changes = json.loads(f.read())["geodiff_summary"][0]
-            assert changes["table"] == expected_changed_table
-            assert expected_change in changes
-            assert changes[expected_change] == expected_nr_of_changes
+        mc.download_file(project_dir, f_updated, f_downloaded, version=f"v{ver}")
+        expected = os.path.join(TEST_DATA_DIR, expected_content[ver - 2])  # GeoPackage with expected content
+        assert check_gpkg_same_content(mp, f_downloaded, expected)
 
     # make sure there will be exception raised if a file doesn't exist in the version
     with pytest.raises(ClientError, match=f"No {f_updated} exists at version v5"):
-        mc.download_file(project_dir, f_updated, f_versioned, version=f"v5")
+        mc.download_file(project_dir, f_updated, f_downloaded, version=f"v5")
 
 
 def test_download_diffs(mc):
@@ -942,6 +929,16 @@ def test_download_diffs(mc):
         changes = json.loads(f.read())["geodiff_summary"][0]
         assert changes["insert"] == 0
         assert changes["update"] == 1
+
+    with pytest.raises(ClientError) as e:
+        mc.get_file_diff(project_dir, f_updated, diff_file, "v4", "v1")
+    assert "Wrong version parameters" in str(e.value)
+    assert "version_from needs to be smaller than version_to" in str(e.value)
+
+    with pytest.raises(ClientError) as e:
+        mc.get_file_diff(project_dir, f_updated, diff_file, "v4", "v5")
+    assert "Wrong version parameters" in str(e.value)
+    assert "Available versions: [1, 2, 3, 4]" in str(e.value)
 
 
 def _use_wal(db_file):

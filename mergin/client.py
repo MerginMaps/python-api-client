@@ -640,21 +640,9 @@ class MerginClient:
         :param version: optional version tag for downloaded file
         :type version: String
         """
-        try:
-            mp = MerginProject(project_dir)
-        except InvalidProject as e:
-            err = f"Couldn't create Mergin project for {project_dir}: {repr(e)}"
-            self.log.error(err)
-            raise ClientError(err)
-
-        project_path = mp.metadata["name"]
-        ver_info = f"at version {version}" if version is not None else "at latest version"
-        self.log.info(f"Getting {file_path} from {project_path} {ver_info}")
-        job = download_file_async(self, project_path, file_path, output_filename, version=version)
-        if job is None:
-            return
+        job = download_file_async(self, project_dir, file_path, output_filename, version=version)
         pull_project_wait(job)
-        return download_file_finalize(job)
+        download_file_finalize(job)
 
     def get_file_diff(self, project_dir, file_path, output_diff, version_from, version_to):
         """ Create concatenated diff for project file diffs between versions version_from and version_to.
@@ -670,23 +658,6 @@ class MerginClient:
         :param version_to: ending project version tag for getting diff
         :type version_to: String
         """
-        try:
-            mp = MerginProject(project_dir)
-        except InvalidProject as e:
-            err = f"Couldn't create Mergin project for {project_dir}: {repr(e)}"
-            self.log.error(err)
-            raise ClientError(err)
-
-        project_path = mp.metadata["name"]
-        self.log.info(f"Getting diffs for file {file_path} of {project_path}")
-        file_history = self.project_file_history_info(project_path, file_path)
-        versions_to_fetch = get_versions_with_file_changes(
-            self, project_path, file_path, version_from=version_from, version_to=version_to, file_history=file_history
-        )
-        job = download_diffs_async(self, project_dir, file_path, versions_to_fetch, file_history=file_history)
-        if job is None:
-            return
+        job = download_diffs_async(self, project_dir, file_path, version_from, version_to)
         pull_project_wait(job)
-
-        # finalize getting diffs
         download_diffs_finalize(job, output_diff)

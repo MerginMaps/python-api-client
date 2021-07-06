@@ -121,14 +121,18 @@ def get_versions_with_file_changes(
     if file_history is None:
         file_history = mc.project_file_history_info(project_path, file_path)
     all_version_numbers = sorted([int(k[1:]) for k in file_history["history"].keys()])
-    if "v" not in version_from or "v" not in version_to:
-        err = f"Wrong version parameter: {version_from}-{version_to} while getting diffs for {file_path}. "
+    version_from = all_version_numbers[0] if version_from is None else int_version(version_from)
+    version_to = all_version_numbers[-1] if version_to is None else int_version(version_to)
+    if version_from is None or version_to is None:
+        err = f"Wrong version parameters: {version_from}-{version_to} while getting diffs for {file_path}. "
         err += f"Version tags required in the form: 'v2', 'v11', etc."
         raise ClientError(err)
-    version_from = all_version_numbers[0] if version_from is None else int(version_from[1:])
-    version_to = all_version_numbers[-1] if version_to is None else int(version_to[1:])
+    if version_from >= version_to:
+        err = f"Wrong version parameters: {version_from}-{version_to} while getting diffs for {file_path}. "
+        err += f"version_from needs to be smaller than version_to."
+        raise ClientError(err)
     if version_from not in all_version_numbers or version_to not in all_version_numbers:
-        err = f"Wrong version parameter: {version_from}-{version_to} while getting diffs for {file_path}. "
+        err = f"Wrong version parameters: {version_from}-{version_to} while getting diffs for {file_path}. "
         err += f"Available versions: {all_version_numbers}"
         raise ClientError(err)
 
