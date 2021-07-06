@@ -234,12 +234,11 @@ class UpdateTask:
     """
     
     # TODO: methods other than COPY
-    def __init__(self, file_path, download_queue_items, destination_file=None, remove_download_dir=False):
+    def __init__(self, file_path, download_queue_items, destination_file=None):
         self.file_path = file_path
         self.destination_file = destination_file
         self.download_queue_items = download_queue_items
-        self.remove_download_dir = remove_download_dir
-        
+
     def apply(self, directory, mp):
         """ assemble downloaded chunks into a single file """
         
@@ -260,13 +259,6 @@ class UpdateTask:
         # destination_file is None for full project download and takes a meaningful value for a single file download.
         if mp.is_versioned_file(self.file_path) and self.destination_file is None:
             mp.geodiff.make_copy_sqlite(mp.fpath(self.file_path), mp.fpath_meta(self.file_path))
-
-        # For single file download, chunks are saved in a temporary dir that needs to be removed manually
-        if self.remove_download_dir:
-            # extract download dir from the first download item
-            download_item = self.download_queue_items[0]
-            download_dir = os.path.dirname(download_item.download_file_path)
-            shutil.rmtree(download_dir)
 
 
 class DownloadQueueItem:
@@ -595,7 +587,7 @@ def download_file_async(mc, project_dir, file_path, output_file, version):
         if file["path"] == file_path:
             file['version'] = version
             items = _download_items(file, temp_dir)
-            task = UpdateTask(file['path'], items, output_file, remove_download_dir=True)
+            task = UpdateTask(file['path'], items, output_file)
             download_list.extend(task.download_queue_items)
             for item in task.download_queue_items:
                 total_size += item.size
@@ -633,8 +625,15 @@ def download_file_finalize(job):
 
     job.mp.log.info("--- download finished")
 
+    temp_dir = None
     for task in job.update_tasks:
         task.apply(job.directory, job.mp)
+        if task.download_queue_items:
+            temp_dir = os.path.dirname(task.download_queue_items[0].download_file_path)
+
+    # Remove temporary download directory
+    if temp_dir is not None:
+        shutil.rmtree(temp_dir)
 
 
 def download_diffs_async(mc, project_directory, file_path, version_from, version_to):
