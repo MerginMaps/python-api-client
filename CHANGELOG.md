@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1
+
+- Added APIs to download individual files at any version (download_file()) and diffs (get_file_diff()) (#93)
+- Robustness fixes (#30, #53, #96)
+- Always require geodiff to be available (#92, #63)
+
 ## 0.6.0
 
 - Moved to pygeodiff 1.0.0 - adding various new APIs
