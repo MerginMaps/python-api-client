@@ -347,7 +347,7 @@ class MerginProject:
         path = f["path"]
         self.log.info("Making a temporary copy (full upload): " + path)
         tmp_file = os.path.join(tmp_dir, path)
-        os.makedirs(tmp_file, exist_ok=True)
+        os.makedirs(os.path.dirname(tmp_file), exist_ok=True)
         self.geodiff.make_copy_sqlite(self.fpath(path), tmp_file)
         f["size"] = os.path.getsize(tmp_file)
         f["checksum"] = generate_checksum(tmp_file)
