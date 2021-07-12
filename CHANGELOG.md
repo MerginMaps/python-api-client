@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.2
+
+- Fixed python error when pushing changes
+
 ## 0.6.1
 
 - Added APIs to download individual files at any version (download_file()) and diffs (get_file_diff()) (#93)
