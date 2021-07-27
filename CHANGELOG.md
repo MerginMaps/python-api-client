@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.3
+
+- Update to pygeodiff 1.0.2
+
 ## 0.6.2
 
 - Fixed python error when pushing changes
