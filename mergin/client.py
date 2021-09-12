@@ -339,6 +339,9 @@ class MerginClient:
         """
         Convenience method to create project and push the initial version right after that.
         """
+        if os.path.exists(os.path.join(directory, '.mergin')):
+            raise ClientError('Directory is already assigned to a Mergin project (contains .mergin sub-dir)')
+
         if namespace is None:
             namespace = self.username()
         self.create_project(project_name, is_public, namespace)
