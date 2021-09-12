@@ -180,8 +180,11 @@ def login(ctx):
 @cli.command()
 @click.argument("project")
 @click.option("--public", is_flag=True, default=False, help="Public project, visible to everyone")
+@click.option("--from-dir", default=None,
+              help="Content of the directory will be uploaded to the newly created project. "
+                   "The directory will get assigned to the project.")
 @click.pass_context
-def create(ctx, project, public):
+def create(ctx, project, public, from_dir):
     """Create a new project on Mergin server. `project` needs to be a combination of namespace/project."""
     mc = ctx.obj["client"]
     if mc is None:
@@ -198,8 +201,12 @@ def create(ctx, project, public):
         # namespace not specified, use current user namespace
         namespace = mc.username()
     try:
-        mc.create_project(project, is_public=public, namespace=namespace)
-        click.echo("Remote project created")
+        if from_dir is None:
+            mc.create_project(project, is_public=public, namespace=namespace)
+            click.echo("Created project " + project)
+        else:
+            mc.create_project_and_push(project, from_dir, is_public=public, namespace=namespace)
+            click.echo("Created project " + project + " and pushed content from directory " + from_dir)
     except ClientError as e:
         click.secho("Error: " + str(e), fg="red")
         return
