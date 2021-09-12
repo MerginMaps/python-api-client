@@ -335,14 +335,16 @@ class MerginClient:
             detail = f"Namespace: {namespace}, project name: {project_name}"
             raise ClientError(str(e), detail)
 
-    def create_project_and_push(self, project_name, directory, is_public=False):
+    def create_project_and_push(self, project_name, directory, is_public=False, namespace=None):
         """
         Convenience method to create project and push the initial version right after that.
         """
-        self.create_project(project_name, is_public)
+        if namespace is None:
+            namespace = self.username()
+        self.create_project(project_name, is_public, namespace)
         if directory:
             mp = MerginProject(directory)
-            full_project_name = "{}/{}".format(self.username(), project_name)
+            full_project_name = "{}/{}".format(namespace, project_name)
             mp.metadata = {"name": full_project_name, "version": "v0", "files": []}
             if mp.inspect_files():
                 self.push_project(directory)
