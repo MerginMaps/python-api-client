@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.4
+
+- Allow any namespace in create_project_and_push() (#104)
+- CLI: create project & push data using --from-dir (#105)
+- Update to pygeodiff 1.0.3
+
 ## 0.6.3
 
 - Update to pygeodiff 1.0.2

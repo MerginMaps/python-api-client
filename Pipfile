@@ -5,7 +5,7 @@ name = "pypi"
 
 [packages]
 python-dateutil = "==2.6.0"
-pygeodiff = "==1.0.2"
+pygeodiff = "==1.0.3"
 pytz = "==2019.3"
 
 [dev-packages]
