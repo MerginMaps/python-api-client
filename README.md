@@ -1,15 +1,18 @@
+[![PyPI version](https://badge.fury.io/py/mergin-client.svg)](https://badge.fury.io/py/mergin-client)
+[![Auto Tests](https://github.com/lutraconsulting/mergin-py-client/workflows/Auto%20Tests/badge.svg)](https://github.com/lutraconsulting/mergin-py-client/actions?query=workflow%3A%22Auto+Tests%22)
+[![Coverage Status](https://img.shields.io/coveralls/lutraconsulting/mergin-py-client.svg)](https://coveralls.io/github/lutraconsulting/mergin-py-client)
+
 # Mergin Python Client
 
 This repository contains a Python client module for access to [Mergin](https://public.cloudmergin.com/)
 service and a command-line tool for easy access to data stored in Mergin.
 
+<div><img align="left" width="45" height="45" src="https://raw.githubusercontent.com/MerginMaps/docs/main/src/.vuepress/public/slack.svg"><a href="https://merginmaps.com/community/join">Join our community chat</a><br/>and ask questions!</div><br />
+
+
 To install the module:
 
     pip3 install mergin-client
-
-[![PyPI version](https://badge.fury.io/py/mergin-client.svg)](https://badge.fury.io/py/mergin-client)
-[![Auto Tests](https://github.com/lutraconsulting/mergin-py-client/workflows/Auto%20Tests/badge.svg)](https://github.com/lutraconsulting/mergin-py-client/actions?query=workflow%3A%22Auto+Tests%22)
-[![Coverage Status](https://img.shields.io/coveralls/lutraconsulting/mergin-py-client.svg)](https://coveralls.io/github/lutraconsulting/mergin-py-client)
 
 Note: Check also [Mergin Cpp Client](https://github.com/lutraconsulting/mergin-cpp-client)
 
@@ -23,7 +26,6 @@ import mergin
 client = mergin.MerginClient(login='john', password='topsecret')
 client.download_project('lutraconsulting/Basic survey', '/tmp/basic-survey')
 ```
-
 
 ## Command-line Tool
 
