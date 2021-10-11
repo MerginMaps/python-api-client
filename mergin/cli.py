@@ -31,8 +31,11 @@ from mergin.client_pull import (
     download_project_finalize,
     download_project_is_running,
 )
-from mergin.client_pull import pull_project_async, pull_project_is_running, pull_project_finalize, pull_project_cancel
-from mergin.client_push import push_project_async, push_project_is_running, push_project_finalize, push_project_cancel
+from mergin.client_pull import pull_project_async, pull_project_is_running, pull_project_finalize, \
+    pull_project_cancel
+from mergin.client_push import push_project_async, push_project_is_running, push_project_finalize, \
+    push_project_cancel
+
 
 from pygeodiff import GeoDiff
 
@@ -267,6 +270,51 @@ def download(ctx, project, directory, version):
         click.secho("Error: " + str(e), fg="red")
     except Exception as e:
         _print_unhandled_exception()
+
+
+@cli.command()
+@click.argument("project")
+@click.argument("usernames", nargs=-1)
+@click.option("--permissions")
+@click.pass_context
+def share_add(ctx, project, usernames, permissions):
+    mc = ctx.obj["client"]
+    if mc is None:
+        return
+    usernames = list(usernames)
+    print(usernames)
+    mc.add_user_permissions_to_project(project, usernames, permissions)
+
+
+@cli.command()
+@click.argument("project")
+@click.argument("usernames", nargs=-1)
+@click.pass_context
+def share_del(ctx, project, usernames):
+    mc = ctx.obj["client"]
+    if mc is None:
+        return
+    usernames = list(usernames)
+    mc.remove_user_permissions_to_project(project, usernames)
+
+
+@cli.command()
+@click.argument("project")
+@click.pass_context
+def share(ctx, project):
+    mc = ctx.obj["client"]
+    if mc is None:
+        return
+    access_list = mc.share_list(project)
+
+    owners = ", ".join(access_list.get("owners"))
+    writers = ", ".join(access_list.get("writers"))
+    readers = ", ".join(access_list.get("readers"))
+
+    result = f"owners: {owners}\n" \
+             f"writers: {writers}\n" \
+             f"readers: {readers}"
+    click.echo(result)
 
 
 @cli.command()

@@ -21,7 +21,7 @@ this_dir = os.path.dirname(os.path.realpath(__file__))
 # python paths.
 try:
     from .deps import pygeodiff
-except ImportError:
+except ImportError or ModuleNotFoundError:
     import pygeodiff
 
 

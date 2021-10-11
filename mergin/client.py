@@ -519,6 +519,39 @@ class MerginClient:
             detail = f"Project path: {project_path}"
             raise ClientError(str(e), detail)
 
+    def add_user_permissions_to_project(self, project_path, usernames, permission_level):
+        project_info = self.project_info(project_path)
+        access = project_info.get('access')
+        for name in usernames:
+            if permission_level == "owner":
+                access.get("ownersnames").append(name)
+            if permission_level == "writer" or permission_level == "owner":
+                access.get("writersnames").append(name)
+            if permission_level == "writer" or permission_level == "owner" or permission_level == "reader":
+                access.get("readersnames").append(name)
+        self.set_project_access(project_path, access)
+
+    def remove_user_permissions_to_project(self, project_path, usernames):
+        project_info = self.project_info(project_path)
+        access = project_info.get('access')
+        for name in usernames:
+            if name in access.get("ownersnames"):
+                access.get("ownersnames").remove(name)
+            if name in access.get("writersnames"):
+                access.get("writersnames").remove(name)
+            if name in access.get("readersnames"):
+                access.get("readersnames").remove(name)
+        self.set_project_access(project_path, access)
+
+    def share_list(self, project_path):
+        project_info = self.project_info(project_path)
+        access = project_info.get('access')
+        result = {}
+        result["owners"] = access.get("ownersnames")
+        result["writers"] = access.get("writersnames")
+        result["readers"] = access.get("readersnames")
+        return result
+
     def push_project(self, directory):
         """
         Upload local changes to the repository.

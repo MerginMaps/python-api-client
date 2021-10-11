@@ -64,6 +64,9 @@ Commands:
   show-file-history    Displays information about a single version of a...
   show-version         Displays information about a single version of a...
   status               Show all changes in project files - upstream and...
+  share                Show project permissions 
+  share-add            Add user to project permissions
+  share-del            Remove user from project's collaborators
 ```
 
 For example, to download a project:
@@ -110,6 +113,10 @@ it is possible to run other commands without specifying username/password.
 
 
 ## Development
+
+### Setup local dependencies
+pip install -e ../
+
 
 ### How to release 
 
