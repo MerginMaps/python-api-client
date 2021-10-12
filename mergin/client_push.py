@@ -70,7 +70,10 @@ class UploadQueueItem:
             resp_dict = json.load(resp)
             mp.log.debug(f"Upload finished: {self.file_path}")
             if not (resp_dict['size'] == len(data) and resp_dict['checksum'] == checksum.hexdigest()):
-                mc.post("/v1/project/push/cancel/{}".format(self.transaction_id))
+                try:
+                    mc.post("/v1/project/push/cancel/{}".format(self.transaction_id))
+                except ClientError:
+                    pass
                 raise ClientError("Mismatch between uploaded file chunk {} and local one".format(self.chunk_id))
         
 
@@ -263,9 +266,11 @@ def push_project_finalize(job):
             # if push finish fails, the transaction is not killed, so we
             # need to cancel it so it does not block further uploads
             job.mp.log.info("canceling the pending transaction...")
-            resp_cancel = job.mc.post("/v1/project/push/cancel/%s" % job.transaction_id)
-            server_resp_cancel = json.load(resp_cancel)
-            job.mp.log.info("cancel response: " + str(server_resp_cancel))
+            try:
+                resp_cancel = job.mc.post("/v1/project/push/cancel/%s" % job.transaction_id)
+                job.mp.log.info("cancel response: " + resp_cancel.msg)
+            except ClientError as err2:
+                job.mp.log.info("cancel response: " + str(err2))
             raise err
 
     job.mp.metadata = {
@@ -293,7 +298,7 @@ def push_project_cancel(job):
     job.executor.shutdown(wait=True)
     try:
         resp_cancel = job.mc.post("/v1/project/push/cancel/%s" % job.transaction_id)
-        job.server_resp = json.load(resp_cancel)
+        job.server_resp = resp_cancel.msg
     except ClientError as err:
         job.mp.log.error("--- push cancelling failed! " + str(err))
         raise err
