@@ -66,7 +66,7 @@ Commands:
   status               Show all changes in project files - upstream and...
   share                Show project permissions 
   share-add            Add user to project permissions
-  share-del            Remove user from project's collaborators
+  share-remove            Remove user from project's collaborators
 ```
 
 For example, to download a project:

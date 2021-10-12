@@ -282,7 +282,6 @@ def share_add(ctx, project, usernames, permissions):
     if mc is None:
         return
     usernames = list(usernames)
-    print(usernames)
     mc.add_user_permissions_to_project(project, usernames, permissions)
 
 
@@ -290,12 +289,12 @@ def share_add(ctx, project, usernames, permissions):
 @click.argument("project")
 @click.argument("usernames", nargs=-1)
 @click.pass_context
-def share_del(ctx, project, usernames):
+def share_remove(ctx, project, usernames):
     mc = ctx.obj["client"]
     if mc is None:
         return
     usernames = list(usernames)
-    mc.remove_user_permissions_to_project(project, usernames)
+    mc.remove_user_permissions_from_project(project, usernames)
 
 
 @cli.command()
@@ -305,16 +304,16 @@ def share(ctx, project):
     mc = ctx.obj["client"]
     if mc is None:
         return
-    access_list = mc.share_list(project)
+    access_list = mc.project_user_permissions(project)
 
-    owners = ", ".join(access_list.get("owners"))
-    writers = ", ".join(access_list.get("writers"))
-    readers = ", ".join(access_list.get("readers"))
-
-    result = f"owners: {owners}\n" \
-             f"writers: {writers}\n" \
-             f"readers: {readers}"
-    click.echo(result)
+    for username in access_list.get("owners"):
+        click.echo("{:20}\t{:20}".format(username, "owner"))
+    for username in access_list.get("writers"):
+        if username not in access_list.get("owners"):
+            click.echo("{:20}\t{:20}".format(username, "writer"))
+    for username in access_list.get("readers"):
+        if username not in access_list.get("writers"):
+            click.echo("{:20}\t{:20}".format(username, "reader"))
 
 
 @cli.command()

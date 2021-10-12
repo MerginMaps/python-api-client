@@ -520,6 +520,15 @@ class MerginClient:
             raise ClientError(str(e), detail)
 
     def add_user_permissions_to_project(self, project_path, usernames, permission_level):
+        """
+        Add specified permissions to specified users to project
+        :param project_path: project full name (<namespace>/<name>)
+        :param usernames: list of usernames to be granted specified permission level
+        :param permission_level: string (reader, writer, owner)
+        """
+        if permission_level not in ["owner", "reader", "writer"]:
+            raise ClientError("Unsupported permission level")
+
         project_info = self.project_info(project_path)
         access = project_info.get('access')
         for name in usernames:
@@ -531,7 +540,12 @@ class MerginClient:
                 access.get("readersnames").append(name)
         self.set_project_access(project_path, access)
 
-    def remove_user_permissions_to_project(self, project_path, usernames):
+    def remove_user_permissions_from_project(self, project_path, usernames):
+        """
+       Removes specified users from project
+       :param project_path: project full name (<namespace>/<name>)
+       :param usernames: list of usernames to be granted specified permission level
+       """
         project_info = self.project_info(project_path)
         access = project_info.get('access')
         for name in usernames:
@@ -543,7 +557,14 @@ class MerginClient:
                 access.get("readersnames").remove(name)
         self.set_project_access(project_path, access)
 
-    def share_list(self, project_path):
+    def project_user_permissions(self, project_path):
+        """
+       Returns permissions for project
+       :param project_path: project full name (<namespace>/<name>)
+       :return dict("owners": list(usernames),
+                    "writers": list(usernames),
+                    "readers": list(usernames))
+       """
         project_info = self.project_info(project_path)
         access = project_info.get('access')
         result = {}

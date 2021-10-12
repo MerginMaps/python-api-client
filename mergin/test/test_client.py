@@ -960,19 +960,19 @@ def test_modify_project_permissions(mc):
     assert project_info['name'] == test_project
     assert project_info['namespace'] == API_USER
 
-    permissions = mc.share_list(project)
+    permissions = mc.project_user_permissions(project)
     assert permissions["owners"] == [API_USER]
     assert permissions["writers"] == [API_USER]
     assert permissions["readers"] == [API_USER]
 
     mc.add_user_permissions_to_project(project, [API_USER2], "writer")
-    permissions = mc.share_list(project)
+    permissions = mc.project_user_permissions(project)
     assert set(permissions["owners"]) == {API_USER}
     assert set(permissions["writers"]) == {API_USER, API_USER2}
     assert set(permissions["readers"]) == {API_USER, API_USER2}
 
-    mc.remove_user_permissions_to_project(project, [API_USER2])
-    permissions = mc.share_list(project)
+    mc.remove_user_permissions_from_project(project, [API_USER2])
+    permissions = mc.project_user_permissions(project)
     assert permissions["owners"] == [API_USER]
     assert permissions["writers"] == [API_USER]
     assert permissions["readers"] == [API_USER]
