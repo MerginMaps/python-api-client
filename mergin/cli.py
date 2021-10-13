@@ -275,9 +275,10 @@ def download(ctx, project, directory, version):
 @cli.command()
 @click.argument("project")
 @click.argument("usernames", nargs=-1)
-@click.option("--permissions")
+@click.option("--permissions", help="permissions to be granted to project (reader, writer, owner)")
 @click.pass_context
 def share_add(ctx, project, usernames, permissions):
+    """Add permissions to [users] to project"""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -290,6 +291,7 @@ def share_add(ctx, project, usernames, permissions):
 @click.argument("usernames", nargs=-1)
 @click.pass_context
 def share_remove(ctx, project, usernames):
+    """Remove [users] permissions from project"""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -301,6 +303,7 @@ def share_remove(ctx, project, usernames):
 @click.argument("project")
 @click.pass_context
 def share(ctx, project):
+    """Fetch permissions to project"""
     mc = ctx.obj["client"]
     if mc is None:
         return
