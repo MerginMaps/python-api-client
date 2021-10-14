@@ -36,12 +36,15 @@ $ mergin --help
 Usage: mergin [OPTIONS] COMMAND [ARGS]...
 
   Command line interface for the Mergin client module. For user
-  authentication on server there are two options:  1. authorization token
-  environment variable (MERGIN_AUTH) is defined, or  2. username and
-  password need to be given either as environment variables
-  (MERGIN_USERNAME, MERGIN_PASSWORD),  or as command options (--username,
-  --password). Run `mergin --username <your_user> login` to see how to set
-  the token variable manually.
+  authentication on server there are two options:
+
+   1. authorization token environment variable (MERGIN_AUTH) is defined, or
+   2. username and password need to be given either as environment variables
+   (MERGIN_USERNAME, MERGIN_PASSWORD),  or as command options (--username,
+   --password).
+
+  Run `mergin --username <your_user> login` to see how to set the token
+  variable manually.
 
 Options:
   --url TEXT         Mergin server URL. Default is:
@@ -55,18 +58,19 @@ Commands:
   clone                Clone project from server.
   create               Create a new project on Mergin server.
   download             Download last version of mergin project
+  download-file        Download project file at specified version.
   list-projects        List projects on the server
   login                Login to the service and see how to set the token...
   pull                 Fetch changes from Mergin repository
   push                 Upload local changes into Mergin repository
   remove               Remove project from server.
+  share                Fetch permissions to project
+  share-add            Add permissions to [users] to project
+  share-remove         Remove [users] permissions from project
   show-file-changeset  Displays information about project changes.
   show-file-history    Displays information about a single version of a...
   show-version         Displays information about a single version of a...
   status               Show all changes in project files - upstream and...
-  share                Show project permissions 
-  share-add            Add user to project permissions
-  share-remove         Remove user from project's collaborators
 ```
 
 For example, to download a project:
