@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.5
+
+- CLI: add, remove and list user permissions in a project (#98, #110)
+- Update to pygeodiff 1.0.4
+
 ## 0.6.4
 
 - Allow any namespace in create_project_and_push() (#104)
