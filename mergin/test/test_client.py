@@ -941,6 +941,43 @@ def test_download_diffs(mc):
     assert "Available versions: [1, 2, 3, 4]" in str(e.value)
 
 
+def test_modify_project_permissions(mc):
+    test_project = 'test_project'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    download_dir = os.path.join(TMP_DIR, 'download', test_project)
+
+    cleanup(mc, project, [project_dir, download_dir])
+    # prepare local project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+
+    # create remote project
+    mc.create_project_and_push(test_project, directory=project_dir)
+
+    # check basic metadata about created project
+    project_info = mc.project_info(project)
+    assert project_info['version'] == 'v1'
+    assert project_info['name'] == test_project
+    assert project_info['namespace'] == API_USER
+
+    permissions = mc.project_user_permissions(project)
+    assert permissions["owners"] == [API_USER]
+    assert permissions["writers"] == [API_USER]
+    assert permissions["readers"] == [API_USER]
+
+    mc.add_user_permissions_to_project(project, [API_USER2], "writer")
+    permissions = mc.project_user_permissions(project)
+    assert set(permissions["owners"]) == {API_USER}
+    assert set(permissions["writers"]) == {API_USER, API_USER2}
+    assert set(permissions["readers"]) == {API_USER, API_USER2}
+
+    mc.remove_user_permissions_from_project(project, [API_USER2])
+    permissions = mc.project_user_permissions(project)
+    assert permissions["owners"] == [API_USER]
+    assert permissions["writers"] == [API_USER]
+    assert permissions["readers"] == [API_USER]
+
+
 def _use_wal(db_file):
     """ Ensures that sqlite database is using WAL journal mode """
     con = sqlite3.connect(db_file)

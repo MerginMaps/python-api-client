@@ -31,8 +31,11 @@ from mergin.client_pull import (
     download_project_finalize,
     download_project_is_running,
 )
-from mergin.client_pull import pull_project_async, pull_project_is_running, pull_project_finalize, pull_project_cancel
-from mergin.client_push import push_project_async, push_project_is_running, push_project_finalize, push_project_cancel
+from mergin.client_pull import pull_project_async, pull_project_is_running, pull_project_finalize, \
+    pull_project_cancel
+from mergin.client_push import push_project_async, push_project_is_running, push_project_finalize, \
+    push_project_cancel
+
 
 from pygeodiff import GeoDiff
 
@@ -267,6 +270,53 @@ def download(ctx, project, directory, version):
         click.secho("Error: " + str(e), fg="red")
     except Exception as e:
         _print_unhandled_exception()
+
+
+@cli.command()
+@click.argument("project")
+@click.argument("usernames", nargs=-1)
+@click.option("--permissions", help="permissions to be granted to project (reader, writer, owner)")
+@click.pass_context
+def share_add(ctx, project, usernames, permissions):
+    """Add permissions to [users] to project"""
+    mc = ctx.obj["client"]
+    if mc is None:
+        return
+    usernames = list(usernames)
+    mc.add_user_permissions_to_project(project, usernames, permissions)
+
+
+@cli.command()
+@click.argument("project")
+@click.argument("usernames", nargs=-1)
+@click.pass_context
+def share_remove(ctx, project, usernames):
+    """Remove [users] permissions from project"""
+    mc = ctx.obj["client"]
+    if mc is None:
+        return
+    usernames = list(usernames)
+    mc.remove_user_permissions_from_project(project, usernames)
+
+
+@cli.command()
+@click.argument("project")
+@click.pass_context
+def share(ctx, project):
+    """Fetch permissions to project"""
+    mc = ctx.obj["client"]
+    if mc is None:
+        return
+    access_list = mc.project_user_permissions(project)
+
+    for username in access_list.get("owners"):
+        click.echo("{:20}\t{:20}".format(username, "owner"))
+    for username in access_list.get("writers"):
+        if username not in access_list.get("owners"):
+            click.echo("{:20}\t{:20}".format(username, "writer"))
+    for username in access_list.get("readers"):
+        if username not in access_list.get("writers"):
+            click.echo("{:20}\t{:20}".format(username, "reader"))
 
 
 @cli.command()
