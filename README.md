@@ -78,6 +78,10 @@ For example, to download a project:
 ```
 $ mergin --username john download john/project1 ~/mergin/project1
 ```
+To download a specific version of a project:
+```
+$ mergin --username john download --version v42 john/project1 ~/mergin/project1
+```
 
 If you do not want to specify username on the command line and be asked for you password every time,
 it is possible to set env variables MERGIN_USERNAME and MERGIN_PASSWORD.
