@@ -306,6 +306,23 @@ class MerginClient:
             return None  # not authenticated
         return self._user_info["username"]
 
+    def user_service(self):
+        """
+        Requests information about user from /user/service endpoint if such exists in self.url server.
+
+        Returns response from server as JSON dict or None if endpoint is not found
+        """
+
+        try:
+            response = self.get("/v1/user/service")
+        except ClientError as e:
+            self.log.debug("Unable to query for /user/service endpoint")
+            return
+
+        response = json.loads(response.read())
+
+        return response
+
     def create_project(self, project_name, is_public=False, namespace=None):
         """
         Create new project repository in user namespace on Mergin server.
