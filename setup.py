@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='mergin-client',
-    version='0.6.5',       # The version is also stored in mergin/version.py
+    version='0.6.6',       # The version is also stored in mergin/version.py
     url='https://github.com/lutraconsulting/mergin-py-client',
     license='MIT',
     author='Lutra Consulting Ltd.',
@@ -18,7 +18,7 @@ setup(
     platforms='any',
     install_requires=[
         'python-dateutil==2.6.0',
-        'pygeodiff==1.0.4',
+        'pygeodiff==1.0.5',
         'pytz==2019.3',
         'click',
     ],

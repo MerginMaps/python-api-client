@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.6
+
+- Add user_service() API call (#113)
+- Updated to pygeodiff 1.0.5
+
 ## 0.6.5
 
 - CLI: add, remove and list user permissions in a project (#98, #110)
