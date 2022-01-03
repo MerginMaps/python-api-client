@@ -235,7 +235,8 @@ class MerginProject:
 
         .. seealso:: self.compare_file_sets
 
-        :param server_files: list of server files' metadata (see also self.inspect_files())
+        :param server_files: list of server files' metadata with mandatory 'history' field (see also self.inspect_files(),
+        self.project_info(project_path, since=v1))
         :type server_files: list[dict]
         :returns: changes metadata for files to be pulled from server
         :rtype: dict
