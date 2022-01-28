@@ -68,7 +68,7 @@ class MerginProject:
         if not self.log.handlers:
             # we only need to set the handler once
             # (otherwise we would get things logged multiple times as loggers are cached)
-            log_handler = logging.FileHandler(os.path.join(self.meta_dir, "client-log.txt"))
+            log_handler = logging.FileHandler(os.path.join(self.meta_dir, "client-log.txt"), encoding = 'utf-8')
             log_handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
             self.log.addHandler(log_handler)
 
