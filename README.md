@@ -27,6 +27,14 @@ client = mergin.MerginClient(login='john', password='topsecret')
 client.download_project('lutraconsulting/Basic survey', '/tmp/basic-survey')
 ```
 
+If you have Mergin plugin for QGIS installed and you want to use it from QGIS' Python console
+
+```python
+import Mergin.mergin as mergin
+
+client = mergin.MerginClient(login='john', password='topsecret')
+```
+
 ## Command-line Tool
 
 When the module is installed, it comes with `mergin` command line tool.
