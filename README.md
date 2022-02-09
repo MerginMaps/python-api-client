@@ -1,5 +1,5 @@
 [![PyPI version](https://badge.fury.io/py/mergin-client.svg)](https://badge.fury.io/py/mergin-client)
-[![Auto Tests](https://github.com/lutraconsulting/mergin-py-client/workflows/Auto%20Tests/badge.svg)](https://github.com/lutraconsulting/mergin-py-client/actions?query=workflow%3A%22Auto+Tests%22)
+[![Auto Tests/Package](https://github.com/lutraconsulting/mergin-py-client/workflows/Auto%20Tests/badge.svg)](https://github.com/lutraconsulting/mergin-py-client/actions?query=workflow%3A%22Auto+Tests%22)
 [![Coverage Status](https://img.shields.io/coveralls/lutraconsulting/mergin-py-client.svg)](https://coveralls.io/github/lutraconsulting/mergin-py-client)
 
 # Mergin Python Client
@@ -130,10 +130,6 @@ it is possible to run other commands without specifying username/password.
 
 ## Development
 
-### Setup local dependencies
-pip install -e ../
-
-
 ### How to release 
 
 1. Update version in `setup.py` and `mergin/version.py`
@@ -147,31 +143,34 @@ python3 -m twine upload dist/mergin-client-x.y.z.tar.gz
 
 ### Installing deps
 
-[this section needs revising - now using pip for dependencies]
-
-Python 3.6+ required. Create `mergin/deps` folder where [geodiff](https://github.com/lutraconsulting/geodiff) lib is supposed to be and install dependencies:
-    
+Python 3.7+ required. Create `mergin/deps` folder where [geodiff](https://github.com/lutraconsulting/geodiff) lib is supposed to be and install dependencies:
+```    
     rm -r mergin/deps
     mkdir mergin/deps
-    pipenv install --dev --three
-    pipenv run pip install -r <(pipenv lock -r | grep pygeodiff) --target mergin/deps
+    pip install python-dateutil pytz 
+    pip install pygeodiff --target=mergin/deps
+```
 
 For using mergin client with its dependencies packaged locally run:
-
+```
     pip install wheel 
     python3 setup.py sdist bdist_wheel
     mkdir -p mergin/deps
     pip wheel -r mergin_client.egg-info/requires.txt -w mergin/deps
     unzip mergin/deps/pygeodiff-*.whl -d mergin/deps
     pip install --editable .
+```
 
 ### Tests
 For running test do:
 
+```
     cd mergin
     export TEST_MERGIN_URL=<url> # testing server
     export TEST_API_USERNAME=<username>
     export TEST_API_PASSWORD=<pwd>
     export TEST_API_USERNAME2=<username2>
     export TEST_API_PASSWORD2=<pwd2>
-    pipenv run pytest --cov-report html --cov=mergin test/
+    pip install pytest pytest-cov coveralls
+    pytest --cov-report html --cov=mergin mergin/test/
+```    
