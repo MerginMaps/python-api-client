@@ -121,7 +121,13 @@ def download_project_async(mc, project_path, directory, project_version=None):
     mp.log.info(f"--- start download {project_path}")
 
     try:
-        project_info = mc.project_info(project_path, version=project_version)
+        # check whether we download the latest version or not
+        latest_proj_info = mc.project_info(project_path)
+        if project_version:
+            project_info = mc.project_info(project_path, version=project_version)
+        else:
+            project_info = latest_proj_info
+
     except ClientError:
         _cleanup_failed_download(directory, mp)
         raise
@@ -135,7 +141,8 @@ def download_project_async(mc, project_path, directory, project_version=None):
     for file in project_info['files']:
         file['version'] = version
         items = _download_items(file, directory)
-        update_tasks.append(UpdateTask(file['path'], items))
+        is_latest_version = project_version == latest_proj_info["version"]
+        update_tasks.append(UpdateTask(file['path'], items, latest_version=is_latest_version))
 
     # make a single list of items to download
     total_size = 0
@@ -234,10 +241,11 @@ class UpdateTask:
     """
     
     # TODO: methods other than COPY
-    def __init__(self, file_path, download_queue_items, destination_file=None):
+    def __init__(self, file_path, download_queue_items, destination_file=None, latest_version=True):
         self.file_path = file_path
         self.destination_file = destination_file
         self.download_queue_items = download_queue_items
+        self.latest_version = latest_version
 
     def apply(self, directory, mp):
         """ assemble downloaded chunks into a single file """
@@ -251,8 +259,10 @@ class UpdateTask:
             dest_file_path = self.destination_file
         os.makedirs(file_dir, exist_ok=True)
 
+        # ignore check if we download not-latest version of gpkg file (possibly reconstructed on server on demand)
+        check_size = self.latest_version or not mp.is_versioned_file(self.file_path)
         # merge chunks together (and delete them afterwards)
-        file_to_merge = FileToMerge(dest_file_path, self.download_queue_items)
+        file_to_merge = FileToMerge(dest_file_path, self.download_queue_items, check_size)
         file_to_merge.merge()
 
         # Make a copy of the file to meta dir only if there is no user-specified path for the file.
@@ -483,9 +493,10 @@ class FileToMerge:
     to the temporary file containing its data. Calling merge() will create the destination file
     and remove the temporary files of the chunks
     """
-    def __init__(self, dest_file, downloaded_items):
+    def __init__(self, dest_file, downloaded_items, size_check=True):
         self.dest_file = dest_file   # full path to the destination file to be created
         self.downloaded_items = downloaded_items   # list of pieces of the destination file to be merged
+        self.size_check = size_check  # whether we want to do merged file size check
 
     def merge(self):
         with open(self.dest_file, 'wb') as final:
@@ -494,6 +505,8 @@ class FileToMerge:
                     shutil.copyfileobj(chunk, final)
                 os.remove(item.download_file_path)
 
+        if not self.size_check:
+            return
         expected_size = sum(item.size for item in self.downloaded_items)
         if os.path.getsize(self.dest_file) != expected_size:
             os.remove(self.dest_file)
@@ -574,7 +587,11 @@ def download_file_async(mc, project_dir, file_path, output_file, version):
     project_path = mp.metadata["name"]
     ver_info = f"at version {version}" if version is not None else "at latest version"
     mp.log.info(f"Getting {file_path} {ver_info}")
-    project_info = mc.project_info(project_path, version=version)
+    latest_proj_info = mc.project_info(project_path)
+    if version:
+        project_info = mc.project_info(project_path, version=version)
+    else:
+        project_info = latest_proj_info
     mp.log.info(f"Got project info. version {project_info['version']}")
 
     # set temporary directory for download
@@ -587,7 +604,8 @@ def download_file_async(mc, project_dir, file_path, output_file, version):
         if file["path"] == file_path:
             file['version'] = version
             items = _download_items(file, temp_dir)
-            task = UpdateTask(file['path'], items, output_file)
+            is_latest_version = version == latest_proj_info["version"]
+            task = UpdateTask(file['path'], items, output_file, latest_version=is_latest_version)
             download_list.extend(task.download_queue_items)
             for item in task.download_queue_items:
                 total_size += item.size
