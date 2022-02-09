@@ -410,65 +410,13 @@ class MerginProject:
                 # 'src' here is server version of file and 'dest' is locally modified
                 if self.is_versioned_file(path) and k == 'updated':
                     if path in modified:
-                        self.log.info("updating file with rebase: " + path)
-                        server_diff = self.fpath(f'{path}-server_diff', temp_dir)  # diff between server file and local basefile
-                        local_diff = self.fpath(f'{path}-local_diff', temp_dir)
-
-                        # temporary backup of file pulled from server for recovery
-                        f_server_backup = self.fpath(f'{path}-server_backup', temp_dir)
-                        self.geodiff.make_copy_sqlite(src, f_server_backup)
-
-                        # create temp backup (ideally with geodiff) of locally modified file if needed later
-                        f_conflict_file = self.fpath(f'{path}-local_backup', temp_dir)
-                        try:
-                            self.geodiff.create_changeset(basefile, dest, local_diff)
-                            self.geodiff.make_copy_sqlite(basefile, f_conflict_file)
-                            self.geodiff.apply_changeset(f_conflict_file, local_diff)
-                        except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
-                            self.log.info("backup of local file with geodiff failed - need to do hard copy")
-                            self.geodiff.make_copy_sqlite(dest, f_conflict_file)
-
-                        # in case there will be any conflicting operations found during rebase,
-                        # they will be stored in a JSON file - if there are no conflicts, the file
-                        # won't even be created
-                        rebase_conflicts = self.fpath(f'{path}_rebase_conflicts')
-
-                        # try to do rebase magic
-                        try:
-                            self.geodiff.create_changeset(basefile, src, server_diff)
-                            self.geodiff.rebase(basefile, src, dest, rebase_conflicts)
-                            # make sure basefile is in the same state as remote server file (for calc of push changes)
-                            self.geodiff.apply_changeset(basefile, server_diff)
-                            self.log.info("rebase successful!")
-                        except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as err:
-                            self.log.warning("rebase failed! going to create conflict file")
-                            # it would not be possible to commit local changes, they need to end up in new conflict file
-                            self.geodiff.make_copy_sqlite(f_conflict_file, dest)
-                            conflict = self.backup_file(path)
+                        conflict = self.update_with_rebase(path, src, dest, basefile, temp_dir)
+                        if conflict:
                             conflicts.append(conflict)
-                            # original file synced with server
-                            self.geodiff.make_copy_sqlite(f_server_backup, basefile)
-                            self.geodiff.make_copy_sqlite(f_server_backup, dest)
                     else:
                         # The local file is not modified -> no rebase needed.
                         # We just apply the diff between our copy and server to both the local copy and its basefile
-                        self.log.info("updating file without rebase: " + path)
-                        try:
-                            server_diff = self.fpath(f'{path}-server_diff', temp_dir)  # diff between server file and local basefile
-                            # TODO: it could happen that basefile does not exist.
-                            # It was either never created (e.g. when pushing without geodiff)
-                            # or it was deleted by mistake(?) by the user. We should detect that
-                            # when starting pull and download it as well
-                            self.geodiff.create_changeset(basefile, src, server_diff)
-                            self.geodiff.apply_changeset(dest, server_diff)
-                            self.geodiff.apply_changeset(basefile, server_diff)
-                            self.log.info("update successful")
-                        except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
-                            self.log.warning("update failed! going to copy file")
-                            # something bad happened and we have failed to patch our local files - this should not happen if there
-                            # wasn't a schema change or something similar that geodiff can't handle.
-                            self.geodiff.make_copy_sqlite(src, dest)
-                            self.geodiff.make_copy_sqlite(src, basefile)
+                        self.update_without_rebase(path, src, dest, basefile, temp_dir)
                 else:
                     # backup if needed
                     if path in modified and item['checksum'] != local_files_map[path]['checksum']:
@@ -491,6 +439,108 @@ class MerginProject:
                             shutil.copy(src, dest)
 
         return conflicts
+
+    def update_with_rebase(self, path, src, dest, basefile, temp_dir):
+        """
+        Update a versioned file with rebase.
+
+        Try to peform automatic rebase, create conflict file if failed.pyt
+
+        .. seealso:: self.update_without_rebase
+
+        :param path: path to geodiff file
+        :type path: str
+        :param src: path to the server version of the file
+        :type src: str
+        :param dest: path to the local version of the file
+        :type dest: str
+        :param basefile: path to a file in meta dir
+        :type basefile: str
+        :param temp_dir: directory with downloaded files from server
+        :type temp_dir: str
+        :returns: path to conflict file if rebase fails, empty string on success
+        :rtype: str
+        """
+        self.log.info("updating file with rebase: " + path)
+
+        server_diff = self.fpath(f'{path}-server_diff', temp_dir)  # diff between server file and local basefile
+        local_diff = self.fpath(f'{path}-local_diff', temp_dir)
+
+        # temporary backup of file pulled from server for recovery
+        f_server_backup = self.fpath(f'{path}-server_backup', temp_dir)
+        self.geodiff.make_copy_sqlite(src, f_server_backup)
+
+        # create temp backup (ideally with geodiff) of locally modified file if needed later
+        f_conflict_file = self.fpath(f'{path}-local_backup', temp_dir)
+        try:
+            self.geodiff.create_changeset(basefile, dest, local_diff)
+            self.geodiff.make_copy_sqlite(basefile, f_conflict_file)
+            self.geodiff.apply_changeset(f_conflict_file, local_diff)
+        except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
+            self.log.info("backup of local file with geodiff failed - need to do hard copy")
+            self.geodiff.make_copy_sqlite(dest, f_conflict_file)
+
+        # in case there will be any conflicting operations found during rebase,
+        # they will be stored in a JSON file - if there are no conflicts, the file
+        # won't even be created
+        rebase_conflicts = self.fpath(f'{path}_rebase_conflicts')
+
+        # try to do rebase magic
+        try:
+            self.geodiff.create_changeset(basefile, src, server_diff)
+            self.geodiff.rebase(basefile, src, dest, rebase_conflicts)
+            # make sure basefile is in the same state as remote server file (for calc of push changes)
+            self.geodiff.apply_changeset(basefile, server_diff)
+            self.log.info("rebase successful!")
+        except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as err:
+            self.log.warning("rebase failed! going to create conflict file")
+            # it would not be possible to commit local changes, they need to end up in new conflict file
+            self.geodiff.make_copy_sqlite(f_conflict_file, dest)
+            conflict = self.backup_file(path)
+            # original file synced with server
+            self.geodiff.make_copy_sqlite(f_server_backup, basefile)
+            self.geodiff.make_copy_sqlite(f_server_backup, dest)
+            return conflict
+
+        return ''
+
+    def update_without_rebase(self, path, src, dest, basefile, temp_dir):
+        """
+        Update a versioned file without rebase.
+
+        Apply the diff between local copy and server to both the local
+        copy and its basefile.
+
+        .. seealso:: self.update_with_rebase
+
+        :param path: path to geodiff file
+        :type path: str
+        :param src: path to the server version of the file
+        :type src: str
+        :param dest: path to the local version of the file
+        :type dest: str
+        :param basefile: path to a file in meta dir
+        :type basefile: str
+        :param temp_dir: directory with downloaded files from server
+        :type temp_dir: str
+        """
+        self.log.info("updating file without rebase: " + path)
+        try:
+            server_diff = self.fpath(f'{path}-server_diff', temp_dir)  # diff between server file and local basefile
+            # TODO: it could happen that basefile does not exist.
+            # It was either never created (e.g. when pushing without geodiff)
+            # or it was deleted by mistake(?) by the user. We should detect that
+            # when starting pull and download it as well
+            self.geodiff.create_changeset(basefile, src, server_diff)
+            self.geodiff.apply_changeset(dest, server_diff)
+            self.geodiff.apply_changeset(basefile, server_diff)
+            self.log.info("update successful")
+        except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
+            self.log.warning("update failed! going to copy file")
+            # something bad happened and we have failed to patch our local files - this should not happen if there
+            # wasn't a schema change or something similar that geodiff can't handle.
+            self.geodiff.make_copy_sqlite(src, dest)
+            self.geodiff.make_copy_sqlite(src, basefile)
 
     def apply_push_changes(self, changes):
         """
