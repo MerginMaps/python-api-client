@@ -659,3 +659,41 @@ class MerginProject:
         :rtype: bool
         """
         return os.path.exists(self.pull_dir)
+
+    def resolve_unfinshed_pull(self):
+        """
+        Try to resolve unfinished pull.
+        """
+        if not self.has_unfinished_pull():
+            self.log.warning("no unfinished pulls found")
+            return
+
+        self.log.info("resolving unfinished pull")
+
+        temp_dir = tempfile.mkdtemp(prefix="mergin-py-client-")
+
+        for file_name in os.listdir(self.pull_dir):
+            src = os.path.join(self.pull_dir, file_name)
+            dest = self.fpath(file_name)
+            basefile = self.fpath_meta(file_name)
+
+            # 'src' here is a server version of the file from unfinished pull
+            # and 'dest' is a local version of the same file
+
+            server_diff = self.fpath(f'{file_name}-server_diff', temp_dir)  # diff between server file and local basefile
+            local_diff = self.fpath(f'{file_name}-local_diff', temp_dir)
+            rebase_conflicts = self.fpath(f'{file_name}_rebase_conflicts')
+
+            # try to do rebase magic
+            try:
+                self.geodiff.create_changeset(basefile, src, server_diff)
+                self.geodiff.rebase(basefile, src, dest, rebase_conflicts)
+                # make sure basefile is in the same state as remote server file (for calc of push changes)
+                self.geodiff.apply_changeset(basefile, server_diff)
+                self.log.info("rebase successful!")
+            except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as err:
+                self.log.error("unable to apply changes from previous unfinished pull!")
+                raise ClientError("Unable to resolve unfinished pull!")
+
+        shutil.rmtree(self.pull_dir)
+        self.log.info("unfinished pull resolved successfuly!")
