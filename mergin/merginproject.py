@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import uuid
+import tempfile
 from datetime import datetime
 from dateutil.tz import tzlocal
 
@@ -525,7 +526,7 @@ class MerginProject:
                 self.geodiff.make_copy_sqlite(f_server_backup, basefile)
                 self.geodiff.make_copy_sqlite(f_server_backup, dest)
                 return conflict, unfinished
-            except pygeodiff.GeoDiffLibError as e:
+            except pygeodiff.GeoDiffLibError as err:
                 self.log.warning("sync with server failed! going to create an unfinished pull")
                 f_server_unfinished = self.fpath_pull(path)
                 self.geodiff.make_copy_sqlite(f_server_backup, f_server_unfinished)
@@ -679,7 +680,6 @@ class MerginProject:
 
             # 'src' here is a server version of the file from unfinished pull
             # and 'dest' is a local version of the same file
-
             server_diff = self.fpath(f'{file_name}-server_diff', temp_dir)  # diff between server file and local basefile
             local_diff = self.fpath(f'{file_name}-local_diff', temp_dir)
             rebase_conflicts = self.fpath(f'{file_name}_rebase_conflicts')
@@ -692,8 +692,15 @@ class MerginProject:
                 self.geodiff.apply_changeset(basefile, server_diff)
                 self.log.info("rebase successful!")
             except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as err:
-                self.log.error("unable to apply changes from previous unfinished pull!")
-                raise ClientError("Unable to resolve unfinished pull!")
+                try:
+                    # it would not be possible to commit local changes, they need to end up in new conflict file
+                    conflict = self.backup_file(dest)
+                    # original file synced with server
+                    self.geodiff.make_copy_sqlite(src, basefile)
+                    self.geodiff.make_copy_sqlite(src, dest)
+                except pygeodiff.GeoDiffLibError as err:
+                    self.log.error("unable to apply changes from previous unfinished pull!")
+                    raise ClientError("Unable to resolve unfinished pull!")
 
         shutil.rmtree(self.pull_dir)
         self.log.info("unfinished pull resolved successfuly!")
