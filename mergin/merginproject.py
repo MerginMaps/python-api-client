@@ -651,3 +651,11 @@ class MerginProject:
                 error = str(e)
                 break
         return error
+
+    def has_unfinished_pull(self):
+        """ Check if there is an unfinished pull for this project.
+
+        :returns: whether there is an unfinished pull
+        :rtype: bool
+        """
+        return os.path.exists(self.pull_dir)
