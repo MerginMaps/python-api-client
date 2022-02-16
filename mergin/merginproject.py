@@ -48,6 +48,9 @@ class MerginProject:
         if not os.path.exists(self.meta_dir):
             os.mkdir(self.meta_dir)
 
+        # location for files from unfinished pull
+        self.pull_dir = os.path.join(self.meta_dir, 'unfinished_pull')
+
         self.setup_logging(directory)
 
         # make sure we can load correct pygeodiff
@@ -110,6 +113,10 @@ class MerginProject:
     def fpath_meta(self, file):
         """ Helper function to get absolute path of file in meta dir. """
         return self.fpath(file, self.meta_dir)
+
+    def fpath_pull(self, file):
+        """ Helper function to get absolute path of file in unfinished_pull dir. """
+        return self.fpath(file, self.pull_dir)
 
     @property
     def metadata(self):
@@ -395,10 +402,12 @@ class MerginProject:
         :type changes: dict[str, list[dict]]
         :param temp_dir: directory with downloaded files from server
         :type temp_dir: str
-        :returns: files where conflicts were found
-        :rtype: list[str]
+        :returns: tuple containig list of files where conflicts were found and boolean flag indicating
+        whether pull was successful or not
+        :rtype: tuple(list[str], bool)
         """
         conflicts = []
+        unfinished = False
         local_changes = self.get_push_changes()
         modified = {}
         for f in local_changes["added"] + local_changes["updated"]:
@@ -447,7 +456,7 @@ class MerginProject:
                         else:
                             shutil.copy(src, dest)
 
-        return conflicts
+        return conflicts, unfinished
 
     def update_with_rebase(self, path, src, dest, basefile, temp_dir, user_name):
         """
@@ -467,8 +476,9 @@ class MerginProject:
         :type basefile: str
         :param temp_dir: directory with downloaded files from server
         :type temp_dir: str
-        :returns: path to conflict file if rebase fails, empty string on success
-        :rtype: str
+        :returns: tuple containing path to conflict file if rebase fails, empty string on success
+        and boolean flag indicating whether pull finished or unfinished
+        :rtype: tuple(str, bool)
         """
         self.log.info("updating file with rebase: " + path)
 
@@ -496,6 +506,8 @@ class MerginProject:
         rebase_conflicts = unique_path_name(
                 edit_conflict_file_name(self.fpath(path), user_name, int_version(self.metadata['version'])))
 
+        unfinished = False
+
         # try to do rebase magic
         try:
             self.geodiff.create_changeset(basefile, src, server_diff)
@@ -505,15 +517,21 @@ class MerginProject:
             self.log.info("rebase successful!")
         except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as err:
             self.log.warning("rebase failed! going to create conflict file")
-            # it would not be possible to commit local changes, they need to end up in new conflict file
-            self.geodiff.make_copy_sqlite(f_conflict_file, dest)
-            conflict = self.create_conflicted_copy(path, user_name)
-            # original file synced with server
-            self.geodiff.make_copy_sqlite(f_server_backup, basefile)
-            self.geodiff.make_copy_sqlite(f_server_backup, dest)
-            return conflict
+            try:
+                # it would not be possible to commit local changes, they need to end up in new conflict file
+                self.geodiff.make_copy_sqlite(f_conflict_file, dest)
+                conflict = self.create_conflicted_copy(path, user_name)
+                # original file synced with server
+                self.geodiff.make_copy_sqlite(f_server_backup, basefile)
+                self.geodiff.make_copy_sqlite(f_server_backup, dest)
+                return conflict, unfinished
+            except pygeodiff.GeoDiffLibError as e:
+                self.log.warning("sync with server failed! going to create an unfinished pull")
+                f_server_unfinished = self.fpath_pull(path)
+                self.geodiff.make_copy_sqlite(f_server_backup, f_server_unfinished)
+                unfinished = True
 
-        return ''
+        return '', unfinished
 
     def update_without_rebase(self, path, src, dest, basefile, temp_dir):
         """
