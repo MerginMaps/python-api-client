@@ -403,9 +403,8 @@ class MerginProject:
         :type changes: dict[str, list[dict]]
         :param temp_dir: directory with downloaded files from server
         :type temp_dir: str
-        :returns: tuple containig list of files where conflicts were found and boolean flag indicating
-        whether pull was successful or not
-        :rtype: tuple(list[str], bool)
+        :returns: files where conflicts were found
+        :rtype: list[str]
         """
         conflicts = []
         unfinished = False
@@ -457,7 +456,7 @@ class MerginProject:
                         else:
                             shutil.copy(src, dest)
 
-        return conflicts, unfinished
+        return conflicts
 
     def update_with_rebase(self, path, src, dest, basefile, temp_dir, user_name):
         """
@@ -477,9 +476,8 @@ class MerginProject:
         :type basefile: str
         :param temp_dir: directory with downloaded files from server
         :type temp_dir: str
-        :returns: tuple containing path to conflict file if rebase fails, empty string on success
-        and boolean flag indicating whether pull finished or unfinished
-        :rtype: tuple(str, bool)
+        :returns: path to conflict file if rebase fails, empty string on success
+        :rtype: str
         """
         self.log.info("updating file with rebase: " + path)
 
@@ -507,8 +505,6 @@ class MerginProject:
         rebase_conflicts = unique_path_name(
                 edit_conflict_file_name(self.fpath(path), user_name, int_version(self.metadata['version'])))
 
-        unfinished = False
-
         # try to do rebase magic
         try:
             self.geodiff.create_changeset(basefile, src, server_diff)
@@ -525,14 +521,13 @@ class MerginProject:
                 # original file synced with server
                 self.geodiff.make_copy_sqlite(f_server_backup, basefile)
                 self.geodiff.make_copy_sqlite(f_server_backup, dest)
-                return conflict, unfinished
+                return conflict
             except pygeodiff.GeoDiffLibError as err:
                 self.log.warning("sync with server failed! going to create an unfinished pull")
                 f_server_unfinished = self.fpath_pull(path)
                 self.geodiff.make_copy_sqlite(f_server_backup, f_server_unfinished)
-                unfinished = True
 
-        return '', unfinished
+        return ''
 
     def update_without_rebase(self, path, src, dest, basefile, temp_dir):
         """
