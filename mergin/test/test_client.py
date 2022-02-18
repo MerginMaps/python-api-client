@@ -1409,3 +1409,79 @@ def create_directory(root, data):
         elif isinstance(v, list):
             for file_name in v:
                 open(os.path.join(root, file_name), 'w').close()
+
+@pytest.mark.parametrize("extra_connection", [False, True])
+def test_unfinished_pull(mc, extra_connection):
+    """
+    Checks whether a pull with failed rebase (due to remote DB schema change)
+    and failed copy of the database file is handled correctly, i.e. an
+    unfinished_pull directory is created with the content of the server changes.
+    """
+    test_project = 'test_unfinished_pull'
+    if extra_connection:
+        test_project += '_extra_conn'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
+    project_dir_2 = os.path.join(TMP_DIR, test_project+'_2')  # concurrent project dir
+    unfinished_pull_dir = os.path.join(TMP_DIR, test_project, '.mergin', 'unfinished_pull')  # unfinished_pull dir for the primary project
+    test_gpkg = os.path.join(project_dir, 'test.gpkg')
+    test_gpkg_2 = os.path.join(project_dir_2, 'test.gpkg')
+    test_gpkg_basefile = os.path.join(project_dir, '.mergin', 'test.gpkg')
+    test_gpkg_conflict = test_gpkg + '_conflict_copy'
+    test_gpkg_unfinished_pull = os.path.join(project_dir, '.mergin', 'unfinished_pull', 'test.gpkg')
+    cleanup(mc, project, [project_dir, project_dir_2])
+
+    os.makedirs(project_dir)
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'base.gpkg'), test_gpkg)
+    _use_wal(test_gpkg)  # make sure we use WAL, that's the more common and more difficult scenario
+    mc.create_project_and_push(test_project, project_dir)
+
+    # Download project to the concurrent dir + change DB schema + push a new version
+    mc.download_project(project, project_dir_2)
+    _create_test_table(test_gpkg_2)
+    mc.push_project(project_dir_2)
+
+    # do changes in the local DB (added a row)
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'inserted_1_A.gpkg'), test_gpkg)
+    _use_wal(test_gpkg)  # make sure we use WAL
+
+    if extra_connection:
+        # open a connection and keep it open (qgis does this with a pool of connections too)
+        con_extra = sqlite3.connect(test_gpkg)
+        cursor_extra = con_extra.cursor()
+        cursor_extra.execute('select count(*) from simple;')
+
+    pull_changes, push_changes, _ = mc.project_status(project_dir)
+    assert _is_file_updated('test.gpkg', pull_changes)
+    assert _is_file_updated('test.gpkg', push_changes)
+
+    assert not os.path.exists(test_gpkg_conflict)
+    assert not os.path.exists(unfinished_pull_dir)
+
+    # lock base file to emulate situation when we can't overwrite it, because
+    # it is used by another process
+    subprocess.run(['sudo', 'chattr', '+i', test_gpkg])
+
+    mc.pull_project(project_dir)
+
+    assert not os.path.exists(test_gpkg_conflict)
+    assert os.path.exists(unfinished_pull_dir)
+
+    # check the results after pull:
+    # - unfinished pull file should contain the new table
+    # - local file + basefile should not contain the new table
+    _check_test_table(test_gpkg_unfinished_pull)
+    with pytest.raises(sqlite3.OperationalError):
+        _check_test_table(test_gpkg)
+    with pytest.raises(sqlite3.OperationalError):
+        _check_test_table(test_gpkg_basefile)
+
+    # check that the local file + basefile don't contain the new row, and the conflict copy does
+    # check that the local file contain the new row, while basefile and server version don't
+    assert _get_table_row_count(test_gpkg, 'simple') == 4
+    assert _get_table_row_count(test_gpkg_basefile, 'simple') == 3
+    assert _get_table_row_count(test_gpkg_unfinished_pull, 'simple') == 3
+
+    # unlock base file, so we can cleanup
+    subprocess.run(['sudo', 'chattr', '-i', test_gpkg])
+
