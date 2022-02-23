@@ -656,7 +656,7 @@ class MerginProject:
         """
         return os.path.exists(self.pull_dir)
 
-    def resolve_unfinshed_pull(self):
+    def resolve_unfinished_pull(self):
         """
         Try to resolve unfinished pull.
         """

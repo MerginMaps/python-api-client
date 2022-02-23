@@ -737,3 +737,26 @@ class MerginClient:
         job = download_diffs_async(self, project_dir, file_path, version_from, version_to)
         pull_project_wait(job)
         download_diffs_finalize(job, output_diff)
+
+    def has_unfinished_pull(self, directory):
+        """
+        Test whether project has an unfinished pull.
+
+        :param directory: project's directory
+        :type directory: String
+        :returns: project has unfinished pull
+        rtype: Boolean
+        """
+        mp = MerginProject(directory)
+
+        return mp.has_unfinished_pull()
+
+    def resolve_unfinished_pull(self, directory):
+        """
+        Try to resolve unfinished pull.
+
+        :param directory: project's directory
+        :type directory: String
+        """
+        mp = MerginProject(directory)
+        mp.resolve_unfinished_pull()
