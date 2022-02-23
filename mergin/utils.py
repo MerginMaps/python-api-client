@@ -5,6 +5,7 @@ import hashlib
 import re
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 from .common import ClientError
 
 
@@ -145,3 +146,83 @@ def get_versions_with_file_changes(
             idx_to = idx
             break
     return [f"v{ver_nr}" for ver_nr in all_version_numbers[idx_from:idx_to + 1]]
+
+
+def unique_file_name(path):
+    """
+    Generates an unique name for the given path. If the given path does
+    not exist yet it will be returned unchanged, otherwise a sequntial
+    number will be added to the path in format:
+      - if path is a directory: "folder" -> "folder (1)"
+      - if path is a file: "filename.txt" -> "filename (1).txt"
+
+    :param path: path to file or directory
+    :type path: str
+    :returns: unique path
+    :rtype: str
+    """
+    unique_path = str(path)
+
+    is_dir = os.path.isdir(path)
+    head, tail = os.path.split(os.path.normpath(path))
+    ext = ''.join(Path(tail).suffixes)
+    file_name = tail.replace(ext, '')
+
+    i = 0
+    while os.path.exists(unique_path):
+        i += 1
+
+        if is_dir:
+            unique_path = f"{path} ({i})"
+        else:
+            unique_path = os.path.join(head, file_name) + f" ({i}){ext}"
+
+    return unique_path
+
+
+def conflict_copy_file_name(path, user, version):
+    """
+    Generates a file name for the conflict copy file in the following form
+    <filename> (conflicted copy, <username> v<version>).gpkg. Example:
+    * data (conflicted copy, martin v5).gpkg
+
+    :param path: name of the file
+    :type path: str
+    :param user: name of the user
+    :type user: str
+    :param version: version of the mergin project
+    :type version: str
+    :returns: new file name
+    :rtype: str
+    """
+    if not path:
+        return ''
+
+    head, tail = os.path.split(os.path.normpath(path))
+    ext = ''.join(Path(tail).suffixes)
+    file_name = tail.replace(ext, '')
+    return os.path.join(head, file_name) + f" (conflicted copy, {user} v{version}){ext}"
+
+
+def edit_conflict_file_name(path, user, version):
+    """
+    Generates a file name for the edit conflict file in the following form
+    <filename> (edit conflict, <username> v<version>).gpkg. Example:
+    * data (edit conflict, martin v5).gpkg
+
+    :param path: name of the file
+    :type path: str
+    :param user: name of the user
+    :type user: str
+    :param version: version of the mergin project
+    :type version: str
+    :returns: new file name
+    :rtype: str
+    """
+    if not path:
+        return ''
+
+    head, tail = os.path.split(os.path.normpath(path))
+    ext = ''.join(Path(tail).suffixes)
+    file_name = tail.replace(ext, '')
+    return os.path.join(head, file_name) + f" (edit conflict, {user} v{version}).json"
