@@ -11,7 +11,13 @@ import sqlite3
 
 from ..client import MerginClient, ClientError, MerginProject, LoginError, decode_token_data, TokenError
 from ..client_push import push_project_async, push_project_cancel
-from ..utils import generate_checksum, get_versions_with_file_changes
+from ..utils import (
+    generate_checksum,
+    get_versions_with_file_changes,
+    unique_file_name,
+    conflict_copy_file_name,
+    edit_conflict_file_name
+)
 from ..merginproject import pygeodiff
 
 
@@ -133,7 +139,7 @@ def test_create_remote_project_from_local(mc):
         assert f in downloads['dir']
         if mp.is_versioned_file(f):
             assert f in downloads['meta']
-    
+
     # unable to download to the same directory
     with pytest.raises(Exception, match='Project directory already exists'):
         mc.download_project(project, download_dir)
@@ -588,7 +594,7 @@ def test_available_storage_validation(mc):
     except ClientError as e:
         # Expecting "Storage limit has been reached" error msg.
         assert str(e).startswith("Storage limit has been reached")
-        got_right_err = True    
+        got_right_err = True
     assert got_right_err
 
     # Expecting empty project
@@ -1304,3 +1310,102 @@ def test_rebase_success(mc, extra_connection):
 
     assert _get_table_row_count(test_gpkg, 'simple') == 5
     assert _get_table_row_count(test_gpkg_basefile, 'simple') == 4
+
+
+def test_conflict_file_names():
+    """
+    Test generation of file names for conflicts files.
+    """
+
+    data = [
+            ('/home/test/geo.gpkg', 'jack', 10, '/home/test/geo (conflicted copy, jack v10).gpkg'),
+            ('/home/test/g.pkg', 'j', 0, '/home/test/g (conflicted copy, j v0).pkg'),
+            ('home/test/geo.gpkg', 'jack', 10, 'home/test/geo (conflicted copy, jack v10).gpkg'),
+            ('geo.gpkg', 'jack', 10, 'geo (conflicted copy, jack v10).gpkg'),
+            ('/home/../geo.gpkg', 'jack', 10, '/geo (conflicted copy, jack v10).gpkg'),
+            ('/home/./geo.gpkg', 'jack', 10, '/home/geo (conflicted copy, jack v10).gpkg'),
+            ('/home/test/geo.gpkg', '', 10, '/home/test/geo (conflicted copy,  v10).gpkg'),
+            ('/home/test/geo.gpkg', 'jack', -1, '/home/test/geo (conflicted copy, jack v-1).gpkg'),
+            ('/home/test/geo.tar.gz', 'jack', 100, '/home/test/geo (conflicted copy, jack v100).tar.gz'),
+            ('', 'jack', 1, '' )
+           ]
+
+    for i in data:
+        file_name = conflict_copy_file_name(i[0], i[1], i[2])
+        assert file_name == i[3]
+
+
+    data = [
+            ('/home/test/geo.json', 'jack', 10, '/home/test/geo (edit conflict, jack v10).json'),
+            ('/home/test/g.jsn', 'j', 0, '/home/test/g (edit conflict, j v0).json'),
+            ('home/test/geo.json', 'jack', 10, 'home/test/geo (edit conflict, jack v10).json'),
+            ('geo.json', 'jack', 10, 'geo (edit conflict, jack v10).json'),
+            ('/home/../geo.json', 'jack', 10, '/geo (edit conflict, jack v10).json'),
+            ('/home/./geo.json', 'jack', 10, '/home/geo (edit conflict, jack v10).json'),
+            ('/home/test/geo.json', '', 10, '/home/test/geo (edit conflict,  v10).json'),
+            ('/home/test/geo.json', 'jack', -1, '/home/test/geo (edit conflict, jack v-1).json'),
+            ('/home/test/geo.gpkg', 'jack', 10, '/home/test/geo (edit conflict, jack v10).json'),
+            ('/home/test/geo.tar.gz', 'jack', 100, '/home/test/geo (edit conflict, jack v100).json'),
+            ('', 'jack', 1, '')
+           ]
+
+    for i in data:
+        file_name = edit_conflict_file_name(i[0], i[1], i[2])
+        assert file_name == i[3]
+
+
+def test_unique_file_names():
+    """
+    Test generation of unique file names.
+    """
+    project_dir = os.path.join(TMP_DIR, 'unique_file_names')
+
+    remove_folders([project_dir])
+
+    os.makedirs(project_dir)
+    assert os.path.exists(project_dir)
+    assert not any(os.scandir(project_dir))
+
+    # Create test directory structure:
+    # - folderA
+    #   |- fileA.txt
+    #   |- fileA (1).txt
+    #   |- fileB.txt
+    #   |- folderAB
+    #   |- folderAB (1)
+    # - file.txt
+    # - another.txt
+    # - another (1).txt
+    # - another (2).txt
+    # - arch.tar.gz
+    data = {'folderA': {'files': ['fileA.txt', 'fileA (1).txt', 'fileB.txt'], 'folderAB': {}, 'folderAB (1)': {}}, 'files': ['file.txt', 'another.txt', 'another (1).txt', 'another (2).txt', 'arch.tar.gz']}
+    create_directory(project_dir, data)
+
+    data = [
+            ('file.txt', 'file (1).txt'),
+            ('another.txt', 'another (3).txt'),
+            ('folderA', 'folderA (1)'),
+            ('non.txt', 'non.txt'),
+            ('data.gpkg', 'data.gpkg'),
+            ('arch.tar.gz', 'arch (1).tar.gz'),
+            ('folderA/folder', 'folderA/folder'),
+            ('folderA/fileA.txt', 'folderA/fileA (2).txt'),
+            ('folderA/fileB.txt', 'folderA/fileB (1).txt'),
+            ('folderA/fileC.txt', 'folderA/fileC.txt'),
+            ('folderA/folderAB', 'folderA/folderAB (2)'),
+           ]
+    for i in data:
+        file_name = unique_file_name(os.path.join(project_dir, i[0]))
+        assert file_name == os.path.join(project_dir, i[1])
+
+
+def create_directory(root, data):
+    for k, v in data.items():
+        if isinstance(v, dict):
+            dir_name = os.path.join(root, k)
+            os.makedirs(dir_name, exist_ok=True)
+            for kk in v.keys():
+                create_directory(dir_name, v)
+        elif isinstance(v, list):
+            for file_name in v:
+                open(os.path.join(root, file_name), 'w').close()
