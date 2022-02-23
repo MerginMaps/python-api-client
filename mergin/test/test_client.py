@@ -1456,7 +1456,7 @@ def test_unfinished_pull(mc, extra_connection):
     assert _is_file_updated('test.gpkg', push_changes)
 
     assert not os.path.exists(test_gpkg_conflict)
-    assert not os.path.exists(unfinished_pull_dir)
+    assert not mc.has_unfinished_pull(project_dir)
 
     # lock base file to emulate situation when we can't overwrite it, because
     # it is used by another process
@@ -1465,7 +1465,7 @@ def test_unfinished_pull(mc, extra_connection):
     mc.pull_project(project_dir)
 
     assert not os.path.exists(test_gpkg_conflict)
-    assert os.path.exists(unfinished_pull_dir)
+    assert mc.has_unfinished_pull(project_dir)
 
     # check the results after pull:
     # - unfinished pull file should contain the new table
@@ -1476,12 +1476,30 @@ def test_unfinished_pull(mc, extra_connection):
     with pytest.raises(sqlite3.OperationalError):
         _check_test_table(test_gpkg_basefile)
 
-    # check that the local file + basefile don't contain the new row, and the conflict copy does
     # check that the local file contain the new row, while basefile and server version don't
     assert _get_table_row_count(test_gpkg, 'simple') == 4
     assert _get_table_row_count(test_gpkg_basefile, 'simple') == 3
     assert _get_table_row_count(test_gpkg_unfinished_pull, 'simple') == 3
 
-    # unlock base file, so we can cleanup
+    # unlock base file, so we can try to apply changes from unfinished pull
     subprocess.run(['sudo', 'chattr', '-i', test_gpkg])
 
+    mc.resolve_unfinished_pull(project_dir)
+
+    assert os.path.exists(test_gpkg_conflict)
+    assert not mc.has_unfinished_pull(project_dir)
+
+    assert os.path.exists(test_gpkg_conflict)
+
+    # check the results after resolving unfinished pull:
+    # - conflict copy should not contain the new table
+    # - local file + basefile should contain the new table
+    _check_test_table(test_gpkg)
+    _check_test_table(test_gpkg_basefile)
+    with pytest.raises(sqlite3.OperationalError):
+        _check_test_table(test_gpkg_conflict)
+
+    # check that the local file + basefile don't contain the new row, and the conflict copy does
+    assert _get_table_row_count(test_gpkg, 'simple') == 3
+    assert _get_table_row_count(test_gpkg_basefile, 'simple') == 3
+    assert _get_table_row_count(test_gpkg_conflict, 'simple') == 4
