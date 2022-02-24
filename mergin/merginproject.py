@@ -10,7 +10,16 @@ from datetime import datetime
 from dateutil.tz import tzlocal
 
 from .common import UPLOAD_CHUNK_SIZE, InvalidProject, ClientError
-from .utils import generate_checksum, move_file, int_version, find, do_sqlite_checkpoint
+from .utils import (
+    generate_checksum,
+    move_file,
+    int_version,
+    find,
+    do_sqlite_checkpoint,
+    unique_file_name,
+    conflict_copy_file_name,
+    edit_conflict_file_name
+)
 
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
@@ -373,7 +382,7 @@ class MerginProject:
                     pass
         return changes
 
-    def apply_pull_changes(self, changes, temp_dir):
+    def apply_pull_changes(self, changes, temp_dir, user_name):
         """
         Apply changes pulled from server.
 
@@ -410,7 +419,7 @@ class MerginProject:
                 # 'src' here is server version of file and 'dest' is locally modified
                 if self.is_versioned_file(path) and k == 'updated':
                     if path in modified:
-                        conflict = self.update_with_rebase(path, src, dest, basefile, temp_dir)
+                        conflict = self.update_with_rebase(path, src, dest, basefile, temp_dir, user_name)
                         if conflict:
                             conflicts.append(conflict)
                     else:
@@ -420,7 +429,7 @@ class MerginProject:
                 else:
                     # backup if needed
                     if path in modified and item['checksum'] != local_files_map[path]['checksum']:
-                        conflict = self.backup_file(path)
+                        conflict = self.backup_file(path, user_name)
                         conflicts.append(conflict)
 
                     if k == 'removed':
@@ -440,7 +449,7 @@ class MerginProject:
 
         return conflicts
 
-    def update_with_rebase(self, path, src, dest, basefile, temp_dir):
+    def update_with_rebase(self, path, src, dest, basefile, temp_dir, user_name):
         """
         Update a versioned file with rebase.
 
@@ -472,6 +481,7 @@ class MerginProject:
 
         # create temp backup (ideally with geodiff) of locally modified file if needed later
         f_conflict_file = self.fpath(f'{path}-local_backup', temp_dir)
+
         try:
             self.geodiff.create_changeset(basefile, dest, local_diff)
             self.geodiff.make_copy_sqlite(basefile, f_conflict_file)
@@ -483,7 +493,11 @@ class MerginProject:
         # in case there will be any conflicting operations found during rebase,
         # they will be stored in a JSON file - if there are no conflicts, the file
         # won't even be created
-        rebase_conflicts = self.fpath(f'{path}_rebase_conflicts')
+        #rebase_conflicts = self.fpath(f'{path}_rebase_conflicts')
+
+        # FiXME: how to get user name?
+        rebase_conflicts = unique_file_name(
+                edit_conflict_file_name(self.fpath(path), user_name, int_version(self.metadata['version'])))
 
         # try to do rebase magic
         try:
@@ -496,7 +510,7 @@ class MerginProject:
             self.log.warning("rebase failed! going to create conflict file")
             # it would not be possible to commit local changes, they need to end up in new conflict file
             self.geodiff.make_copy_sqlite(f_conflict_file, dest)
-            conflict = self.backup_file(path)
+            conflict = self.backup_file(path, user_name)
             # original file synced with server
             self.geodiff.make_copy_sqlite(f_server_backup, basefile)
             self.geodiff.make_copy_sqlite(f_server_backup, dest)
@@ -577,7 +591,7 @@ class MerginProject:
                 else:
                     pass
 
-    def backup_file(self, file):
+    def backup_file(self, file, user_name):
         """
         Create backup file next to its origin.
 
@@ -589,11 +603,9 @@ class MerginProject:
         src = self.fpath(file)
         if not os.path.exists(src):
             return
-        backup_path = self.fpath(f'{file}_conflict_copy')
-        index = 2
-        while os.path.exists(backup_path):
-            backup_path = self.fpath(f'{file}_conflict_copy{index}')
-            index += 1
+
+        backup_path = unique_file_name(conflict_copy_file_name(self.fpath(file), user_name, int_version(self.metadata['version'])))
+
         if self.is_versioned_file(file):
             self.geodiff.make_copy_sqlite(src, backup_path)
         else:
