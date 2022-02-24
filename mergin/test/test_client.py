@@ -220,8 +220,8 @@ def test_push_pull_changes(mc):
     assert not os.path.exists(os.path.join(project_dir_2, f_removed))
     assert not os.path.exists(os.path.join(project_dir_2, f_renamed))
     assert os.path.exists(os.path.join(project_dir_2, 'renamed.txt'))
-    assert os.path.exists(os.path.join(project_dir_2, f_updated+'_conflict_copy'))
-    assert generate_checksum(os.path.join(project_dir_2, f_updated+'_conflict_copy')) == f_conflict_checksum
+    assert os.path.exists(os.path.join(project_dir_2, conflict_copy_file_name(f_updated, API_USER, 1)))
+    assert generate_checksum(os.path.join(project_dir_2, conflict_copy_file_name(f_updated, API_USER, 1))) == f_conflict_checksum
     assert generate_checksum(os.path.join(project_dir_2, f_updated)) == f_remote_checksum
 
 
@@ -1141,7 +1141,7 @@ def test_rebase_local_schema_change(mc, extra_connection):
     project_dir_2 = os.path.join(TMP_DIR, test_project+'_2')  # concurrent project dir
     test_gpkg = os.path.join(project_dir, 'test.gpkg')
     test_gpkg_basefile = os.path.join(project_dir, '.mergin', 'test.gpkg')
-    test_gpkg_conflict = test_gpkg + '_conflict_copy'
+    test_gpkg_conflict = conflict_copy_file_name(test_gpkg, API_USER, 1)
     cleanup(mc, project, [project_dir, project_dir_2])
 
     os.makedirs(project_dir)
@@ -1207,7 +1207,7 @@ def test_rebase_remote_schema_change(mc, extra_connection):
     test_gpkg = os.path.join(project_dir, 'test.gpkg')
     test_gpkg_2 = os.path.join(project_dir_2, 'test.gpkg')
     test_gpkg_basefile = os.path.join(project_dir, '.mergin', 'test.gpkg')
-    test_gpkg_conflict = test_gpkg + '_conflict_copy'
+    test_gpkg_conflict = conflict_copy_file_name(test_gpkg, API_USER, 1)
     cleanup(mc, project, [project_dir, project_dir_2])
 
     os.makedirs(project_dir)
@@ -1272,7 +1272,7 @@ def test_rebase_success(mc, extra_connection):
     test_gpkg = os.path.join(project_dir, 'test.gpkg')
     test_gpkg_2 = os.path.join(project_dir_2, 'test.gpkg')
     test_gpkg_basefile = os.path.join(project_dir, '.mergin', 'test.gpkg')
-    test_gpkg_conflict = test_gpkg + '_conflict_copy'
+    test_gpkg_conflict = conflict_copy_file_name(test_gpkg, API_USER, 1)
     cleanup(mc, project, [project_dir, project_dir_2])
 
     os.makedirs(project_dir)

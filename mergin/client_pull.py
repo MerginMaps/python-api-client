@@ -40,7 +40,7 @@ class DownloadJob:
     Keeps all the important data about a pending download job.
     Used for downloading whole projects but also single files.
     """
-    
+
     def __init__(self, project_path, total_size, version, update_tasks, download_queue_items, directory, mp, project_info):
         self.project_path = project_path
         self.total_size = total_size      # size of data to download (in bytes)
@@ -70,13 +70,13 @@ def _download_items(file, directory, diff_only=False):
     basename = os.path.basename(file['diff']['path']) if diff_only else os.path.basename(file['path'])
     file_size = file['diff']['size'] if diff_only else file['size']
     chunks = math.ceil(file_size / CHUNK_SIZE)
-    
+
     items = []
     for part_index in range(chunks):
         download_file_path = os.path.join(file_dir, basename + ".{}".format(part_index))
         size = min(CHUNK_SIZE, file_size - part_index * CHUNK_SIZE)
         items.append(DownloadQueueItem(file['path'], size, file['version'], diff_only, part_index, download_file_path))
-        
+
     return items
 
 
@@ -84,7 +84,7 @@ def _do_download(item, mc, mp, project_path, job):
     """ runs in worker thread """
     if job.is_cancelled:
         return
-    
+
     # TODO: make download_blocking / save_to_file cancellable so that we can cancel as soon as possible
 
     item.download_blocking(mc, mp, project_path)
@@ -153,9 +153,9 @@ def download_project_async(mc, project_path, directory, project_version=None):
             total_size += item.size
 
     mp.log.info(f"will download {len(update_tasks)} files in {len(download_list)} chunks, total size {total_size}")
-    
+
     job = DownloadJob(project_path, total_size, version, update_tasks, download_list, directory, mp, project_info)
-    
+
     # start download
     job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     job.futures = []
@@ -168,7 +168,7 @@ def download_project_async(mc, project_path, directory, project_version=None):
 
 def download_project_wait(job):
     """ blocks until all download tasks are finished """
-    
+
     concurrent.futures.wait(job.futures)
 
 
@@ -209,10 +209,10 @@ def download_project_finalize(job):
     job.mp.log.info("--- download finished")
 
     for task in job.update_tasks:
-        
+
         # right now only copy tasks...
         task.apply(job.directory, job.mp)
-    
+
     # final update of project metadata
     # TODO: why not exact copy of project info JSON ?
     job.mp.metadata = {
@@ -239,7 +239,7 @@ class UpdateTask:
     Entry for each file that will be updated.
     At the end of a successful download of new data, all the tasks are executed.
     """
-    
+
     # TODO: methods other than COPY
     def __init__(self, file_path, download_queue_items, destination_file=None, latest_version=True):
         self.file_path = file_path
@@ -249,7 +249,7 @@ class UpdateTask:
 
     def apply(self, directory, mp):
         """ assemble downloaded chunks into a single file """
-        
+
         if self.destination_file is None:
             basename = os.path.basename(self.file_path)
             file_dir = os.path.dirname(os.path.normpath(os.path.join(directory, self.file_path)))
@@ -273,7 +273,7 @@ class UpdateTask:
 
 class DownloadQueueItem:
     """ a piece of data from a project that should be downloaded - it can be either a chunk or it can be a diff """
-    
+
     def __init__(self, file_path, size, version, diff_only, part_index, download_file_path):
         self.file_path = file_path     # relative path to the file within project
         self.size = size               # size of the item in bytes
@@ -281,7 +281,7 @@ class DownloadQueueItem:
         self.diff_only = diff_only     # whether downloading diff or full version
         self.part_index = part_index    # index of the chunk
         self.download_file_path = download_file_path   # full path to a temporary file which will receive the content
-        
+
     def __repr__(self):
         return "<DownloadQueueItem path={} version={} diff_only={} part_index={} size={} dest={}>".format(
             self.file_path, self.version, self.diff_only, self.part_index, self.size, self.download_file_path)
@@ -397,7 +397,7 @@ def pull_project_async(mc, directory):
     for file in fetch_files:
         diff_only = _pulling_file_with_diffs(file)
         items = _download_items(file, temp_dir, diff_only)
-        
+
         # figure out destination path for the file
         file_dir = os.path.dirname(os.path.normpath(os.path.join(temp_dir, file['path'])))
         basename = os.path.basename(file['diff']['path']) if diff_only else os.path.basename(file['path'])
@@ -447,13 +447,13 @@ def pull_project_async(mc, directory):
     for item in download_list:
         future = job.executor.submit(_do_download, item, mc, mp, project_path, job)
         job.futures.append(future)
-    
+
     return job
 
 
 def pull_project_wait(job):
     """ blocks until all download tasks are finished """
-    
+
     concurrent.futures.wait(job.futures)
 
 
@@ -513,16 +513,16 @@ class FileToMerge:
             raise ClientError('Download of file {} failed. Please try it again.'.format(self.dest_file))
 
 
-def pull_project_finalize(job):
+def pull_project_finalize(job, user_name):
     """
     To be called when pull in the background is finished and we need to do the finalization (merge chunks etc.)
-    
+
     This should not be called from a worker thread (e.g. directly from a handler when download is complete)
 
     If any of the workers has thrown any exception, it will be re-raised (e.g. some network errors).
     That also means that the whole job has been aborted.
     """
-    
+
     job.executor.shutdown(wait=True)
 
     # make sure any exceptions from threads are not lost
@@ -565,7 +565,7 @@ def pull_project_finalize(job):
             os.remove(basefile)
             raise ClientError("Cannot patch basefile {}! Please try syncing again.".format(basefile))
 
-    conflicts = job.mp.apply_pull_changes(job.pull_changes, job.temp_dir)
+    conflicts = job.mp.apply_pull_changes(job.pull_changes, job.temp_dir, user_name)
     job.mp.metadata = {
         'name': job.project_path,
         'version': job.version if job.version else "v0",  # for new projects server version is ""
