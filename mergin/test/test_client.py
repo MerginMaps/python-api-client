@@ -14,8 +14,8 @@ from ..client_push import push_project_async, push_project_cancel
 from ..utils import (
     generate_checksum,
     get_versions_with_file_changes,
-    unique_file_name,
-    conflict_copy_file_name,
+    unique_path_name,
+    conflicted_copy_file_name,
     edit_conflict_file_name
 )
 from ..merginproject import pygeodiff
@@ -220,8 +220,8 @@ def test_push_pull_changes(mc):
     assert not os.path.exists(os.path.join(project_dir_2, f_removed))
     assert not os.path.exists(os.path.join(project_dir_2, f_renamed))
     assert os.path.exists(os.path.join(project_dir_2, 'renamed.txt'))
-    assert os.path.exists(os.path.join(project_dir_2, conflict_copy_file_name(f_updated, API_USER, 1)))
-    assert generate_checksum(os.path.join(project_dir_2, conflict_copy_file_name(f_updated, API_USER, 1))) == f_conflict_checksum
+    assert os.path.exists(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 1)))
+    assert generate_checksum(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 1))) == f_conflict_checksum
     assert generate_checksum(os.path.join(project_dir_2, f_updated)) == f_remote_checksum
 
 
@@ -1141,7 +1141,7 @@ def test_rebase_local_schema_change(mc, extra_connection):
     project_dir_2 = os.path.join(TMP_DIR, test_project+'_2')  # concurrent project dir
     test_gpkg = os.path.join(project_dir, 'test.gpkg')
     test_gpkg_basefile = os.path.join(project_dir, '.mergin', 'test.gpkg')
-    test_gpkg_conflict = conflict_copy_file_name(test_gpkg, API_USER, 1)
+    test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, API_USER, 1)
     cleanup(mc, project, [project_dir, project_dir_2])
 
     os.makedirs(project_dir)
@@ -1207,7 +1207,7 @@ def test_rebase_remote_schema_change(mc, extra_connection):
     test_gpkg = os.path.join(project_dir, 'test.gpkg')
     test_gpkg_2 = os.path.join(project_dir_2, 'test.gpkg')
     test_gpkg_basefile = os.path.join(project_dir, '.mergin', 'test.gpkg')
-    test_gpkg_conflict = conflict_copy_file_name(test_gpkg, API_USER, 1)
+    test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, API_USER, 1)
     cleanup(mc, project, [project_dir, project_dir_2])
 
     os.makedirs(project_dir)
@@ -1272,7 +1272,7 @@ def test_rebase_success(mc, extra_connection):
     test_gpkg = os.path.join(project_dir, 'test.gpkg')
     test_gpkg_2 = os.path.join(project_dir_2, 'test.gpkg')
     test_gpkg_basefile = os.path.join(project_dir, '.mergin', 'test.gpkg')
-    test_gpkg_conflict = conflict_copy_file_name(test_gpkg, API_USER, 1)
+    test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, API_USER, 1)
     cleanup(mc, project, [project_dir, project_dir_2])
 
     os.makedirs(project_dir)
@@ -1331,7 +1331,7 @@ def test_conflict_file_names():
            ]
 
     for i in data:
-        file_name = conflict_copy_file_name(i[0], i[1], i[2])
+        file_name = conflicted_copy_file_name(i[0], i[1], i[2])
         assert file_name == i[3]
 
 
@@ -1354,7 +1354,7 @@ def test_conflict_file_names():
         assert file_name == i[3]
 
 
-def test_unique_file_names():
+def test_unique_path_names():
     """
     Test generation of unique file names.
     """
@@ -1395,7 +1395,7 @@ def test_unique_file_names():
             ('folderA/folderAB', 'folderA/folderAB (2)'),
            ]
     for i in data:
-        file_name = unique_file_name(os.path.join(project_dir, i[0]))
+        file_name = unique_path_name(os.path.join(project_dir, i[0]))
         assert file_name == os.path.join(project_dir, i[1])
 
 
