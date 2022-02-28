@@ -16,8 +16,8 @@ from .utils import (
     int_version,
     find,
     do_sqlite_checkpoint,
-    unique_file_name,
-    conflict_copy_file_name,
+    unique_path_name,
+    conflicted_copy_file_name,
     edit_conflict_file_name
 )
 
@@ -429,7 +429,7 @@ class MerginProject:
                 else:
                     # backup if needed
                     if path in modified and item['checksum'] != local_files_map[path]['checksum']:
-                        conflict = self.backup_file(path, user_name)
+                        conflict = self.create_conflicted_copy(path, user_name)
                         conflicts.append(conflict)
 
                     if k == 'removed':
@@ -493,10 +493,7 @@ class MerginProject:
         # in case there will be any conflicting operations found during rebase,
         # they will be stored in a JSON file - if there are no conflicts, the file
         # won't even be created
-        #rebase_conflicts = self.fpath(f'{path}_rebase_conflicts')
-
-        # FiXME: how to get user name?
-        rebase_conflicts = unique_file_name(
+        rebase_conflicts = unique_path_name(
                 edit_conflict_file_name(self.fpath(path), user_name, int_version(self.metadata['version'])))
 
         # try to do rebase magic
@@ -510,7 +507,7 @@ class MerginProject:
             self.log.warning("rebase failed! going to create conflict file")
             # it would not be possible to commit local changes, they need to end up in new conflict file
             self.geodiff.make_copy_sqlite(f_conflict_file, dest)
-            conflict = self.backup_file(path, user_name)
+            conflict = self.create_conflicted_copy(path, user_name)
             # original file synced with server
             self.geodiff.make_copy_sqlite(f_server_backup, basefile)
             self.geodiff.make_copy_sqlite(f_server_backup, dest)
@@ -591,20 +588,20 @@ class MerginProject:
                 else:
                     pass
 
-    def backup_file(self, file, user_name):
+    def create_conflicted_copy(self, file, user_name):
         """
-        Create backup file next to its origin.
+        Create conflicted copy file next to its origin.
 
         :param file: path of file in project
         :type file: str
-        :returns: path to backupfile
+        :returns: path to conflicted copy
         :rtype: str
         """
         src = self.fpath(file)
         if not os.path.exists(src):
             return
 
-        backup_path = unique_file_name(conflict_copy_file_name(self.fpath(file), user_name, int_version(self.metadata['version'])))
+        backup_path = unique_path_name(conflicted_copy_file_name(self.fpath(file), user_name, int_version(self.metadata['version'])))
 
         if self.is_versioned_file(file):
             self.geodiff.make_copy_sqlite(src, backup_path)

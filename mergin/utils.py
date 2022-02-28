@@ -148,7 +148,7 @@ def get_versions_with_file_changes(
     return [f"v{ver_nr}" for ver_nr in all_version_numbers[idx_from:idx_to + 1]]
 
 
-def unique_file_name(path):
+def unique_path_name(path):
     """
     Generates an unique name for the given path. If the given path does
     not exist yet it will be returned unchanged, otherwise a sequntial
@@ -180,7 +180,7 @@ def unique_file_name(path):
     return unique_path
 
 
-def conflict_copy_file_name(path, user, version):
+def conflicted_copy_file_name(path, user, version):
     """
     Generates a file name for the conflict copy file in the following form
     <filename> (conflicted copy, <username> v<version>).gpkg. Example:
