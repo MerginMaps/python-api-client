@@ -566,16 +566,16 @@ def pull_project_finalize(job, user_name):
             raise ClientError("Cannot patch basefile {}! Please try syncing again.".format(basefile))
 
     conflicts = job.mp.apply_pull_changes(job.pull_changes, job.temp_dir, user_name)
-    if not job.mp.has_unfinished_pull():
-        job.mp.metadata = {
-            'name': job.project_path,
-            'version': job.version if job.version else "v0",  # for new projects server version is ""
-            'files': job.project_info['files']
-        }
+    job.mp.metadata = {
+        'name': job.project_path,
+        'version': job.version if job.version else "v0",  # for new projects server version is ""
+        'files': job.project_info['files']
+    }
 
-        job.mp.log.info("--- pull finished -- at version " + job.mp.metadata['version'])
-    else:
+    if job.mp.has_unfinished_pull():
         job.mp.log.info("--- failed to complete pull -- project left in the unfinished pull state")
+    else:
+        job.mp.log.info("--- pull finished -- at version " + job.mp.metadata['version'])
 
     shutil.rmtree(job.temp_dir)
     return conflicts

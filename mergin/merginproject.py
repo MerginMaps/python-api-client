@@ -50,7 +50,7 @@ class MerginProject:
             os.mkdir(self.meta_dir)
 
         # location for files from unfinished pull
-        self.pull_dir = os.path.join(self.meta_dir, 'unfinished_pull')
+        self.unfinished_pull_dir = os.path.join(self.meta_dir, 'unfinished_pull')
 
         self.setup_logging(directory)
 
@@ -115,9 +115,9 @@ class MerginProject:
         """ Helper function to get absolute path of file in meta dir. """
         return self.fpath(file, self.meta_dir)
 
-    def fpath_pull(self, file):
+    def fpath_unfinished_pull(self, file):
         """ Helper function to get absolute path of file in unfinished_pull dir. """
-        return self.fpath(file, self.pull_dir)
+        return self.fpath(file, self.unfinished_pull_dir)
 
     @property
     def metadata(self):
@@ -407,7 +407,6 @@ class MerginProject:
         :rtype: list[str]
         """
         conflicts = []
-        unfinished = False
         local_changes = self.get_push_changes()
         modified = {}
         for f in local_changes["added"] + local_changes["updated"]:
@@ -523,8 +522,8 @@ class MerginProject:
                 self.geodiff.make_copy_sqlite(f_server_backup, dest)
                 return conflict
             except pygeodiff.GeoDiffLibError as err:
-                self.log.warning("sync with server failed! going to create an unfinished pull")
-                f_server_unfinished = self.fpath_pull(path)
+                self.log.warning("creation of conflicted copy failed! going to create an unfinished pull")
+                f_server_unfinished = self.fpath_unfinished_pull(path)
                 self.geodiff.make_copy_sqlite(f_server_backup, f_server_unfinished)
 
         return ''
@@ -651,14 +650,32 @@ class MerginProject:
     def has_unfinished_pull(self):
         """ Check if there is an unfinished pull for this project.
 
+        Unfinished pull means that a previous pull_project() call has
+        failed in the final stage due to some files being in read-only
+        mode. When a project has unfinished pull, it has to be resolved
+        before allowing further pulls or pushes.
+
+        .. seealso:: self.resolve_unfinished_pull
+
         :returns: whether there is an unfinished pull
         :rtype: bool
         """
-        return os.path.exists(self.pull_dir)
+        return os.path.exists(self.unfinished_pull_dir)
 
-    def resolve_unfinished_pull(self):
+    def resolve_unfinished_pull(self, user_name):
         """
         Try to resolve unfinished pull.
+
+        Unfinished pull means that a previous pull_project() call has
+        failed in the final stage due to some files being in read-only
+        mode. When a project has unfinished pull, it has to be resolved
+        before allowing further pulls or pushes.
+
+        To resolving unfinihed pull includes creation of conflicted copy
+        and replacement of the original file by the new version from the
+        server.
+
+        .. seealso:: self.has_unfinished_pull
         """
         if not self.has_unfinished_pull():
             self.log.warning("no unfinished pulls found")
@@ -668,28 +685,21 @@ class MerginProject:
 
         temp_dir = tempfile.mkdtemp(prefix="mergin-py-client-")
 
-        for file_name in os.listdir(self.pull_dir):
-            src = os.path.join(self.pull_dir, file_name)
-            dest = self.fpath(file_name)
-            basefile = self.fpath_meta(file_name)
+        for root, dirs, files in os.walk(self.unfinished_pull_dir):
+            for file_name in files:
+                src = os.path.join(root, file_name)
+                dest = self.fpath(file_name)
+                basefile = self.fpath_meta(file_name)
 
-            # 'src' here is a server version of the file from unfinished pull
-            # and 'dest' is a local version of the same file
-            server_diff = self.fpath(f'{file_name}-server_diff', temp_dir)  # diff between server file and local basefile
-            local_diff = self.fpath(f'{file_name}-local_diff', temp_dir)
-            rebase_conflicts = self.fpath(f'{file_name}_rebase_conflicts')
+                self.log.info("trying to resolve unfinished pull for: " + file_name)
 
-            # try to do rebase magic
-            try:
-                self.geodiff.create_changeset(basefile, src, server_diff)
-                self.geodiff.rebase(basefile, src, dest, rebase_conflicts)
-                # make sure basefile is in the same state as remote server file (for calc of push changes)
-                self.geodiff.apply_changeset(basefile, server_diff)
-                self.log.info("rebase successful!")
-            except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as err:
+                # 'src' here is a server version of the file from unfinished
+                # pull and 'dest' is a local version of the same file.
+                # to resolve unfinished pull we create a conflicted copy and
+                # replace local file with the changes from the server.
                 try:
-                    # it would not be possible to commit local changes, they need to end up in new conflict file
-                    conflict = self.backup_file(dest)
+                    # conflicted copy
+                    conflict = self.create_conflicted_copy(dest, user_name)
                     # original file synced with server
                     self.geodiff.make_copy_sqlite(src, basefile)
                     self.geodiff.make_copy_sqlite(src, dest)
@@ -697,5 +707,5 @@ class MerginProject:
                     self.log.error("unable to apply changes from previous unfinished pull!")
                     raise ClientError("Unable to resolve unfinished pull!")
 
-        shutil.rmtree(self.pull_dir)
+        shutil.rmtree(self.unfinished_pull_dir)
         self.log.info("unfinished pull resolved successfuly!")

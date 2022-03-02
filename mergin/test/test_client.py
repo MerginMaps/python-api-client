@@ -1398,7 +1398,6 @@ def test_unique_path_names():
         file_name = unique_path_name(os.path.join(project_dir, i[0]))
         assert file_name == os.path.join(project_dir, i[1])
 
-
 def create_directory(root, data):
     for k, v in data.items():
         if isinstance(v, dict):
@@ -1410,16 +1409,13 @@ def create_directory(root, data):
             for file_name in v:
                 open(os.path.join(root, file_name), 'w').close()
 
-@pytest.mark.parametrize("extra_connection", [False, True])
-def test_unfinished_pull(mc, extra_connection):
+def test_unfinished_pull(mc):
     """
     Checks whether a pull with failed rebase (due to remote DB schema change)
     and failed copy of the database file is handled correctly, i.e. an
     unfinished_pull directory is created with the content of the server changes.
     """
     test_project = 'test_unfinished_pull'
-    if extra_connection:
-        test_project += '_extra_conn'
     project = API_USER + '/' + test_project
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
     project_dir_2 = os.path.join(TMP_DIR, test_project+'_2')  # concurrent project dir
@@ -1427,7 +1423,7 @@ def test_unfinished_pull(mc, extra_connection):
     test_gpkg = os.path.join(project_dir, 'test.gpkg')
     test_gpkg_2 = os.path.join(project_dir_2, 'test.gpkg')
     test_gpkg_basefile = os.path.join(project_dir, '.mergin', 'test.gpkg')
-    test_gpkg_conflict = test_gpkg + '_conflict_copy'
+    test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, API_USER, 2)
     test_gpkg_unfinished_pull = os.path.join(project_dir, '.mergin', 'unfinished_pull', 'test.gpkg')
     cleanup(mc, project, [project_dir, project_dir_2])
 
@@ -1444,12 +1440,6 @@ def test_unfinished_pull(mc, extra_connection):
     # do changes in the local DB (added a row)
     shutil.copy(os.path.join(TEST_DATA_DIR, 'inserted_1_A.gpkg'), test_gpkg)
     _use_wal(test_gpkg)  # make sure we use WAL
-
-    if extra_connection:
-        # open a connection and keep it open (qgis does this with a pool of connections too)
-        con_extra = sqlite3.connect(test_gpkg)
-        cursor_extra = con_extra.cursor()
-        cursor_extra.execute('select count(*) from simple;')
 
     pull_changes, push_changes, _ = mc.project_status(project_dir)
     assert _is_file_updated('test.gpkg', pull_changes)
@@ -1488,8 +1478,6 @@ def test_unfinished_pull(mc, extra_connection):
 
     assert os.path.exists(test_gpkg_conflict)
     assert not mc.has_unfinished_pull(project_dir)
-
-    assert os.path.exists(test_gpkg_conflict)
 
     # check the results after resolving unfinished pull:
     # - conflict copy should not contain the new table
