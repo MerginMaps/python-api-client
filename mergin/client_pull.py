@@ -309,7 +309,7 @@ class DownloadQueueItem:
 
 class PullJob:
     def __init__(self, project_path, pull_changes, total_size, version, files_to_merge, download_queue_items,
-                 temp_dir, mp, project_info, basefiles_to_patch):
+                 temp_dir, mp, project_info, basefiles_to_patch, user_name):
         self.project_path = project_path
         self.pull_changes = pull_changes    # dictionary with changes (dict[str, list[dict]] - keys: "added", "updated", ...)
         self.total_size = total_size      # size of data to download (in bytes)
@@ -322,6 +322,7 @@ class PullJob:
         self.is_cancelled = False
         self.project_info = project_info   # parsed JSON with project info returned from the server
         self.basefiles_to_patch = basefiles_to_patch  # list of tuples (relative path within project, list of diff files in temp dir to apply)
+        self.user_name = user_name
 
     def dump(self):
         print("--- JOB ---", self.total_size, "bytes")
@@ -447,7 +448,7 @@ def pull_project_async(mc, directory):
 
     mp.log.info(f"will download {len(download_list)} chunks, total size {total_size}")
 
-    job = PullJob(project_path, pull_changes, total_size, server_version, files_to_merge, download_list, temp_dir, mp, server_info, basefiles_to_patch)
+    job = PullJob(project_path, pull_changes, total_size, server_version, files_to_merge, download_list, temp_dir, mp, server_info, basefiles_to_patch, mc.username())
 
     # start download
     job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
@@ -521,7 +522,7 @@ class FileToMerge:
             raise ClientError('Download of file {} failed. Please try it again.'.format(self.dest_file))
 
 
-def pull_project_finalize(job, user_name):
+def pull_project_finalize(job):
     """
     To be called when pull in the background is finished and we need to do the finalization (merge chunks etc.)
 
@@ -574,7 +575,7 @@ def pull_project_finalize(job, user_name):
             raise ClientError("Cannot patch basefile {}! Please try syncing again.".format(basefile))
 
     try:
-        conflicts = job.mp.apply_pull_changes(job.pull_changes, job.temp_dir, user_name)
+        conflicts = job.mp.apply_pull_changes(job.pull_changes, job.temp_dir, job.user_name)
     except Exception as e:
         job.mp.log.error("Failed to apply pull changes: " + str(e))
         job.mp.log.info("--- pull aborted")
@@ -728,7 +729,7 @@ def download_diffs_async(mc, project_directory, file_path, version_from, version
     mp.log.info(f"will download {len(download_list)} chunks, total size {total_size}")
 
     job = PullJob(project_path, None, total_size, None, files_to_merge, download_list, temp_dir, mp,
-                  server_info, {})
+                  server_info, {}, mc.username())
 
     # start download
     job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
