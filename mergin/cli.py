@@ -442,7 +442,7 @@ def pull(ctx):
                 new_transferred_size = job.transferred_size
                 bar.update(new_transferred_size - last_transferred_size)  # the update() needs increment only
                 last_transferred_size = new_transferred_size
-        pull_project_finalize(job, mc.username())
+        pull_project_finalize(job)
         click.echo("Done")
     except InvalidProject as e:
         click.secho("Invalid project directory ({})".format(str(e)), fg="red")

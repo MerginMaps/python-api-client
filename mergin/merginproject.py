@@ -671,7 +671,7 @@ class MerginProject:
         mode. When a project has unfinished pull, it has to be resolved
         before allowing further pulls or pushes.
 
-        To resolving unfinihed pull includes creation of conflicted copy
+        Resolving unfinihed pull means creation of the conflicted copy
         and replacement of the original file by the new version from the
         server.
 
