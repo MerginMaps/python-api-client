@@ -709,3 +709,4 @@ class MerginProject:
 
         shutil.rmtree(self.unfinished_pull_dir)
         self.log.info("unfinished pull resolved successfuly!")
+        return

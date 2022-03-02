@@ -343,6 +343,14 @@ def pull_project_async(mc, directory):
     """
 
     mp = MerginProject(directory)
+    if mp.has_unfinished_pull():
+        try:
+            mp.resolve_unfinished_pull(mc.username())
+        except ClientError as err:
+            mp.log.error("Error resolving unfinished pull: " + str(err))
+            mp.log.info("--- pull aborted")
+            raise
+
     project_path = mp.metadata["name"]
     local_version = mp.metadata["version"]
 

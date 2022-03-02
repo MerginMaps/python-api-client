@@ -1471,10 +1471,104 @@ def test_unfinished_pull(mc):
     assert _get_table_row_count(test_gpkg_basefile, 'simple') == 3
     assert _get_table_row_count(test_gpkg_unfinished_pull, 'simple') == 3
 
-    # unlock base file, so we can try to apply changes from unfinished pull
+    # unlock base file, so we can apply changes from the unfinished pull
     subprocess.run(['sudo', 'chattr', '-i', test_gpkg])
 
     mc.resolve_unfinished_pull(project_dir)
+
+    assert os.path.exists(test_gpkg_conflict)
+    assert not mc.has_unfinished_pull(project_dir)
+
+    # check the results after resolving unfinished pull:
+    # - conflict copy should not contain the new table
+    # - local file + basefile should contain the new table
+    _check_test_table(test_gpkg)
+    _check_test_table(test_gpkg_basefile)
+    with pytest.raises(sqlite3.OperationalError):
+        _check_test_table(test_gpkg_conflict)
+
+    # check that the local file + basefile don't contain the new row, and the conflict copy does
+    assert _get_table_row_count(test_gpkg, 'simple') == 3
+    assert _get_table_row_count(test_gpkg_basefile, 'simple') == 3
+    assert _get_table_row_count(test_gpkg_conflict, 'simple') == 4
+
+def test_unfinished_pull_push(mc):
+    """
+    Checks client behaviour when performing push and pull of the project
+    in the unfinished pull state.
+    """
+    test_project = 'test_unfinished_pull_push'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
+    project_dir_2 = os.path.join(TMP_DIR, test_project+'_2')  # concurrent project dir
+    unfinished_pull_dir = os.path.join(TMP_DIR, test_project, '.mergin', 'unfinished_pull')  # unfinished_pull dir for the primary project
+    test_gpkg = os.path.join(project_dir, 'test.gpkg')
+    test_gpkg_2 = os.path.join(project_dir_2, 'test.gpkg')
+    test_gpkg_basefile = os.path.join(project_dir, '.mergin', 'test.gpkg')
+    test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, API_USER, 2)
+    test_gpkg_unfinished_pull = os.path.join(project_dir, '.mergin', 'unfinished_pull', 'test.gpkg')
+    cleanup(mc, project, [project_dir, project_dir_2])
+
+    os.makedirs(project_dir)
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'base.gpkg'), test_gpkg)
+    _use_wal(test_gpkg)  # make sure we use WAL, that's the more common and more difficult scenario
+    mc.create_project_and_push(test_project, project_dir)
+
+    # Download project to the concurrent dir + change DB schema + push a new version
+    mc.download_project(project, project_dir_2)
+    _create_test_table(test_gpkg_2)
+    mc.push_project(project_dir_2)
+
+    # do changes in the local DB (added a row)
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'inserted_1_A.gpkg'), test_gpkg)
+    _use_wal(test_gpkg)  # make sure we use WAL
+
+    pull_changes, push_changes, _ = mc.project_status(project_dir)
+    assert _is_file_updated('test.gpkg', pull_changes)
+    assert _is_file_updated('test.gpkg', push_changes)
+
+    assert not os.path.exists(test_gpkg_conflict)
+    assert not mc.has_unfinished_pull(project_dir)
+
+    # lock base file to emulate situation when we can't overwrite it, because
+    # it is used by another process
+    subprocess.run(['sudo', 'chattr', '+i', test_gpkg])
+
+    mc.pull_project(project_dir)
+
+    assert not os.path.exists(test_gpkg_conflict)
+    assert mc.has_unfinished_pull(project_dir)
+
+    # check the results after pull:
+    # - unfinished pull file should contain the new table
+    # - local file + basefile should not contain the new table
+    _check_test_table(test_gpkg_unfinished_pull)
+    with pytest.raises(sqlite3.OperationalError):
+        _check_test_table(test_gpkg)
+    with pytest.raises(sqlite3.OperationalError):
+        _check_test_table(test_gpkg_basefile)
+
+    # check that the local file contain the new row, while basefile and server version don't
+    assert _get_table_row_count(test_gpkg, 'simple') == 4
+    assert _get_table_row_count(test_gpkg_basefile, 'simple') == 3
+    assert _get_table_row_count(test_gpkg_unfinished_pull, 'simple') == 3
+
+    # attempt to push project in the unfinished pull state should
+    # fail with ClientError
+    with pytest.raises(ClientError):
+        mc.push_project(project_dir)
+
+    # attempt to pull project in the unfinished pull state should
+    # fail with ClientError if unfinished pull can not be resolved
+    with pytest.raises(ClientError):
+        mc.pull_project(project_dir)
+
+    # unlock base file, so we can apply changes from the unfinished pull
+    subprocess.run(['sudo', 'chattr', '-i', test_gpkg])
+
+    # perform pull. This should resolve unfinished pull first and then
+    # collect data from the server
+    mc.pull_project(project_dir)
 
     assert os.path.exists(test_gpkg_conflict)
     assert not mc.has_unfinished_pull(project_dir)

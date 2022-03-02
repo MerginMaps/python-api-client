@@ -21,7 +21,7 @@ from .merginproject import MerginProject
 
 class UploadJob:
     """ Keeps all the important data about a pending upload job """
-    
+
     def __init__(self, project_path, changes, transaction_id, mp, mc, tmp_dir):
         self.project_path = project_path       # full project name ("username/projectname")
         self.changes = changes                 # dictionary of local changes to the project
@@ -46,16 +46,16 @@ class UploadJob:
 
 class UploadQueueItem:
     """ A single chunk of data that needs to be uploaded """
-    
+
     def __init__(self, file_path, size, transaction_id, chunk_id, chunk_index):
         self.file_path = file_path            # full path to the file
         self.size = size                      # size of the chunk in bytes
         self.chunk_id = chunk_id              # ID of the chunk within transaction
         self.chunk_index = chunk_index        # index (starting from zero) of the chunk within the file
         self.transaction_id = transaction_id  # ID of the transaction
-    
+
     def upload_blocking(self, mc, mp):
-        
+
         with open(self.file_path, 'rb') as file_handle:
             file_handle.seek(self.chunk_index * UPLOAD_CHUNK_SIZE)
             data = file_handle.read(UPLOAD_CHUNK_SIZE)
@@ -75,12 +75,15 @@ class UploadQueueItem:
                 except ClientError:
                     pass
                 raise ClientError("Mismatch between uploaded file chunk {} and local one".format(self.chunk_id))
-        
+
 
 def push_project_async(mc, directory):
     """ Starts push of a project and returns pending upload job """
 
     mp = MerginProject(directory)
+    if mp.has_unfinished_pull():
+        raise ClientError("Project is in unfinished pull state. Please resolve unfinished pull and try again.")
+
     project_path = mp.metadata["name"]
     local_version = mp.metadata["version"]
 
@@ -205,7 +208,7 @@ def push_project_async(mc, directory):
 
 def push_project_wait(job):
     """ blocks until all upload tasks are finished """
-    
+
     concurrent.futures.wait(job.futures)
 
 
