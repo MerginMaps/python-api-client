@@ -742,6 +742,13 @@ class MerginClient:
         """
         Test whether project has an unfinished pull.
 
+        Unfinished pull means that a previous pull_project() call has
+        failed in the final stage due to some files being in read-only
+        mode. When a project has unfinished pull, it has to be resolved
+        before allowing further pulls or pushes.
+
+        .. seealso:: self.resolve_unfinished_pull
+
         :param directory: project's directory
         :type directory: String
         :returns: project has unfinished pull
@@ -754,6 +761,17 @@ class MerginClient:
     def resolve_unfinished_pull(self, directory):
         """
         Try to resolve unfinished pull.
+
+        Unfinished pull means that a previous pull_project() call has
+        failed in the final stage due to some files being in read-only
+        mode. When a project has unfinished pull, it has to be resolved
+        before allowing further pulls or pushes.
+
+        To resolving unfinihed pull includes creation of conflicted copy
+        and replacement of the original file by the new version from the
+        server.
+
+        .. seealso:: self.has_unfinished_pull
 
         :param directory: project's directory
         :type directory: String
