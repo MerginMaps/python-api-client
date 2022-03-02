@@ -573,7 +573,13 @@ def pull_project_finalize(job, user_name):
             os.remove(basefile)
             raise ClientError("Cannot patch basefile {}! Please try syncing again.".format(basefile))
 
-    conflicts = job.mp.apply_pull_changes(job.pull_changes, job.temp_dir, user_name)
+    try:
+        conflicts = job.mp.apply_pull_changes(job.pull_changes, job.temp_dir, user_name)
+    except Exception as e:
+        job.mp.log.error("Failed to apply pull changes: " + str(e))
+        job.mp.log.info("--- pull aborted")
+        raise ClientError("Failed to apply pull changes: " + str(e))
+
     job.mp.metadata = {
         'name': job.project_path,
         'version': job.version if job.version else "v0",  # for new projects server version is ""
