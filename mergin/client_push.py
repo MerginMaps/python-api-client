@@ -281,7 +281,12 @@ def push_project_finalize(job):
         'version': job.server_resp['version'],
         'files': job.server_resp["files"]
     }
-    job.mp.apply_push_changes(job.changes)
+    try:
+        job.mp.apply_push_changes(job.changes)
+    except Exception as e:
+        job.mp.log.error("Failed to apply push changes: " + str(e))
+        job.mp.log.info("--- push aborted")
+        raise ClientError("Failed to apply push changes: " + str(e))
 
     job.tmp_dir.cleanup()   # delete our temporary dir and all its content
 
