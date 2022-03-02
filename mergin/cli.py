@@ -376,6 +376,12 @@ def status(ctx):
     except Exception as e:
         _print_unhandled_exception()
         return
+
+    if mc.has_unfinished_pull():
+        click.secho("The previous pull has not finished completely: status "
+                    "of some files may be reported incorrectly. Use "
+                    "resolve_unfinished_pull command to try to fix that.", fg="yellow")
+
     click.secho("### Server changes:", fg="magenta")
     pretty_diff(pull_changes)
     click.secho("### Local changes:", fg="magenta")
