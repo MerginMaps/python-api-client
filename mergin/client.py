@@ -759,4 +759,4 @@ class MerginClient:
         :type directory: String
         """
         mp = MerginProject(directory)
-        mp.resolve_unfinished_pull()
+        mp.resolve_unfinished_pull(self.username())
