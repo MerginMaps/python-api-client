@@ -614,7 +614,7 @@ class MerginClient:
         if job is None:
             return   # project is up to date
         pull_project_wait(job)
-        return pull_project_finalize(job, self.username())
+        return pull_project_finalize(job)
 
     def clone_project(self, source_project_path, cloned_project_name, cloned_project_namespace=None):
         """
