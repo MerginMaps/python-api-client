@@ -137,7 +137,7 @@ def get_client(url=None, auth_token=None, username=None, password=None):
 
 
 def _print_unhandled_exception():
-    """ Outputs details of an unhandled exception that is being handled right now """
+    """Outputs details of an unhandled exception that is being handled right now"""
     click.secho("Unhandled exception!", fg="red")
     for line in traceback.format_exception(*sys.exc_info()):
         click.echo(line)
@@ -225,7 +225,7 @@ def create(ctx, project, public, from_dir):
 )
 @click.pass_context
 def list_projects(ctx, flag):
-    """List projects on the server"""
+    """List projects on the server."""
     filter_str = "(filter flag={})".format(flag) if flag is not None else "(all public)"
     click.echo("List of projects {}:".format(filter_str))
     mc = ctx.obj["client"]
@@ -246,7 +246,7 @@ def list_projects(ctx, flag):
 @click.option("--version", default=None, help="Version of project to download")
 @click.pass_context
 def download(ctx, project, directory, version):
-    """Download last version of mergin project"""
+    """Download last version of mergin project."""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -278,7 +278,7 @@ def download(ctx, project, directory, version):
 @click.option("--permissions", help="permissions to be granted to project (reader, writer, owner)")
 @click.pass_context
 def share_add(ctx, project, usernames, permissions):
-    """Add permissions to [users] to project"""
+    """Add permissions to [users] to project."""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -291,7 +291,7 @@ def share_add(ctx, project, usernames, permissions):
 @click.argument("usernames", nargs=-1)
 @click.pass_context
 def share_remove(ctx, project, usernames):
-    """Remove [users] permissions from project"""
+    """Remove [users] permissions from project."""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -303,7 +303,7 @@ def share_remove(ctx, project, usernames):
 @click.argument("project")
 @click.pass_context
 def share(ctx, project):
-    """Fetch permissions to project"""
+    """Fetch permissions to project."""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -361,7 +361,7 @@ def num_version(name):
 @cli.command()
 @click.pass_context
 def status(ctx):
-    """Show all changes in project files - upstream and local"""
+    """Show all changes in project files - upstream and local."""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -387,7 +387,7 @@ def status(ctx):
 @cli.command()
 @click.pass_context
 def push(ctx):
-    """Upload local changes into Mergin repository"""
+    """Upload local changes into Mergin repository."""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -419,7 +419,7 @@ def push(ctx):
 @cli.command()
 @click.pass_context
 def pull(ctx):
-    """Fetch changes from Mergin repository"""
+    """Fetch changes from Mergin repository."""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -454,7 +454,7 @@ def pull(ctx):
 @click.argument("version")
 @click.pass_context
 def show_version(ctx, version):
-    """ Displays information about a single version of a project. `version` is 'v1', 'v2', etc. """
+    """Displays information about a single version of a project. `version` is 'v1', 'v2', etc."""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -473,7 +473,7 @@ def show_version(ctx, version):
 @click.argument("path")
 @click.pass_context
 def show_file_history(ctx, path):
-    """ Displays information about a single version of a project """
+    """Displays information about a single version of a project."""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -559,7 +559,7 @@ def remove(ctx, project):
 @cli.command()
 @click.pass_context
 def resolve_unfinished_pull(ctx):
-    """Try to resolve unfinished pull"""
+    """Try to resolve unfinished pull."""
     mc = ctx.obj["client"]
     if mc is None:
         return
