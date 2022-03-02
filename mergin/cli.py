@@ -436,7 +436,7 @@ def pull(ctx):
                 new_transferred_size = job.transferred_size
                 bar.update(new_transferred_size - last_transferred_size)  # the update() needs increment only
                 last_transferred_size = new_transferred_size
-        pull_project_finalize(job)
+        pull_project_finalize(job, mc.username())
         click.echo("Done")
     except InvalidProject as e:
         click.secho("Invalid project directory ({})".format(str(e)), fg="red")
@@ -550,6 +550,25 @@ def remove(ctx, project):
     try:
         mc.delete_project(f"{namespace}/{project}")
         click.echo("Remote project removed")
+    except ClientError as e:
+        click.secho("Error: " + str(e), fg="red")
+    except Exception as e:
+        _print_unhandled_exception()
+
+
+@cli.command()
+@click.pass_context
+def resolve_unfinished_pull(ctx):
+    """Try to resolve unfinished pull"""
+    mc = ctx.obj["client"]
+    if mc is None:
+        return
+
+    try:
+        mc.resolve_unfinished_pull(os.getcwd())
+        click.echo("Unfinished pull successfully resolved")
+    except InvalidProject as e:
+        click.secho("Invalid project directory ({})".format(str(e)), fg="red")
     except ClientError as e:
         click.secho("Error: " + str(e), fg="red")
     except Exception as e:
