@@ -705,7 +705,8 @@ def download_diffs_async(mc, project_directory, file_path, version_from, version
         mp.log.info("--- downloading diffs aborted")
         raise
 
-    temp_dir = tempfile.mkdtemp(prefix="mergin-py-client-")
+    download_dir = os.path.join(mp.meta_dir, ".cache")
+    os.makedirs(download_dir, exist_ok=True)
     fetch_files = []
 
     for version in versions_to_fetch[1:]:
@@ -719,8 +720,10 @@ def download_diffs_async(mc, project_directory, file_path, version_from, version
     download_list = []  # list of all items to be downloaded
     total_size = 0
     for file in fetch_files:
-        items = _download_items(file, temp_dir, diff_only=True)
-        dest_file_path = os.path.normpath(os.path.join(temp_dir, os.path.basename(file['diff']['path'])))
+        items = _download_items(file, download_dir, diff_only=True)
+        dest_file_path = os.path.normpath(os.path.join(download_dir, file["version"] + "-" + os.path.basename(file['diff']['path'])))
+        if os.path.exists(dest_file_path):
+            continue
         files_to_merge.append(FileToMerge(dest_file_path, items))
         download_list.extend(items)
         for item in items:
@@ -728,7 +731,7 @@ def download_diffs_async(mc, project_directory, file_path, version_from, version
 
     mp.log.info(f"will download {len(download_list)} chunks, total size {total_size}")
 
-    job = PullJob(project_path, None, total_size, None, files_to_merge, download_list, temp_dir, mp,
+    job = PullJob(project_path, None, total_size, None, files_to_merge, download_list, download_dir, mp,
                   server_info, {}, mc.username())
 
     # start download
@@ -741,7 +744,7 @@ def download_diffs_async(mc, project_directory, file_path, version_from, version
     return job
 
 
-def download_diffs_finalize(job, output_diff):
+def download_diffs_finalize(job, output_diff, keep_diffs=False):
     """ To be called after download_diffs_async """
 
     job.executor.shutdown(wait=True)
@@ -780,9 +783,8 @@ def download_diffs_finalize(job, output_diff):
             job.mp.geodiff.concat_changes(diffs, output_diff)
         elif len(diffs) == 1:
             shutil.copy(diffs[0], output_diff)
-    for diff in diffs:
-        os.remove(diff)
 
-    # remove the diffs download temporary directory
-    if temp_dir is not None:
-        shutil.rmtree(temp_dir)
+    if not keep_diffs:
+        # remove the diffs download temporary directory
+        if temp_dir is not None:
+            shutil.rmtree(temp_dir)

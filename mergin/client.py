@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import json
 import zlib
@@ -24,7 +25,7 @@ from .client_pull import (
 )
 from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
 from .client_push import push_project_async, push_project_wait, push_project_finalize
-from .utils import DateTimeEncoder, get_versions_with_file_changes
+from .utils import DateTimeEncoder, get_versions_with_file_changes, int_version
 from .version import __version__
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
@@ -472,16 +473,34 @@ class MerginClient:
         resp = self.get("/v1/project/{}".format(project_path), params)
         return json.load(resp)
 
-    def project_versions(self, project_path):
+    def project_versions(self, project_path, since=None, to=None):
         """
-        Get records of all project's versions (history).
+        Get records of project's versions (history). It can be either limited by range or last 50 is taken.
 
         :param project_path: Project's full name (<namespace>/<name>)
         :type project_path: String
+        :param since: Version to track project history from
+        :type since: String
+        :param to: Version to track project history to
+        :type to: String
 
         :rtype: List[Dict]
         """
-        resp = self.get("/v1/project/version/{}".format(project_path))
+        if since and to:
+            page = math.ceil(int_version(to)/int_version(since))
+            per_page = int_version(to) - int_version(since)
+            params = {
+                "page": page,
+                "per_page": per_page,
+                "descending": False
+            }
+        else:
+            params = {
+                "page": 1,
+                "per_page": 50,
+                "descending": True
+            }
+        resp = self.get("/v1/project/versions/paginated/{}".format(project_path), params)
         return json.load(resp)
 
     def download_project(self, project_path, directory, version=None):
@@ -720,8 +739,9 @@ class MerginClient:
         pull_project_wait(job)
         download_file_finalize(job)
 
-    def get_file_diff(self, project_dir, file_path, output_diff, version_from, version_to):
+    def get_file_diff(self, project_dir, file_path, output_diff, version_from, version_to, keep_diffs=False):
         """ Create concatenated diff for project file diffs between versions version_from and version_to.
+        Downloaded diffs can be kept if needed.
 
         :param project_dir: project local directory
         :type project_dir: String
@@ -733,10 +753,12 @@ class MerginClient:
         :type version_from: String
         :param version_to: ending project version tag for getting diff
         :type version_to: String
+        :param keep_diffs: whether to keep downloaded diff files
+        :type keep_diffs: Boolean
         """
         job = download_diffs_async(self, project_dir, file_path, version_from, version_to)
         pull_project_wait(job)
-        download_diffs_finalize(job, output_diff)
+        download_diffs_finalize(job, output_diff, keep_diffs)
 
     def has_unfinished_pull(self, directory):
         """
