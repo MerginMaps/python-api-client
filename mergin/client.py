@@ -475,7 +475,8 @@ class MerginClient:
 
     def project_versions(self, project_path, since=None, to=None):
         """
-        Get records of project's versions (history). It can be either limited by range or last 50 is taken.
+        Get records of project's versions (history) in ascending order.
+        If neither 'since' nor 'to' is specified it will return all versions.
 
         :param project_path: Project's full name (<namespace>/<name>)
         :type project_path: String
@@ -486,22 +487,39 @@ class MerginClient:
 
         :rtype: List[Dict]
         """
-        if since and to:
-            page = math.ceil(int_version(to)/int_version(since))
-            per_page = int_version(to) - int_version(since)
+        versions = []
+        per_page = 100  # server limit
+        num_since = int_version(since) if since else 1
+        num_to = int_version(to) if to else None  # we may not know yet
+        start_page = math.ceil(num_since / per_page)
+        if not num_to:
+            # let's get first page and count
             params = {
-                "page": page,
+                "page": start_page,
                 "per_page": per_page,
                 "descending": False
             }
+            resp = self.get("/v1/project/versions/paginated/{}".format(project_path), params)
+            resp_json = json.load(resp)
+            versions = resp_json["versions"]
+            num_to = resp_json['count']
+            latest_version = int_version(versions[-1]["name"])
+            if latest_version < num_to:
+                versions += self.project_versions(project_path, f"v{latest_version+1}", f"v{num_to}")
         else:
-            params = {
-                "page": 1,
-                "per_page": 50,
-                "descending": True
-            }
-        resp = self.get("/v1/project/versions/paginated/{}".format(project_path), params)
-        return json.load(resp)
+            end_page = math.ceil(num_to / per_page)
+            for page in range(start_page, end_page+1):
+                params = {
+                    "page": page,
+                    "per_page": per_page,
+                    "descending": False
+                }
+                resp = self.get("/v1/project/versions/paginated/{}".format(project_path), params)
+                versions += json.load(resp)["versions"]
+
+        # filter out versions not within range
+        filtered_versions = list(filter(lambda v: (num_since <= int_version(v["name"]) <= num_to), versions))
+        return filtered_versions
 
     def download_project(self, project_path, directory, version=None):
         """
