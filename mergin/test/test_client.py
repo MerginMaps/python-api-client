@@ -123,7 +123,7 @@ def test_create_remote_project_from_local(mc):
     assert project_info['name'] == test_project
     assert project_info['namespace'] == API_USER
 
-    versions = mc.project_versions(project)
+    versions = mc.project_versions(project)["versions"]
     assert len(versions) == 1
     assert versions[0]['name'] == 'v1'
     assert any(f for f in versions[0]['changes']['added'] if f['path'] == 'test.qgs')
@@ -193,7 +193,7 @@ def test_push_pull_changes(mc):
     assert generate_checksum(os.path.join(project_dir, f_updated)) == f_remote_checksum
     mp = MerginProject(project_dir)
     assert len(project_info['files']) == len(mp.inspect_files())
-    project_versions = mc.project_versions(project)
+    project_versions = mc.project_versions(project)["versions"]
     assert len(project_versions) == 2
     f_change = next((f for f in project_versions[0]['changes']['updated'] if f['path'] == f_updated), None)
     assert 'origin_checksum' not in f_change  # internal client info
