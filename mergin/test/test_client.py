@@ -19,6 +19,7 @@ from ..utils import (
     edit_conflict_file_name
 )
 from ..merginproject import pygeodiff
+from ..report import create_report
 
 
 SERVER_URL = os.environ.get('TEST_MERGIN_URL')
@@ -1585,3 +1586,32 @@ def test_unfinished_pull_push(mc):
     assert _get_table_row_count(test_gpkg, 'simple') == 3
     assert _get_table_row_count(test_gpkg_basefile, 'simple') == 3
     assert _get_table_row_count(test_gpkg_conflict, 'simple') == 4
+
+def test_report(mc):
+    test_project = 'test_download_diffs'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    f_updated = "base.gpkg"
+    mp = create_versioned_project(mc, test_project, project_dir, f_updated, remove=False)
+
+    # create report for between versions 2 and 4
+    directory = mp.dir
+    since = "v2"
+    to = "v4"
+    create_report(mc, directory, project, since, to, TMP_DIR)
+    proj_name = project.replace(os.path.sep, "-")
+    report_file = os.path.join(TMP_DIR, f'report-{proj_name}-{since}-{to}.csv')
+    assert os.path.exists(report_file)
+    # assert headers and content in report file
+    with open(report_file, "r") as rf:
+        content = rf.read()
+        assert ",".join(["file", "table", "author", "timestamp", "version", "quantity_type", "quantity"]) in content
+        assert "base.gpkg,simple,test_plugin" in content
+        assert "v3,update_count,2" in content
+        # files not edited are not in reports
+        assert "inserted_1_A.gpkg" not in content
+
+    # test some failure, e.g. wrong version range, which would fail on getting version list
+    with pytest.raises(ClientError) as e:
+        create_report(mc, directory, project, to, since, TMP_DIR)
+    assert "The requested URL was not found on the server." in str(e.value)
