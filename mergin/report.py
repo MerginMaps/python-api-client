@@ -165,7 +165,7 @@ def create_report(mc, directory, project, since, to, out_dir=tempfile.gettempdir
     """
     mp = MerginProject(directory)
     mp.log.info(f"--- Creating changesets report for {project} from {since} to {to} versions ----")
-    versions_map = {v["name"]: v for v in mc.project_versions(project, since, to)["versions"]}
+    versions_map = {v["name"]: v for v in mc.project_versions(project, since, to)}
     headers = ["file", "table", "author", "timestamp", "version", "quantity_type", "quantity"]
     records = []
     info = mc.project_info(project, since=since)

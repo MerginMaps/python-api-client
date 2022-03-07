@@ -124,7 +124,7 @@ def test_create_remote_project_from_local(mc):
     assert project_info['name'] == test_project
     assert project_info['namespace'] == API_USER
 
-    versions = mc.project_versions(project)["versions"]
+    versions = mc.project_versions(project)
     assert len(versions) == 1
     assert versions[0]['name'] == 'v1'
     assert any(f for f in versions[0]['changes']['added'] if f['path'] == 'test.qgs')
@@ -194,7 +194,7 @@ def test_push_pull_changes(mc):
     assert generate_checksum(os.path.join(project_dir, f_updated)) == f_remote_checksum
     mp = MerginProject(project_dir)
     assert len(project_info['files']) == len(mp.inspect_files())
-    project_versions = mc.project_versions(project)["versions"]
+    project_versions = mc.project_versions(project)
     assert len(project_versions) == 2
     f_change = next((f for f in project_versions[0]['changes']['updated'] if f['path'] == f_updated), None)
     assert 'origin_checksum' not in f_change  # internal client info
@@ -1586,6 +1586,38 @@ def test_unfinished_pull_push(mc):
     assert _get_table_row_count(test_gpkg, 'simple') == 3
     assert _get_table_row_count(test_gpkg_basefile, 'simple') == 3
     assert _get_table_row_count(test_gpkg_conflict, 'simple') == 4
+
+def test_project_versions_list(mc):
+    """Test getting project versions in various ranges """
+    test_project = 'test_project_versions'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    create_versioned_project(mc, test_project, project_dir, "base.gpkg")
+    project_info = mc.project_info(project)
+    assert project_info["version"] == "v5"
+
+    # get all versions
+    versions = mc.project_versions(project)
+    assert len(versions) == 5
+    assert versions[0]["name"] == "v1"
+    assert versions[-1]["name"] == "v5"
+
+    # get first 3 versions
+    versions = mc.project_versions(project, to="v3")
+    assert len(versions) == 3
+    assert versions[-1]["name"] == "v3"
+
+    # get last 2 versions
+    versions = mc.project_versions(project, since="v4")
+    assert len(versions) == 2
+    assert versions[0]["name"] == "v4"
+
+    # get range v2-v4
+    versions = mc.project_versions(project, since="v2", to="v4")
+    assert len(versions) == 3
+    assert versions[0]["name"] == "v2"
+    assert versions[-1]["name"] == "v4"
+
 
 def test_report(mc):
     test_project = 'test_download_diffs'
