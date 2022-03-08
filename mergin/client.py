@@ -2,6 +2,7 @@ import logging
 import math
 import os
 import json
+import shutil
 import zlib
 import base64
 import urllib.parse
@@ -757,9 +758,8 @@ class MerginClient:
         pull_project_wait(job)
         download_file_finalize(job)
 
-    def get_file_diff(self, project_dir, file_path, output_diff, version_from, version_to, keep_diffs=False):
+    def get_file_diff(self, project_dir, file_path, output_diff, version_from, version_to):
         """ Create concatenated diff for project file diffs between versions version_from and version_to.
-        Downloaded diffs can be kept if needed.
 
         :param project_dir: project local directory
         :type project_dir: String
@@ -771,12 +771,39 @@ class MerginClient:
         :type version_from: String
         :param version_to: ending project version tag for getting diff
         :type version_to: String
-        :param keep_diffs: whether to keep downloaded diff files
-        :type keep_diffs: Boolean
         """
-        job = download_diffs_async(self, project_dir, file_path, version_from, version_to)
+        mp = MerginProject(project_dir)
+        project_path = mp.metadata["name"]
+        file_history = self.project_file_history_info(project_path, file_path)
+        versions_to_fetch = get_versions_with_file_changes(
+            self, project_path, file_path, version_from=version_from, version_to=version_to, file_history=file_history
+        )
+        diffs = self.download_file_diffs(project_dir, file_path, versions_to_fetch[1:])
+        # concatenate diffs, if needed
+        output_dir = os.path.dirname(output_diff)
+        if len(diffs) >= 1:
+            os.makedirs(output_dir, exist_ok=True)
+            if len(diffs) > 1:
+                mp.geodiff.concat_changes(diffs, output_diff)
+            elif len(diffs) == 1:
+                shutil.copy(diffs[0], output_diff)
+
+    def download_file_diffs(self, project_dir, file_path, versions):
+        """ Download file diffs for specified versions.
+
+        :param project_dir: project local directory
+        :type project_dir: String
+        :param file_path: relative path of file to download in the project directory
+        :type file_path: String
+        :param versions: list of versions to download diffs for, for example ['v3', 'v5']
+        :type versions: List(String)
+        :returns: list of downloaded diffs (their actual locations on disk)
+        :rtype: List(String)
+        """
+        job = download_diffs_async(self, project_dir, file_path, versions)
         pull_project_wait(job)
-        download_diffs_finalize(job, output_diff, keep_diffs)
+        diffs = download_diffs_finalize(job)
+        return diffs
 
     def has_unfinished_pull(self, directory):
         """
