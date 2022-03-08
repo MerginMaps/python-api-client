@@ -196,7 +196,7 @@ def test_push_pull_changes(mc):
     assert len(project_info['files']) == len(mp.inspect_files())
     project_versions = mc.project_versions(project)
     assert len(project_versions) == 2
-    f_change = next((f for f in project_versions[0]['changes']['updated'] if f['path'] == f_updated), None)
+    f_change = next((f for f in project_versions[-1]['changes']['updated'] if f['path'] == f_updated), None)
     assert 'origin_checksum' not in f_change  # internal client info
 
     # test parallel changes
@@ -1642,8 +1642,3 @@ def test_report(mc):
         assert "v3,update_count,2" in content
         # files not edited are not in reports
         assert "inserted_1_A.gpkg" not in content
-
-    # test some failure, e.g. wrong version range, which would fail on getting version list
-    with pytest.raises(ClientError) as e:
-        create_report(mc, directory, project, to, since, TMP_DIR)
-    assert "The requested URL was not found on the server." in str(e.value)

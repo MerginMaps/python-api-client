@@ -672,7 +672,7 @@ def download_file_finalize(job):
         shutil.rmtree(temp_dir)
 
 
-def download_diffs_async(mc, project_directory, file_path, version_from, version_to):
+def download_diffs_async(mc, project_directory, file_path, versions):
     """
     Starts background download project file diffs for specified versions.
     Returns handle to the pending download.
@@ -681,8 +681,7 @@ def download_diffs_async(mc, project_directory, file_path, version_from, version
         mc (MerginClient): MerginClient instance.
         project_directory (str): local project directory.
         file_path (str): file path relative to Mergin project root.
-        version_from (str): starting project version tag for getting diff, for example 'v3'.
-        version_to (str): ending project version tag for getting diff.
+        versions (list): list of versions to download diffs for, e.g. ['v1', 'v2'].
 
     Returns:
         PullJob/None: a handle for the pending download.
@@ -690,11 +689,8 @@ def download_diffs_async(mc, project_directory, file_path, version_from, version
     mp = MerginProject(project_directory)
     project_path = mp.metadata["name"]
     file_history = mc.project_file_history_info(project_path, file_path)
-    versions_to_fetch = get_versions_with_file_changes(
-        mc, project_path, file_path, version_from=version_from, version_to=version_to, file_history=file_history
-    )
     mp.log.info(f"--- version: {mc.user_agent_info()}")
-    mp.log.info(f"--- start download diffs for {file_path} of {project_path}, versions: {[v for v in versions_to_fetch]}")
+    mp.log.info(f"--- start download diffs for {file_path} of {project_path}, versions: {[v for v in versions]}")
 
     try:
         server_info = mc.project_info(project_path)
@@ -709,7 +705,7 @@ def download_diffs_async(mc, project_directory, file_path, version_from, version
     os.makedirs(download_dir, exist_ok=True)
     fetch_files = []
 
-    for version in versions_to_fetch[1:]:
+    for version in versions:
         version_data = file_history["history"][version]
         diff_data = copy.deepcopy(version_data)
         diff_data['version'] = version
@@ -721,7 +717,7 @@ def download_diffs_async(mc, project_directory, file_path, version_from, version
     total_size = 0
     for file in fetch_files:
         items = _download_items(file, download_dir, diff_only=True)
-        dest_file_path = os.path.normpath(os.path.join(download_dir, file["version"] + "-" + os.path.basename(file['diff']['path'])))
+        dest_file_path = os.path.normpath(os.path.join(download_dir, file["version"] + "-" + file['diff']['path']))
         if os.path.exists(dest_file_path):
             continue
         files_to_merge.append(FileToMerge(dest_file_path, items))
@@ -744,8 +740,12 @@ def download_diffs_async(mc, project_directory, file_path, version_from, version
     return job
 
 
-def download_diffs_finalize(job, output_diff, keep_diffs=False):
-    """ To be called after download_diffs_async """
+def download_diffs_finalize(job):
+    """ To be called after download_diffs_async
+
+    Returns:
+        diffs: list of downloaded diffs (their actual locations on disk)
+    """
 
     job.executor.shutdown(wait=True)
 
@@ -757,34 +757,17 @@ def download_diffs_finalize(job, output_diff, keep_diffs=False):
             raise future.exception()
 
     job.mp.log.info("finalizing diffs pull")
+    diffs = []
 
     # merge downloaded chunks
     try:
         for file_to_merge in job.files_to_merge:
             file_to_merge.merge()
+            diffs.append(file_to_merge.dest_file)
     except ClientError as err:
         job.mp.log.error("Error merging chunks of downloaded file: " + str(err))
         job.mp.log.info("--- diffs pull aborted")
         raise
 
     job.mp.log.info("--- diffs pull finished")
-
-    # Collect and finally concatenate diffs, if needed
-    diffs = []
-    for file_to_merge in job.files_to_merge:
-        diffs.append(file_to_merge.dest_file)
-
-    output_dir = os.path.dirname(output_diff)
-    temp_dir = None
-    if len(diffs) >= 1:
-        os.makedirs(output_dir, exist_ok=True)
-        temp_dir = os.path.dirname(diffs[0])
-        if len(diffs) > 1:
-            job.mp.geodiff.concat_changes(diffs, output_diff)
-        elif len(diffs) == 1:
-            shutil.copy(diffs[0], output_diff)
-
-    if not keep_diffs:
-        # remove the diffs download temporary directory
-        if temp_dir is not None:
-            shutil.rmtree(temp_dir)
+    return diffs

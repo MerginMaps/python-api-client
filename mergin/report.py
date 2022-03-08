@@ -5,9 +5,9 @@ import tempfile
 from collections import defaultdict
 from itertools import groupby
 
-from . import ClientError
-from .merginproject import MerginProject, pygeodiff
-from .utils import int_version
+from mergin import ClientError
+from mergin.merginproject import MerginProject, pygeodiff
+from mergin.utils import int_version
 
 
 # inspired by C++ implementation https://github.com/lutraconsulting/geodiff/blob/master/geodiff/src/drivers/sqliteutils.cpp
@@ -123,7 +123,7 @@ class ChangesetReport:
             # get geometry index in both gpkg schema and diffs values
             geom_idx = next((index for (index, col) in enumerate(schema_table["columns"]) if col["type"] == "geometry"),
                             None)
-            if not geom_idx:
+            if geom_idx is None:
                 continue
 
             geom_col = schema_table["columns"][geom_idx]["geometry"]
@@ -169,24 +169,25 @@ def create_report(mc, directory, project, since, to, out_dir=tempfile.gettempdir
     headers = ["file", "table", "author", "timestamp", "version", "quantity_type", "quantity"]
     records = []
     info = mc.project_info(project, since=since)
+    num_since = int_version(since)
+    num_to = int_version(to)
     # filter only .gpkg files
     files = [f for f in info["files"] if mp.is_versioned_file(f["path"])]
     for f in files:
         mp.log.debug(f"analyzing {f['path']} ...")
-        diff_file = os.path.join(mp.meta_dir, f["path"] + ".diff")
         try:
             if "history" not in f:
+                mp.log.debug(f"no history field, skip")
                 continue
 
-            # download diffs in desired range, in case versions are not within history,
-            # pass unknown, and it will be determined in download function
-            # it can be different for each file
-            since_ = since if since in f["history"] else None
-            to_ = to if to in f["history"] else None
-            if not (since_ and to_):
-                continue  # no change at all for particular file in desired range
+            # get version list (keys) within range
+            history_keys = list(filter(lambda v: (num_since <= int_version(v) <= num_to), f["history"].keys()))
+            if not history_keys:
+                mp.log.debug(f"no file history within range, skip")
+                continue
 
-            mc.get_file_diff(directory, f["path"], diff_file, since_, to_, True)
+            # download diffs
+            mc.download_file_diffs(directory, f["path"], history_keys)
 
             # download full gpkg in "to" version to analyze its schema to determine which col is geometry
             full_gpkg = os.path.join(mp.meta_dir, ".cache", f["path"])
@@ -201,13 +202,9 @@ def create_report(mc, directory, project, since, to, out_dir=tempfile.gettempdir
                 schema = json.load(sf).get("geodiff_schema")
 
             # add records for every version (diff) and all tables within geopackage
-            for idx in range(int_version(since) + 1, int_version(to) + 1):
-                version = "v" + str(idx)
-                # skip version if there was no diff file
-                if version not in f['history']:
-                    continue
+            for version in history_keys:
                 v_diff_file = os.path.join(mp.meta_dir, '.cache',
-                                           version + "-" + os.path.basename(f['history'][version]['diff']['path']))
+                                           version + "-" + f['history'][version]['diff']['path'])
 
                 version_data = versions_map[version]
                 cr = mp.geodiff.read_changeset(v_diff_file)
