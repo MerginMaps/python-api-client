@@ -707,6 +707,8 @@ def download_diffs_async(mc, project_directory, file_path, versions):
 
     for version in versions:
         version_data = file_history["history"][version]
+        if "diff" not in version_data:
+            continue  # skip if there is no diff in history
         diff_data = copy.deepcopy(version_data)
         diff_data['version'] = version
         diff_data['diff'] = version_data['diff']
