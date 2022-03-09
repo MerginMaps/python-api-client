@@ -819,7 +819,7 @@ def test_server_compatibility(mc):
     assert mc.is_server_compatible()
 
 
-def create_versioned_project(mc, project_name, project_dir, updated_file, remove=True):
+def create_versioned_project(mc, project_name, project_dir, updated_file, remove=True, overwrite=False):
     project = API_USER + '/' + project_name
     cleanup(mc, project, [project_dir])
 
@@ -839,6 +839,12 @@ def create_versioned_project(mc, project_name, project_dir, updated_file, remove
         os.remove(os.path.join(project_dir, updated_file))
         mc.push_project(project_dir)
 
+    # create version with forced overwrite (broken history)
+    if overwrite:
+        shutil.move(mp.fpath(updated_file), mp.fpath_meta(updated_file))
+        shutil.copy(os.path.join(CHANGED_SCHEMA_DIR, 'modified_schema.gpkg'), mp.fpath(updated_file))
+        shutil.copy(os.path.join(CHANGED_SCHEMA_DIR, 'modified_schema.gpkg-wal'), mp.fpath(updated_file + '-wal'))
+        mc.push_project(project_dir)
     return mp
 
 
@@ -1625,7 +1631,7 @@ def test_report(mc):
     project = API_USER + '/' + test_project
     project_dir = os.path.join(TMP_DIR, test_project)
     f_updated = "base.gpkg"
-    mp = create_versioned_project(mc, test_project, project_dir, f_updated, remove=False)
+    mp = create_versioned_project(mc, test_project, project_dir, f_updated, remove=False, overwrite=True)
 
     # create report for between versions 2 and 4
     directory = mp.dir
@@ -1635,8 +1641,9 @@ def test_report(mc):
     report_file = os.path.join(TMP_DIR, "report", f'{proj_name}-{since}-{to}.csv')
     if os.path.exists(report_file):
         os.remove(report_file)
-    create_report(mc, directory, since, to, report_file)
+    warnings = create_report(mc, directory, since, to, report_file)
     assert os.path.exists(report_file)
+    assert not warnings
     # assert headers and content in report file
     with open(report_file, "r") as rf:
         content = rf.read()
@@ -1646,6 +1653,10 @@ def test_report(mc):
         assert "v3,update,,,2" in content
         # files not edited are not in reports
         assert "inserted_1_A.gpkg" not in content
+
+    # do report for v1 with added files and v5 with overwritten file
+    warnings = create_report(mc, directory, "v1", "v5", report_file)
+    assert warnings
 
     # rm local mergin project and try again
     shutil.rmtree(directory)

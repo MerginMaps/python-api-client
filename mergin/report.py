@@ -176,6 +176,9 @@ def create_report(mc, directory, since, to, out_file):
         since (str): starting project version tag, for example 'v3'.
         to (str): ending project version tag, for example 'v6'.
         out_file (str): output file to save csv in
+
+    Returns:
+          List of warnings/issues for versions which could not be processed (e.g. broken history with missing diff)
     """
     mp = MerginProject(directory)
     project = mp.metadata["name"]
@@ -183,6 +186,7 @@ def create_report(mc, directory, since, to, out_file):
     versions_map = {v["name"]: v for v in mc.project_versions(project, since, to)}
     headers = ["file", "table", "author", "date", "time", "version", "operation", "length", "area", "count"]
     records = []
+    warnings = []
     info = mc.project_info(project, since=since)
     num_since = int_version(since)
     num_to = int_version(to)
@@ -219,6 +223,10 @@ def create_report(mc, directory, since, to, out_file):
             # add records for every version (diff) and all tables within geopackage
             for version in history_keys:
                 if "diff" not in f['history'][version]:
+                    if f['history'][version]["change"] == "updated":
+                        warnings.append(f"Missing diff: {f['path']} was overwritten in {version} - broken diff history")
+                    else:
+                        warnings.append(f"Missin diff: {f['path']} was {f['history'][version]['change']} in {version}")
                     continue
 
                 v_diff_file = os.path.join(mp.meta_dir, '.cache',
@@ -252,3 +260,4 @@ def create_report(mc, directory, since, to, out_file):
         writer.writeheader()
         writer.writerows(records)
     mp.log.info(f"--- Report saved to {out_file} ----")
+    return warnings
