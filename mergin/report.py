@@ -1,17 +1,18 @@
 import csv
 import json
 import os
-import tempfile
 from collections import defaultdict
 from datetime import datetime
 from itertools import groupby
 
-from mergin import ClientError
-from mergin.merginproject import MerginProject, pygeodiff
-from mergin.utils import int_version
+from . import ClientError
+from .merginproject import MerginProject, pygeodiff
+from .utils import int_version
 
 try:
-    from qgis.core import QgsGeometry, QgsDistanceArea, QgsCoordinateReferenceSystem, QgsCoordinateTransformContext, QgsWkbTypes
+    from qgis.core import QgsGeometry, QgsDistanceArea, QgsCoordinateReferenceSystem, QgsCoordinateTransformContext, \
+        QgsWkbTypes
+
     has_qgis = True
 except ImportError:
     has_qgis = False
@@ -58,12 +59,14 @@ def qgs_geom_from_wkb(geom):
 
 class ChangesetReportEntry:
     """ Derivative of geodiff ChangesetEntry suitable for further processing/reporting """
-    def __init__(self, changeset_entry, geom_idx, geom):
+
+    def __init__(self, changeset_entry, geom_idx, geom, qgs_distance_area=None):
         self.table = changeset_entry.table.name
         self.geom_type = geom["type"]
         self.crs = "EPSG:" + geom["srs_id"]
         self.length = None
         self.area = None
+        self.dim = 0
 
         if changeset_entry.operation == changeset_entry.OP_DELETE:
             self.operation = "delete"
@@ -75,14 +78,12 @@ class ChangesetReportEntry:
             self.operation = "unknown"
 
         # only calculate geom properties when qgis api is available
-        if not has_qgis:
+        if not qgs_distance_area:
             return
 
-        d = QgsDistanceArea()
-        d.setEllipsoid('WGS84')
         crs = QgsCoordinateReferenceSystem()
         crs.createFromString(self.crs)
-        d.setSourceCrs(crs, QgsCoordinateTransformContext())
+        qgs_distance_area.setSourceCrs(crs, QgsCoordinateTransformContext())
 
         if hasattr(changeset_entry, "old_values"):
             old_wkb = changeset_entry.old_values[geom_idx]
@@ -111,64 +112,93 @@ class ChangesetReportEntry:
         elif self.operation == "insert":
             qgs_geom = qgs_geom_from_wkb(new_wkb)
 
-        dim = QgsWkbTypes.wkbDimensions(qgs_geom.wkbType())
-        if dim == 1:
-            self.length = d.measureLength(qgs_geom)
+        self.dim = QgsWkbTypes.wkbDimensions(qgs_geom.wkbType())
+        if self.dim == 1:
+            self.length = qgs_distance_area.measureLength(qgs_geom)
             if updated_qgs_geom:
-                self.length = d.measureLength(updated_qgs_geom) - self.length
-        elif dim == 2:
-            self.length = d.measurePerimeter(qgs_geom)
-            self.area = d.measureArea(qgs_geom)
+                self.length = qgs_distance_area.measureLength(updated_qgs_geom) - self.length
+        elif self.dim == 2:
+            self.length = qgs_distance_area.measurePerimeter(qgs_geom)
+            self.area = qgs_distance_area.measureArea(qgs_geom)
             if updated_qgs_geom:
-                self.length = d.measurePerimeter(updated_qgs_geom) - self.length
-                self.area = d.measureArea(updated_qgs_geom) - self.area
+                self.length = qgs_distance_area.measurePerimeter(updated_qgs_geom) - self.length
+                self.area = qgs_distance_area.measureArea(updated_qgs_geom) - self.area
 
 
-class ChangesetReport:
-    """ Report (aggregate) from geopackage changeset (diff file) """
-    def __init__(self, changeset_reader, schema):
-        self.cr = changeset_reader
-        self.schema = schema
-        self.entries = []
-        # let's iterate through reader and populate entries
-        for entry in self.cr:
-            schema_table = next((t for t in schema if t["table"] == entry.table.name), None)
-            # get geometry index in both gpkg schema and diffs values
-            geom_idx = next((index for (index, col) in enumerate(schema_table["columns"]) if col["type"] == "geometry"),
-                            None)
-            if geom_idx is None:
-                continue
+def changeset_report(changeset_reader, schema):
+    """ Parse Geodiff changeset reader and create report from it.
+    Aggregate individual entries based on common table, operation and geom type.
+    If QGIS API is available, then lengths and areas of individual entries are summed.
 
-            geom_col = schema_table["columns"][geom_idx]["geometry"]
-            report_entry = ChangesetReportEntry(entry, geom_idx, geom_col)
-            self.entries.append(report_entry)
+    :Example:
 
-    def report(self):
-        """ Aggregate entries by table and operation type and calculate quantity """
-        records = []
-        tables = defaultdict(list)
+        >>> geodiff.schema("sqlite", "", "/tmp/base.gpkg", "/tmp/base-schema.json")
+        >>> with open("/tmp/base-schema.json", 'r') as sf:
+                schema = json.load(sf).get("geodiff_schema")
+        >>> cr = geodiff.read_changeset("/tmp/base.gpkg-diff")
+        >>> changeset_report(cr, schema)
+        [{"table": "Lines", "operation": "insert", "length": 1.234, "area": 0.0, "count": 3}]
 
-        for obj in self.entries:
-            tables[obj.table].append(obj)
+    Args:
+        changeset_reader (pygeodiff.ChangesetReader): changeset reader from geodiff changeset (diff file)
+        schema: geopackage schema with list of tables (from full .gpkg file)
+    Returns:
+        list of dict of aggregated records
+    """
+    entries = []
+    records = []
 
-        for table, entries in tables.items():
-            items = groupby(entries, lambda i: (i.operation, i.geom_type))
-            for k, v in items:
-                values = list(v)
-                area = sum([entry.area for entry in values if entry.area]) if has_qgis else None
-                length = sum([entry.length for entry in values if entry.length]) if has_qgis else None
-                records.append({
-                    "table": table,
-                    "operation": k[0],
-                    "length": length,
-                    "area": area,
-                    "count": len(values)
-                })
-        return records
+    if has_qgis:
+        distance_area = QgsDistanceArea()
+        distance_area.setEllipsoid('WGS84')
+    else:
+        distance_area = None
+    # let's iterate through reader and populate entries
+    for entry in changeset_reader:
+        schema_table = next((t for t in schema if t["table"] == entry.table.name), None)
+        # get geometry index in both gpkg schema and diffs values
+        geom_idx = next((index for (index, col) in enumerate(schema_table["columns"]) if col["type"] == "geometry"),
+                        None)
+        if geom_idx is None:
+            continue
+
+        geom_col = schema_table["columns"][geom_idx]["geometry"]
+        report_entry = ChangesetReportEntry(entry, geom_idx, geom_col, distance_area)
+        entries.append(report_entry)
+
+    # create a map of entries grouped by tables within single .gpkg file
+    tables = defaultdict(list)
+    for obj in entries:
+        tables[obj.table].append(obj)
+
+    # iterate through all tables and aggregate changes by operation type (e.g. insert) and geometry type (e.g point)
+    # for example 3 point features inserted in 'Points' table would be single row with count 3
+    for table, entries in tables.items():
+        items = groupby(entries, lambda i: (i.operation, i.geom_type))
+        for k, v in items:
+            values = list(v)
+            # sum lenghts and areas only if it makes sense (valid dimension)
+            area = sum([entry.area for entry in values if entry.area]) if values[0].dim == 2 else None
+            length = sum([entry.length for entry in values if entry.length]) if values[0].dim > 0 else None
+            records.append({
+                "table": table,
+                "operation": k[0],
+                "length": length,
+                "area": area,
+                "count": len(values)
+            })
+    return records
 
 
 def create_report(mc, directory, since, to, out_file):
     """ Creates report from geodiff changesets for a range of project versions in CSV format.
+
+    Report is created for all .gpkg files and all tables within where updates were done using Geodiff lib.
+    Changeset contains operation (insert/update/delete) and geometry properties like length/perimeter and area.
+    Each row is an aggregate of the features modified by the same operation and of the same geometry type and contains
+    these values: "file", "table", "author", "date", "time", "version", "operation", "length", "area", "count"
+
+    No filtering and grouping is done here, this is left for third-party office software to use pivot table functionality.
 
     Args:
         mc (MerginClient): MerginClient instance.
@@ -209,12 +239,12 @@ def create_report(mc, directory, since, to, out_file):
             mc.download_file_diffs(directory, f["path"], history_keys)
 
             # download full gpkg in "to" version to analyze its schema to determine which col is geometry
-            full_gpkg = os.path.join(mp.meta_dir, ".cache", f["path"])
+            full_gpkg = mp.fpath_cache(f["path"], version=to)
             if not os.path.exists(full_gpkg):
                 mc.download_file(directory, f["path"], full_gpkg, to)
 
             # get gpkg schema
-            schema_file = full_gpkg + '-schema'  # geodiff writes schema into a file
+            schema_file = full_gpkg + '-schema.json'  # geodiff writes schema into a file
             if not os.path.exists(schema_file):
                 mp.geodiff.schema("sqlite", "", full_gpkg, schema_file)
             with open(schema_file, 'r') as sf:
@@ -226,16 +256,13 @@ def create_report(mc, directory, since, to, out_file):
                     if f['history'][version]["change"] == "updated":
                         warnings.append(f"Missing diff: {f['path']} was overwritten in {version} - broken diff history")
                     else:
-                        warnings.append(f"Missin diff: {f['path']} was {f['history'][version]['change']} in {version}")
+                        warnings.append(f"Missing diff: {f['path']} was {f['history'][version]['change']} in {version}")
                     continue
 
-                v_diff_file = os.path.join(mp.meta_dir, '.cache',
-                                           version + "-" + f['history'][version]['diff']['path'])
-
+                v_diff_file = mp.fpath_cache(f['history'][version]['diff']['path'], version=version)
                 version_data = versions_map[version]
                 cr = mp.geodiff.read_changeset(v_diff_file)
-                rep = ChangesetReport(cr, schema)
-                report = rep.report()
+                report = changeset_report(cr, schema)
                 # append version info to changeset info
                 dt = datetime.fromisoformat(version_data["created"].rstrip("Z"))
                 version_fields = {
