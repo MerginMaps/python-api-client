@@ -52,6 +52,10 @@ class MerginProject:
         # location for files from unfinished pull
         self.unfinished_pull_dir = os.path.join(self.meta_dir, 'unfinished_pull')
 
+        self.cache_dir = os.path.join(self.meta_dir, '.cache')
+        if not os.path.exists(self.cache_dir):
+            os.mkdir(self.cache_dir)
+
         self.setup_logging(directory)
 
         # make sure we can load correct pygeodiff
@@ -118,6 +122,14 @@ class MerginProject:
     def fpath_unfinished_pull(self, file):
         """ Helper function to get absolute path of file in unfinished_pull dir. """
         return self.fpath(file, self.unfinished_pull_dir)
+
+    def fpath_cache(self, file, version=None):
+        """ Helper function to get absolute path of file in cache dir.
+        It can be either in root cache directory (.mergin/.cache/) or in some version's subfolder
+        """
+        if version:
+            return self.fpath(file, os.path.join(self.cache_dir, version))
+        return self.fpath(file, self.cache_dir)
 
     @property
     def metadata(self):

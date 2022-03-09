@@ -701,8 +701,6 @@ def download_diffs_async(mc, project_directory, file_path, versions):
         mp.log.info("--- downloading diffs aborted")
         raise
 
-    download_dir = os.path.join(mp.meta_dir, ".cache")
-    os.makedirs(download_dir, exist_ok=True)
     fetch_files = []
 
     for version in versions:
@@ -718,8 +716,8 @@ def download_diffs_async(mc, project_directory, file_path, versions):
     download_list = []  # list of all items to be downloaded
     total_size = 0
     for file in fetch_files:
-        items = _download_items(file, download_dir, diff_only=True)
-        dest_file_path = os.path.normpath(os.path.join(download_dir, file["version"] + "-" + file['diff']['path']))
+        items = _download_items(file, mp.cache_dir, diff_only=True)
+        dest_file_path = mp.fpath_cache(file['diff']['path'], version=file["version"])
         if os.path.exists(dest_file_path):
             continue
         files_to_merge.append(FileToMerge(dest_file_path, items))
@@ -729,7 +727,7 @@ def download_diffs_async(mc, project_directory, file_path, versions):
 
     mp.log.info(f"will download {len(download_list)} chunks, total size {total_size}")
 
-    job = PullJob(project_path, None, total_size, None, files_to_merge, download_list, download_dir, mp,
+    job = PullJob(project_path, None, total_size, None, files_to_merge, download_list, mp.cache_dir, mp,
                   server_info, {}, mc.username())
 
     # start download
