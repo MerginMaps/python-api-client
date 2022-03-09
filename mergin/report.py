@@ -86,10 +86,14 @@ class ChangesetReportEntry:
 
         if hasattr(changeset_entry, "old_values"):
             old_wkb = changeset_entry.old_values[geom_idx]
+            if isinstance(old_wkb, pygeodiff.UndefinedValue):
+                old_wkb = None
         else:
             old_wkb = None
         if hasattr(changeset_entry, "new_values"):
             new_wkb = changeset_entry.new_values[geom_idx]
+            if isinstance(new_wkb, pygeodiff.UndefinedValue):
+                new_wkb = None
         else:
             new_wkb = None
 
