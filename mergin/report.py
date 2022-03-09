@@ -167,18 +167,18 @@ class ChangesetReport:
         return records
 
 
-def create_report(mc, directory, project, since, to, out_dir=tempfile.gettempdir()):
+def create_report(mc, directory, since, to, out_file):
     """ Creates report from geodiff changesets for a range of project versions in CSV format.
 
     Args:
         mc (MerginClient): MerginClient instance.
         directory (str): local project directory (must already exist).
-        project (str): full project name (<namespace/project>).
         since (str): starting project version tag, for example 'v3'.
         to (str): ending project version tag, for example 'v6'.
-        out_dir (str): output directory to save report.csv in, defaults to temp dir
+        out_file (str): output file to save csv in
     """
     mp = MerginProject(directory)
+    project = mp.metadata["name"]
     mp.log.info(f"--- Creating changesets report for {project} from {since} to {to} versions ----")
     versions_map = {v["name"]: v for v in mc.project_versions(project, since, to)}
     headers = ["file", "table", "author", "date", "time", "version", "operation", "length", "area", "count"]
@@ -245,10 +245,10 @@ def create_report(mc, directory, project, since, to, out_dir=tempfile.gettempdir
             raise ClientError("Reporting failed, please check log for details")
 
     # export report to csv file
-    proj_name = project.replace(os.path.sep, "-")
-    report_file = os.path.join(out_dir, f'report-{proj_name}-{since}-{to}.csv')
-    with open(report_file, 'w', newline='') as f_csv:
+    out_dir = os.path.dirname(out_file)
+    os.makedirs(out_dir, exist_ok=True)
+    with open(out_file, 'w', newline='') as f_csv:
         writer = csv.DictWriter(f_csv, fieldnames=headers)
         writer.writeheader()
         writer.writerows(records)
-    mp.log.info(f"--- Report saved to {report_file} ----")
+    mp.log.info(f"--- Report saved to {out_file} ----")

@@ -9,6 +9,7 @@ import pytest
 import pytz
 import sqlite3
 
+from .. import InvalidProject
 from ..client import MerginClient, ClientError, MerginProject, LoginError, decode_token_data, TokenError
 from ..client_push import push_project_async, push_project_cancel
 from ..utils import (
@@ -1630,9 +1631,11 @@ def test_report(mc):
     directory = mp.dir
     since = "v2"
     to = "v4"
-    create_report(mc, directory, project, since, to, TMP_DIR)
     proj_name = project.replace(os.path.sep, "-")
-    report_file = os.path.join(TMP_DIR, f'report-{proj_name}-{since}-{to}.csv')
+    report_file = os.path.join(TMP_DIR, "report", f'{proj_name}-{since}-{to}.csv')
+    if os.path.exists(report_file):
+        os.remove(report_file)
+    create_report(mc, directory, since, to, report_file)
     assert os.path.exists(report_file)
     # assert headers and content in report file
     with open(report_file, "r") as rf:
@@ -1643,3 +1646,8 @@ def test_report(mc):
         assert "v3,update,,,2" in content
         # files not edited are not in reports
         assert "inserted_1_A.gpkg" not in content
+
+    # rm local mergin project and try again
+    shutil.rmtree(directory)
+    with pytest.raises(InvalidProject):
+        create_report(mc, directory, since, to, report_file)
