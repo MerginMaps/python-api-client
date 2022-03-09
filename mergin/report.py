@@ -3,11 +3,18 @@ import json
 import os
 import tempfile
 from collections import defaultdict
+from datetime import datetime
 from itertools import groupby
 
 from mergin import ClientError
 from mergin.merginproject import MerginProject, pygeodiff
 from mergin.utils import int_version
+
+try:
+    from qgis.core import QgsGeometry, QgsDistanceArea, QgsCoordinateReferenceSystem, QgsCoordinateTransformContext, QgsWkbTypes
+    has_qgis = True
+except ImportError:
+    has_qgis = False
 
 
 # inspired by C++ implementation https://github.com/lutraconsulting/geodiff/blob/master/geodiff/src/drivers/sqliteutils.cpp
@@ -39,76 +46,78 @@ def parse_gpkgb_header_size(gpkg_wkb):
     return no_envelope_header_size + envelope_size
 
 
+def qgs_geom_from_wkb(geom):
+    if not has_qgis:
+        raise NotImplementedError
+    g = QgsGeometry()
+    wkb_header_length = parse_gpkgb_header_size(geom)
+    wkb_geom = geom[wkb_header_length:]
+    g.fromWkb(wkb_geom)
+    return g
+
+
 class ChangesetReportEntry:
     """ Derivative of geodiff ChangesetEntry suitable for further processing/reporting """
     def __init__(self, changeset_entry, geom_idx, geom):
         self.table = changeset_entry.table.name
         self.geom_type = geom["type"]
-        self.crs = geom["srs_id"]
-
-        if changeset_entry.operation == changeset_entry.OP_DELETE:
-            self.operation = "delete"
-            self.old_geom = changeset_entry.old_values[geom_idx]
-            self.new_geom = None
-        elif changeset_entry.operation == changeset_entry.OP_UPDATE:
-            self.operation = "update"
-            self.old_geom = changeset_entry.old_values[geom_idx]
-            self.new_geom = changeset_entry.new_values[geom_idx]
-        elif changeset_entry.operation == changeset_entry.OP_INSERT:
-            self.operation = "insert"
-            self.old_geom = None
-            self.new_geom = changeset_entry.new_values[geom_idx]
-
-        self.count = None
+        self.crs = "EPSG:" + geom["srs_id"]
         self.length = None
         self.area = None
 
-        if self.geom_type == "LINESTRING":
-            # we calculate change in length, for attributes changes only we set to 0
-            self.metric = "length"
-            if self.operation == "delete":
-                self.length = self.measure(self.old_geom)
-            elif self.operation == "update":
-                self.length = self.measure(self.new_geom) - self.measure(self.old_geom)
-            elif self.operation == "insert":
-                self.length = self.measure(self.new_geom)
-        elif self.geom_type == "POLYGON":
-            # we calculate change in area, for attributes changes only we set to 0
-            self.metric = "area"
-            if self.operation == "delete":
-                self.area = self.measure(self.old_geom)
-            elif self.operation == "update":
-                self.area = self.measure(self.new_geom) - self.measure(self.old_geom)
-            elif self.operation == "insert":
-                self.area = self.measure(self.new_geom)
+        if changeset_entry.operation == changeset_entry.OP_DELETE:
+            self.operation = "delete"
+        elif changeset_entry.operation == changeset_entry.OP_UPDATE:
+            self.operation = "update"
+        elif changeset_entry.operation == changeset_entry.OP_INSERT:
+            self.operation = "insert"
         else:
-            # regardless of geometry change count as 1
-            self.metric = "count"
-            self.count = 1
+            self.operation = "unknown"
 
-    def measure(self, geom):
-        """ Return length or area of geometry based on type """
-        # calculate geom length/area only if QGIS API is available
-        try:
-            from qgis.core import QgsGeometry, QgsDistanceArea, QgsCoordinateReferenceSystem, QgsCoordinateTransformContext
-        except ImportError:
-            return -1
+        # only calculate geom properties when qgis api is available
+        if not has_qgis:
+            return
 
         d = QgsDistanceArea()
         d.setEllipsoid('WGS84')
         crs = QgsCoordinateReferenceSystem()
         crs.createFromString(self.crs)
         d.setSourceCrs(crs, QgsCoordinateTransformContext())
-        g = QgsGeometry()
-        wkb_header_length = parse_gpkgb_header_size(geom)
-        wkb_geom = geom[wkb_header_length:]
-        g.fromWkb(wkb_geom)
-        if self.metric == "length":
-            return d.measureLength(g)
-        elif self.metric == "area":
-            return d.measureArea(g)
+
+        if hasattr(changeset_entry, "old_values"):
+            old_wkb = changeset_entry.old_values[geom_idx]
         else:
-            return 1
+            old_wkb = None
+        if hasattr(changeset_entry, "new_values"):
+            new_wkb = changeset_entry.new_values[geom_idx]
+        else:
+            new_wkb = None
+
+        # no geometry at all
+        if old_wkb is None and new_wkb is None:
+            return
+
+        updated_qgs_geom = None
+        if self.operation == "delete":
+            qgs_geom = qgs_geom_from_wkb(old_wkb)
+        elif self.operation == "update":
+            qgs_geom = qgs_geom_from_wkb(old_wkb)
+            # get new geom if it was updated, there can be updates also without change of geom
+            updated_qgs_geom = qgs_geom_from_wkb(new_wkb) if new_wkb else qgs_geom
+        elif self.operation == "insert":
+            qgs_geom = qgs_geom_from_wkb(new_wkb)
+
+        dim = QgsWkbTypes.wkbDimensions(qgs_geom.wkbType())
+        if dim == 1:
+            self.length = d.measureLength(qgs_geom)
+            if updated_qgs_geom:
+                self.length = d.measureLength(updated_qgs_geom) - self.length
+        elif dim == 2:
+            self.length = d.measurePerimeter(qgs_geom)
+            self.area = d.measureArea(qgs_geom)
+            if updated_qgs_geom:
+                self.length = d.measurePerimeter(updated_qgs_geom) - self.length
+                self.area = d.measureArea(updated_qgs_geom) - self.area
 
 
 class ChangesetReport:
@@ -139,15 +148,17 @@ class ChangesetReport:
             tables[obj.table].append(obj)
 
         for table, entries in tables.items():
-            items = groupby(entries, lambda i: (i.operation, i.metric))
+            items = groupby(entries, lambda i: (i.operation, i.geom_type))
             for k, v in items:
-                quantity_type = "_".join(k)
                 values = list(v)
-                quantity = sum([getattr(entry, k[1]) for entry in values])
+                area = sum([entry.area for entry in values if entry.area]) if has_qgis else None
+                length = sum([entry.length for entry in values if entry.length]) if has_qgis else None
                 records.append({
                     "table": table,
-                    "quantity_type": quantity_type,
-                    "quantity": quantity
+                    "operation": k[0],
+                    "length": length,
+                    "area": area,
+                    "count": len(values)
                 })
         return records
 
@@ -166,7 +177,7 @@ def create_report(mc, directory, project, since, to, out_dir=tempfile.gettempdir
     mp = MerginProject(directory)
     mp.log.info(f"--- Creating changesets report for {project} from {since} to {to} versions ----")
     versions_map = {v["name"]: v for v in mc.project_versions(project, since, to)}
-    headers = ["file", "table", "author", "timestamp", "version", "quantity_type", "quantity"]
+    headers = ["file", "table", "author", "date", "time", "version", "operation", "length", "area", "count"]
     records = []
     info = mc.project_info(project, since=since)
     num_since = int_version(since)
@@ -203,6 +214,9 @@ def create_report(mc, directory, project, since, to, out_dir=tempfile.gettempdir
 
             # add records for every version (diff) and all tables within geopackage
             for version in history_keys:
+                if "diff" not in f['history'][version]:
+                    continue
+
                 v_diff_file = os.path.join(mp.meta_dir, '.cache',
                                            version + "-" + f['history'][version]['diff']['path'])
 
@@ -211,10 +225,12 @@ def create_report(mc, directory, project, since, to, out_dir=tempfile.gettempdir
                 rep = ChangesetReport(cr, schema)
                 report = rep.report()
                 # append version info to changeset info
+                dt = datetime.fromisoformat(version_data["created"].rstrip("Z"))
                 version_fields = {
                     "file": f["path"],
                     "author": version_data["author"],
-                    "timestamp": version_data["created"],
+                    "date": dt.date().isoformat(),
+                    "time": dt.time().isoformat(),
                     "version": version_data["name"]
                 }
                 for row in report:

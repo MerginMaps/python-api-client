@@ -1637,8 +1637,9 @@ def test_report(mc):
     # assert headers and content in report file
     with open(report_file, "r") as rf:
         content = rf.read()
-        assert ",".join(["file", "table", "author", "timestamp", "version", "quantity_type", "quantity"]) in content
+        headers = ",".join(["file", "table", "author", "date", "time", "version", "operation", "length", "area", "count"])
+        assert headers in content
         assert "base.gpkg,simple,test_plugin" in content
-        assert "v3,update_count,2" in content
+        assert "v3,update,,,2" in content
         # files not edited are not in reports
         assert "inserted_1_A.gpkg" not in content
