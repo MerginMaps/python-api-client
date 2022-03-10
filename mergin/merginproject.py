@@ -688,7 +688,14 @@ class MerginProject:
         server.
 
         .. seealso:: self.has_unfinished_pull
+
+        :param user_name: name of the user
+        :type user_name: str
+        :returns: files where conflicts were found
+        :rtype: list[str]
         """
+        conflicts = []
+
         if not self.has_unfinished_pull():
             self.log.warning("no unfinished pulls found")
             return
@@ -712,6 +719,7 @@ class MerginProject:
                 try:
                     # conflicted copy
                     conflict = self.create_conflicted_copy(dest, user_name)
+                    conflicts.append(conflict)
                     # original file synced with server
                     self.geodiff.make_copy_sqlite(src, basefile)
                     self.geodiff.make_copy_sqlite(src, dest)
@@ -721,4 +729,4 @@ class MerginProject:
 
         shutil.rmtree(self.unfinished_pull_dir)
         self.log.info("unfinished pull resolved successfuly!")
-        return
+        return conflicts

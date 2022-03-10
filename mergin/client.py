@@ -841,7 +841,10 @@ class MerginClient:
         .. seealso:: self.has_unfinished_pull
 
         :param directory: project's directory
-        :type directory: String
+        :type directory: str
+        :returns: files where conflicts were found
+        :rtype: list[str]
         """
         mp = MerginProject(directory)
-        mp.resolve_unfinished_pull(self.username())
+        conflicts = mp.resolve_unfinished_pull(self.username())
+        return conflicts
