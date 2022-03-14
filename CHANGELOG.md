@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0
+
+- Added support for reporting of changes based on project history
+- Fixed sync issues on Windows when schema changes (#117)
+- Better naming of conflict files (#62)
+- Unhandled exceptions during pull get written to the client log (#103)
+- Fixed download of earlier version of GeoPackage files (#119)
+
 ## 0.6.6
 
 - Add user_service() API call (#113)
