@@ -104,7 +104,7 @@ def push_project_async(mc, directory):
     # permissions field contains information about update, delete and upload privileges of the user
     # on a specific project. This is more accurate information then "writernames" field, as it takes
     # into account namespace privileges. So we have to check only "permissions", namely "upload" one
-    if not mc.have_writing_permissions(directory):
+    if not mc.has_writing_permissions(project_path):
         mp.log.error(f"--- push {project_path} - username {username} does not have write access")
         raise ClientError(f"You do not seem to have write access to the project (username '{username}')")
 

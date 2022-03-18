@@ -1625,7 +1625,6 @@ def test_project_versions_list(mc):
     assert versions[0]["name"] == "v2"
     assert versions[-1]["name"] == "v4"
 
-
 def test_report(mc):
     test_project = 'test_download_diffs'
     project = API_USER + '/' + test_project
@@ -1662,3 +1661,45 @@ def test_report(mc):
     shutil.rmtree(directory)
     with pytest.raises(InvalidProject):
         create_report(mc, directory, since, to, report_file)
+
+def test_project_versions_list(mc, mc2):
+    """
+    Test retrieving user permissions
+    """
+    test_project = 'test_permissions'
+    test_project_fullname = API_USER2 + '/' + test_project
+
+    # cleanups
+    project_dir = os.path.join(TMP_DIR, test_project, API_USER)
+    cleanup(mc, test_project_fullname, [project_dir])
+    cleanup(mc2, test_project_fullname, [project_dir])
+
+    # create new (empty) project on server
+    mc2.create_project(test_project)
+
+    # Add reader access to another client
+    project_info = get_project_info(mc2, API_USER2, test_project)
+    access = project_info['access']
+    access['readersnames'].append(API_USER)
+    mc2.set_project_access(test_project_fullname, access)
+
+    # reader should not have write access
+    assert not mc.has_writing_permissions(test_project_fullname)
+
+    # Add writer access to another client
+    project_info = get_project_info(mc2, API_USER2, test_project)
+    access = project_info['access']
+    access['writersnames'].append(API_USER)
+    mc2.set_project_access(test_project_fullname, access)
+
+    # now user shold have write access
+    assert mc.has_writing_permissions(test_project_fullname)
+
+    # test organization permissions
+    test_project_fullname = 'testorg' + '/' + 'test_org_permissions'
+
+    # owner should have write access
+    assert mc.has_writing_permissions(test_project_fullname)
+
+    # writer should have write access
+    assert mc2.has_writing_permissions(test_project_fullname)
