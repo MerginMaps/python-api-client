@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1
+
+- Added has_writing_permissions() API call
+
 ## 0.7.0
 
 - Added support for reporting of changes based on project history
