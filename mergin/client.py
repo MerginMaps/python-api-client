@@ -848,3 +848,17 @@ class MerginClient:
         mp = MerginProject(directory)
         conflicts = mp.resolve_unfinished_pull(self.username())
         return conflicts
+
+    def has_writing_permissions(self, project_path):
+        """
+        Test whether user has writing permissions on the given project.
+        We rely on the "permissions" field here, as it provides more accurate
+        information and take into account namespace permissions too.
+
+        :param project_path: project's path on server in the form or namespace/project
+        :type directory: str
+        :returns: whether user has writing (upload) permission on the project
+        :rtype: bool
+        """
+        info = self.project_info(project_path)
+        return info["permissions"]["upload"]
