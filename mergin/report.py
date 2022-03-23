@@ -156,15 +156,16 @@ def changeset_report(changeset_reader, schema):
     # let's iterate through reader and populate entries
     for entry in changeset_reader:
         schema_table = next((t for t in schema if t["table"] == entry.table.name), None)
-        # get geometry index in both gpkg schema and diffs values
-        geom_idx = next((index for (index, col) in enumerate(schema_table["columns"]) if col["type"] == "geometry"),
-                        None)
-        if geom_idx is None:
-            continue
+        if schema_table:
+            # get geometry index in both gpkg schema and diffs values
+            geom_idx = next((index for (index, col) in enumerate(schema_table["columns"]) if col["type"] == "geometry"),
+                            None)
+            if geom_idx is None:
+                continue
 
-        geom_col = schema_table["columns"][geom_idx]["geometry"]
-        report_entry = ChangesetReportEntry(entry, geom_idx, geom_col, distance_area)
-        entries.append(report_entry)
+            geom_col = schema_table["columns"][geom_idx]["geometry"]
+            report_entry = ChangesetReportEntry(entry, geom_idx, geom_col, distance_area)
+            entries.append(report_entry)
 
     # create a map of entries grouped by tables within single .gpkg file
     tables = defaultdict(list)
