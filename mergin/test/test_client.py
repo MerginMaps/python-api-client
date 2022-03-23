@@ -1008,6 +1008,24 @@ def _create_test_table(db_file):
     cursor.execute('COMMIT;')
 
 
+def _create_spatial_table(db_file):
+    """ Creates a spatial table called 'test' in sqlite database. Useful to simulate change of database schema. """
+    con = sqlite3.connect(db_file)
+    cursor = con.cursor()
+    cursor.execute('CREATE TABLE geo_test (fid SERIAL, geometry POINT NOT NULL, txt TEXT);')
+    cursor.execute('INSERT INTO gpkg_contents VALUES (\'geo_test\', \'features\',\'description\',\'geo_test\',\'2019-06-18T14:52:50.928Z\',-1.08892,0.0424077,-0.363885,0.562244,4326);')
+    cursor.execute('INSERT INTO gpkg_geometry_columns VALUES (\'geo_test\',\'geometry\',\'POINT\',4326, 0, 0 )')
+    cursor.execute('COMMIT;')
+
+def _delete_spatial_table(db_file):
+    """ Drops spatial table called 'test' in sqlite database. Useful to simulate change of database schema. """
+    con = sqlite3.connect(db_file)
+    cursor = con.cursor()
+    cursor.execute('DROP TABLE poi;')
+    cursor.execute('DELETE FROM gpkg_geometry_columns WHERE table_name=\'poi\';')
+    cursor.execute('DELETE FROM gpkg_contents WHERE table_name=\'poi\';')
+    cursor.execute('COMMIT;')
+
 def _check_test_table(db_file):
     """ Checks whether the 'test' table exists and has one row - otherwise fails with an exception. """
     #con_verify = sqlite3.connect(db_file)
@@ -1662,6 +1680,7 @@ def test_report(mc):
     with pytest.raises(InvalidProject):
         create_report(mc, directory, since, to, report_file)
 
+
 def test_project_versions_list(mc, mc2):
     """
     Test retrieving user permissions
@@ -1703,3 +1722,39 @@ def test_project_versions_list(mc, mc2):
 
     # writer should have write access
     assert mc2.has_writing_permissions(test_project_fullname)
+
+
+def test_report_failure(mc):
+    """Check that report generated without errors when a table was added
+    and then deleted.
+    """
+    test_project = 'test_report_failure'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
+    test_gpkg = os.path.join(project_dir, 'test.gpkg')
+    report_file = os.path.join(TMP_DIR, "report.csv")
+
+    cleanup(mc, project, [project_dir])
+
+    os.makedirs(project_dir)
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'base.gpkg'), test_gpkg)
+    mc.create_project_and_push(test_project, project_dir)
+
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'inserted_1_A.gpkg'), test_gpkg)
+    mc.push_project(project_dir)
+
+    # add a new table to the geopackage
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'two_tables.gpkg'), test_gpkg)
+    mc.push_project(project_dir)
+
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'two_tables_1_A.gpkg'), test_gpkg)
+    mc.push_project(project_dir)
+
+    warnings = create_report(mc, project_dir, "v1", "v4", report_file)
+    assert warnings
+
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'two_tables_drop.gpkg'), test_gpkg)
+    mc.push_project(project_dir)
+
+    warnings = create_report(mc, project_dir, "v1", "v5", report_file)
+    assert warnings
