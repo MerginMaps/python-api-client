@@ -125,7 +125,7 @@ class ChangesetReportEntry:
                 self.area = qgs_distance_area.measureArea(updated_qgs_geom) - self.area
 
 
-def changeset_report(changeset_reader, schema):
+def changeset_report(changeset_reader, schema, mp):
     """ Parse Geodiff changeset reader and create report from it.
     Aggregate individual entries based on common table, operation and geom type.
     If QGIS API is available, then lengths and areas of individual entries are summed.
@@ -166,6 +166,8 @@ def changeset_report(changeset_reader, schema):
             geom_col = schema_table["columns"][geom_idx]["geometry"]
             report_entry = ChangesetReportEntry(entry, geom_idx, geom_col, distance_area)
             entries.append(report_entry)
+        else:
+            mp.log.warning(f"Table {entry.table.name} is not present in the changeset.")
 
     # create a map of entries grouped by tables within single .gpkg file
     tables = defaultdict(list)
@@ -263,7 +265,7 @@ def create_report(mc, directory, since, to, out_file):
                 v_diff_file = mp.fpath_cache(f['history'][version]['diff']['path'], version=version)
                 version_data = versions_map[version]
                 cr = mp.geodiff.read_changeset(v_diff_file)
-                report = changeset_report(cr, schema)
+                report = changeset_report(cr, schema, mp)
                 # append version info to changeset info
                 dt = datetime.fromisoformat(version_data["created"].rstrip("Z"))
                 version_fields = {
