@@ -1671,6 +1671,10 @@ def test_report(mc):
         # files not edited are not in reports
         assert "inserted_1_A.gpkg" not in content
 
+    # create report between versions 2 and latest version (which is version 5)
+    warnings = create_report(mc, directory, since, "", report_file)
+    assert warnings
+
     # do report for v1 with added files and v5 with overwritten file
     warnings = create_report(mc, directory, "v1", "v5", report_file)
     assert warnings
