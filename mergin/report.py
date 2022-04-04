@@ -207,7 +207,7 @@ def create_report(mc, directory, since, to, out_file):
         mc (MerginClient): MerginClient instance.
         directory (str): local project directory (must already exist).
         since (str): starting project version tag, for example 'v3'.
-        to (str): ending project version tag, for example 'v6'.
+        to (str): ending project version tag, for example 'v6'. If empty string is passed the latest version will be used.
         out_file (str): output file to save csv in
 
     Returns:
@@ -215,14 +215,15 @@ def create_report(mc, directory, since, to, out_file):
     """
     mp = MerginProject(directory)
     project = mp.metadata["name"]
-    mp.log.info(f"--- Creating changesets report for {project} from {since} to {to} versions ----")
-    versions_map = {v["name"]: v for v in mc.project_versions(project, since, to)}
+    mp.log.info(f"--- Creating changesets report for {project} from {since} to {to if to else 'latest'} versions ----")
+    versions = mc.project_versions(project, since, to if to else None)
+    versions_map = {v["name"]: v for v in versions}
     headers = ["file", "table", "author", "date", "time", "version", "operation", "length", "area", "count"]
     records = []
     warnings = []
     info = mc.project_info(project, since=since)
     num_since = int_version(since)
-    num_to = int_version(to)
+    num_to = int_version(to) if to else int_version(versions[-1]["name"])
     # filter only .gpkg files
     files = [f for f in info["files"] if mp.is_versioned_file(f["path"])]
     for f in files:
