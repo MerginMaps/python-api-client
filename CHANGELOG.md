@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.2
+
+- Reporting can be run without end version specified (lutraconsulting/qgis-mergin-plugin#365)
+- Fixed reporting when some tables were missing (lutraconsulting/qgis-mergin-plugin#362)
+
 ## 0.7.1
 
 - Added has_writing_permissions() API call
