@@ -618,6 +618,8 @@ def download_file_async(mc, project_dir, file_path, output_file, version):
     download_list = []
     update_tasks = []
     total_size = 0
+    if version is None:
+        version = latest_proj_info["version"]
     for file in project_info['files']:
         if file["path"] == file_path:
             file['version'] = version
