@@ -12,6 +12,7 @@ import platform
 from datetime import datetime, timezone
 import dateutil.parser
 import ssl
+import re
 
 from .common import ClientError, LoginError, InvalidProject
 from .merginproject import MerginProject
@@ -779,6 +780,23 @@ class MerginClient:
             self, project_path, file_path, version_from=version_from, version_to=version_to, file_history=file_history
         )
         diffs = self.download_file_diffs(project_dir, file_path, versions_to_fetch[1:])
+        # if some changesets were cached before, they will be missed from the
+        # list of downloaded changesets and should be added before any attempt
+        # to concatenate them into single file
+        sort = False
+        if len(diffs) < len(versions_to_fetch[1:]):
+            sort = True
+            for v in versions_to_fetch[1:]:
+                file_name = mp.fpath_cache(file_history["history"][v]["diff"]["path"], v)
+                if file_name not in diffs:
+                    diffs.append(file_name)
+
+        # at this point diffs in the list might be in the wrong order
+        # we need to sort them by version in ascending order
+        if sort:
+            ver_regex = re.compile("\/v[0-9]+\/")
+            diffs.sort(key=lambda x: int(ver_regex.search(x)[0].strip("/").replace("v", "")))
+
         # concatenate diffs, if needed
         output_dir = os.path.dirname(output_diff)
         if len(diffs) >= 1:

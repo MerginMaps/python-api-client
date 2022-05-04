@@ -1764,3 +1764,50 @@ def test_report_failure(mc):
 
     warnings = create_report(mc, project_dir, "v1", "v5", report_file)
     assert warnings
+
+
+def test_changesets_download(mc):
+    """Check that downloading diffs works correctly, including case when
+    changesets are cached.
+    """
+    test_project = 'test_changesets_download'
+    project = API_USER + '/' + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
+    test_gpkg = 'test.gpkg'
+    file_path = os.path.join(project_dir, 'test.gpkg')
+    download_dir = os.path.join(TMP_DIR, "changesets")
+
+    cleanup(mc, project, [project_dir])
+
+    os.makedirs(project_dir, exist_ok=True)
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'base.gpkg'), file_path)
+    mc.create_project_and_push(test_project, project_dir)
+
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'inserted_1_A.gpkg'), file_path)
+    mc.push_project(project_dir)
+
+    shutil.copy(os.path.join(TEST_DATA_DIR, 'inserted_1_A_mod.gpkg'), file_path)
+    mc.push_project(project_dir)
+
+    mp = MerginProject(project_dir)
+
+    os.makedirs(download_dir, exist_ok=True)
+    diff_file = os.path.join(download_dir, "base-v1-2.diff")
+    mc.get_file_diff(project_dir, test_gpkg, diff_file, "v1", "v2")
+    assert os.path.exists(diff_file)
+    assert mp.geodiff.has_changes(diff_file)
+    assert mp.geodiff.changes_count(diff_file) == 1
+
+    diff_file = os.path.join(download_dir, "base-v2-3.diff")
+    mc.get_file_diff(project_dir, test_gpkg, diff_file, "v2", "v3")
+    assert os.path.exists(diff_file)
+    assert mp.geodiff.has_changes(diff_file)
+    assert mp.geodiff.changes_count(diff_file) == 2
+
+    # even if changesets were cached and were not downloaded destination
+    # file should be created and contain a valid changeset
+    diff_file = os.path.join(download_dir, "base-all.diff")
+    mc.get_file_diff(project_dir, test_gpkg, diff_file, "v1", "v3")
+    assert os.path.exists(diff_file)
+    assert mp.geodiff.has_changes(diff_file)
+    assert mp.geodiff.changes_count(diff_file) == 3
