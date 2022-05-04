@@ -1646,7 +1646,7 @@ def test_project_versions_list(mc):
     assert versions[-1]["name"] == "v4"
 
 def test_report(mc):
-    test_project = 'test_download_diffs'
+    test_project = 'test_report'
     project = API_USER + '/' + test_project
     project_dir = os.path.join(TMP_DIR, test_project)
     f_updated = "base.gpkg"
