@@ -201,6 +201,8 @@ def conflicted_copy_file_name(path, user, version):
     head, tail = os.path.split(os.path.normpath(path))
     ext = ''.join(Path(tail).suffixes)
     file_name = tail.replace(ext, '')
+    if ext.lower() in (".qgz", ".qgs"):
+        ext += '~'
     return os.path.join(head, file_name) + f" (conflicted copy, {user} v{version}){ext}"
 
 
