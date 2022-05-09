@@ -1353,7 +1353,9 @@ def test_conflict_file_names():
             ('/home/test/geo.gpkg', '', 10, '/home/test/geo (conflicted copy,  v10).gpkg'),
             ('/home/test/geo.gpkg', 'jack', -1, '/home/test/geo (conflicted copy, jack v-1).gpkg'),
             ('/home/test/geo.tar.gz', 'jack', 100, '/home/test/geo (conflicted copy, jack v100).tar.gz'),
-            ('', 'jack', 1, '' )
+            ('', 'jack', 1, '' ),
+            ('/home/test/survey.qgs', 'jack', 10, '/home/test/survey (conflicted copy, jack v10).qgs~'),
+            ('/home/test/survey.QGZ', 'jack', 10, '/home/test/survey (conflicted copy, jack v10).QGZ~'),
            ]
 
     for i in data:
