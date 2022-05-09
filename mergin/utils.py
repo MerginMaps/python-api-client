@@ -201,6 +201,10 @@ def conflicted_copy_file_name(path, user, version):
     head, tail = os.path.split(os.path.normpath(path))
     ext = ''.join(Path(tail).suffixes)
     file_name = tail.replace(ext, '')
+    # in case of QGIS project files we have to add "~" (tilde) to suffix
+    # to avoid having several QGIS project files inside Mergin project.
+    # See https://github.com/lutraconsulting/qgis-mergin-plugin/issues/382
+    # for more details
     if ext.lower() in (".qgz", ".qgs"):
         ext += '~'
     return os.path.join(head, file_name) + f" (conflicted copy, {user} v{version}){ext}"
