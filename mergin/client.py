@@ -779,23 +779,12 @@ class MerginClient:
         versions_to_fetch = get_versions_with_file_changes(
             self, project_path, file_path, version_from=version_from, version_to=version_to, file_history=file_history
         )
-        diffs = self.download_file_diffs(project_dir, file_path, versions_to_fetch[1:])
-        # if some changesets were cached before, they will be missed from the
-        # list of downloaded changesets and should be added before any attempt
-        # to concatenate them into single file
-        sort = False
-        if len(diffs) < len(versions_to_fetch[1:]):
-            sort = True
-            for v in versions_to_fetch[1:]:
-                file_name = mp.fpath_cache(file_history["history"][v]["diff"]["path"], v)
-                if file_name not in diffs:
-                    diffs.append(file_name)
+        self.download_file_diffs(project_dir, file_path, versions_to_fetch[1:])
 
-        # at this point diffs in the list might be in the wrong order
-        # we need to sort them by version in ascending order
-        if sort:
-            ver_regex = re.compile("\/v[0-9]+\/")
-            diffs.sort(key=lambda x: int(ver_regex.search(x)[0].strip("/").replace("v", "")))
+        # collect required versions from the cache
+        diffs = []
+        for v in versions_to_fetch[1:]:
+            diffs.append(mp.fpath_cache(file_history["history"][v]["diff"]["path"], v))
 
         # concatenate diffs, if needed
         output_dir = os.path.dirname(output_diff)
@@ -807,7 +796,8 @@ class MerginClient:
                 shutil.copy(diffs[0], output_diff)
 
     def download_file_diffs(self, project_dir, file_path, versions):
-        """ Download file diffs for specified versions.
+        """ Download file diffs for specified versions if they are not present
+        in the cache.
 
         :param project_dir: project local directory
         :type project_dir: String
