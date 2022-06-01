@@ -52,14 +52,14 @@ def decode_token_data(token):
 
 class MerginClient:
     """
-    Client for Mergin service.
+    Client for Mergin Maps service.
 
-    :param url: String, Mergin service URL.
-    :param auth_token: String, Mergin authorization token.
-    :param login: String, login for Mergin service.
-    :param password: String, password for Mergin service.
+    :param url: String, Mergin Maps service URL.
+    :param auth_token: String, Mergin Maps authorization token.
+    :param login: String, login for Mergin Maps service.
+    :param password: String, password for Mergin Maps service.
     :param plugin_version: String, info about plugin and QGIS version.
-    :param proxy_config: Dictionary, proxy settings to use when connecting to Mergin service. At least url and port
+    :param proxy_config: Dictionary, proxy settings to use when connecting to Mergin Maps service. At least url and port
         of the server should be provided. Expected keys: "url", "port", "user", "password".
         Currently, only HTTP proxies are supported.
     """
@@ -127,7 +127,7 @@ class MerginClient:
                 self.login(login, password)
 
     def setup_logging(self):
-        """Setup Mergin client logging."""
+        """Setup Mergin Maps client logging."""
         client_log_file = os.environ.get('MERGIN_CLIENT_LOG', None)
         self.log = logging.getLogger('mergin.client')
         self.log.setLevel(logging.DEBUG)  # log everything (it would otherwise log just warnings+errors)
@@ -137,14 +137,14 @@ class MerginClient:
                 log_handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
                 self.log.addHandler(log_handler)
             else:
-                # no Mergin log path in the environment - create a null handler that does nothing
+                # no Mergin Maps log path in the environment - create a null handler that does nothing
                 null_logger = logging.NullHandler()
                 self.log.addHandler(null_logger)
 
     @staticmethod
     def default_url():
-        """ Returns URL of the public instance of Mergin """
-        return "https://public.cloudmergin.com"
+        """ Returns URL of the public instance of Mergin Maps"""
+        return "https://app.merginmaps.com/"
 
     def user_agent_info(self):
         """ Returns string as it is sent as User-Agent http header to the server """
@@ -327,7 +327,7 @@ class MerginClient:
 
     def create_project(self, project_name, is_public=False, namespace=None):
         """
-        Create new project repository in user namespace on Mergin server.
+        Create new project repository in user namespace on Mergin Maps server.
         Optionally initialized from given local directory.
 
         :param project_name: Project name
@@ -359,7 +359,7 @@ class MerginClient:
         Convenience method to create project and push the initial version right after that.
         """
         if os.path.exists(os.path.join(directory, '.mergin')):
-            raise ClientError('Directory is already assigned to a Mergin project (contains .mergin sub-dir)')
+            raise ClientError('Directory is already assigned to a Mergin Maps project (contains .mergin sub-dir)')
 
         if namespace is None:
             namespace = self.username()
@@ -374,7 +374,7 @@ class MerginClient:
     def paginated_projects_list(self, page=1, per_page=50, tags=None, user=None, flag=None, name=None,
                                 namespace=None, order_params=None):
         """
-        Find all available mergin projects.
+        Find all available Mergin Maps projects.
 
         :param tags: Filter projects by tags ('valid_qgis', 'mappin_use', input_use')
         :type tags: List
@@ -425,7 +425,7 @@ class MerginClient:
 
     def projects_list(self, tags=None, user=None, flag=None, q=None):
         """
-        Find all available Mergin projects. It will always retrieve max 100 projects.
+        Find all available Mergin Maps projects. It will always retrieve max 100 projects.
         Consider using the paginated_projects_list instead.
 
         :param tags: Filter projects by tags ('valid_qgis', 'mappin_use', input_use')
@@ -731,7 +731,7 @@ class MerginClient:
         """ Returns JSON with projects' info for list of required projects.
         The schema of the returned information is the same as the response from projects_list().
 
-        This is useful when we have a couple of Mergin projects available locally and we want to
+        This is useful when we have a couple of Mergin Maps projects available locally and we want to
         find out their status at once (e.g. whether there is a new version on the server).
 
         :param projects: list of projects in the form 'namespace/project_name'

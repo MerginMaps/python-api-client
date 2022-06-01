@@ -2,10 +2,10 @@
 [![Auto Tests/Package](https://github.com/lutraconsulting/mergin-py-client/workflows/Auto%20Tests/badge.svg)](https://github.com/lutraconsulting/mergin-py-client/actions?query=workflow%3A%22Auto+Tests%22)
 [![Coverage Status](https://img.shields.io/coveralls/lutraconsulting/mergin-py-client.svg)](https://coveralls.io/github/lutraconsulting/mergin-py-client)
 
-# Mergin Python Client
+# Mergin Maps Python Client
 
-This repository contains a Python client module for access to [Mergin](https://public.cloudmergin.com/)
-service and a command-line tool for easy access to data stored in Mergin.
+This repository contains a Python client module for access to [Mergin Maps](https://app.merginmaps.com/)
+service and a command-line tool for easy access to data stored in Mergin Maps.
 
 <div><img align="left" width="45" height="45" src="https://raw.githubusercontent.com/MerginMaps/docs/main/src/.vuepress/public/slack.svg"><a href="https://merginmaps.com/community/join">Join our community chat</a><br/>and ask questions!</div><br />
 
@@ -43,7 +43,7 @@ When the module is installed, it comes with `mergin` command line tool.
 $ mergin --help
 Usage: mergin [OPTIONS] COMMAND [ARGS]...
 
-  Command line interface for the Mergin client module. For user
+  Command line interface for the Mergin Maps client module. For user
   authentication on server there are two options:
 
    1. authorization token environment variable (MERGIN_AUTH) is defined, or
@@ -55,8 +55,8 @@ Usage: mergin [OPTIONS] COMMAND [ARGS]...
   variable manually.
 
 Options:
-  --url TEXT         Mergin server URL. Default is:
-                     https://public.cloudmergin.com
+  --url TEXT         Mergin Maps server URL. Default is:
+                     https://app.merginmaps.com/
   --auth-token TEXT  Mergin authentication token string
   --username TEXT
   --password TEXT
@@ -64,13 +64,13 @@ Options:
 
 Commands:
   clone                Clone project from server.
-  create               Create a new project on Mergin server.
-  download             Download last version of mergin project
+  create               Create a new project on Mergin Maps server.
+  download             Download last version of Mergin Maps project
   download-file        Download project file at specified version.
   list-projects        List projects on the server
   login                Login to the service and see how to set the token...
-  pull                 Fetch changes from Mergin repository
-  push                 Upload local changes into Mergin repository
+  pull                 Fetch changes from Mergin Maps repository
+  push                 Upload local changes into Mergin Maps repository
   remove               Remove project from server.
   share                Fetch permissions to project
   share-add            Add permissions to [users] to project
@@ -101,11 +101,11 @@ working directory:
    ```
    $ mergin status
    ```
-2. pull changes from Mergin service
+2. pull changes from Mergin Maps service
    ```
    $ mergin pull
    ```
-3. push local changes to Mergin service
+3. push local changes to Mergin Maps service
    ```
    $ mergin push
    ```
@@ -130,7 +130,7 @@ it is possible to run other commands without specifying username/password.
 
 ## Development
 
-### How to release 
+### How to release
 
 1. Update version in `setup.py` and `mergin/version.py`
 2. Tag git repository with the new version
@@ -144,16 +144,16 @@ python3 -m twine upload dist/mergin-client-x.y.z.tar.gz
 ### Installing deps
 
 Python 3.7+ required. Create `mergin/deps` folder where [geodiff](https://github.com/lutraconsulting/geodiff) lib is supposed to be and install dependencies:
-```    
+```
     rm -r mergin/deps
     mkdir mergin/deps
-    pip install python-dateutil pytz 
+    pip install python-dateutil pytz
     pip install pygeodiff --target=mergin/deps
 ```
 
 For using mergin client with its dependencies packaged locally run:
 ```
-    pip install wheel 
+    pip install wheel
     python3 setup.py sdist bdist_wheel
     mkdir -p mergin/deps
     pip wheel -r mergin_client.egg-info/requires.txt -w mergin/deps
@@ -173,4 +173,4 @@ For running test do:
     export TEST_API_PASSWORD2=<pwd2>
     pip install pytest pytest-cov coveralls
     pytest --cov-report html --cov=mergin mergin/test/
-```    
+```

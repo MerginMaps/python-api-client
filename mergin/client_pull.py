@@ -97,7 +97,7 @@ def _cleanup_failed_download(directory, mergin_project=None):
     temporary files in it. We want to remove it because a new download would fail because
     the directory already exists.
     """
-    # First try to get the Mergin project logger and remove its handlers to allow the log file deletion
+    # First try to get the Mergin Maps project logger and remove its handlers to allow the log file deletion
     if mergin_project is not None:
         mergin_project.remove_logging_handler()
 
@@ -680,7 +680,7 @@ def download_diffs_async(mc, project_directory, file_path, versions):
     Args:
         mc (MerginClient): MerginClient instance.
         project_directory (str): local project directory.
-        file_path (str): file path relative to Mergin project root.
+        file_path (str): file path relative to Mergin Maps project root.
         versions (list): list of versions to download diffs for, e.g. ['v1', 'v2'].
 
     Returns:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Command line interface for the Mergin client module. When installed with pip, this script
+Command line interface for the Mergin Maps client module. When installed with pip, this script
 is installed as 'mergin' command line tool (defined in setup.py). If you have installed the module
 but the tool is not available, you may need to fix your PATH (e.g. add ~/.local/bin where
 pip puts these tools).
@@ -108,7 +108,7 @@ def get_token(url, username, password):
 
 
 def get_client(url=None, auth_token=None, username=None, password=None):
-    """Return Mergin client."""
+    """Return Mergin Maps client."""
     if auth_token is not None:
         try:
             mc = MerginClient(url, auth_token=auth_token)
@@ -148,15 +148,15 @@ def _print_unhandled_exception():
     "--url",
     envvar="MERGIN_URL",
     default=MerginClient.default_url(),
-    help=f"Mergin server URL. Default is: {MerginClient.default_url()}",
+    help=f"Mergin Maps server URL. Default is: {MerginClient.default_url()}",
 )
-@click.option("--auth-token", envvar="MERGIN_AUTH", help="Mergin authentication token string")
+@click.option("--auth-token", envvar="MERGIN_AUTH", help="Mergin Maps authentication token string")
 @click.option("--username", envvar="MERGIN_USERNAME")
 @click.option("--password", cls=OptionPasswordIfUser, prompt=True, hide_input=True, envvar="MERGIN_PASSWORD")
 @click.pass_context
 def cli(ctx, url, auth_token, username, password):
     """
-    Command line interface for the Mergin client module.
+    Command line interface for the Mergin Maps client module.
     For user authentication on server there are two options:
 
      1. authorization token environment variable (MERGIN_AUTH) is defined, or
@@ -188,7 +188,7 @@ def login(ctx):
                    "The directory will get assigned to the project.")
 @click.pass_context
 def create(ctx, project, public, from_dir):
-    """Create a new project on Mergin server. `project` needs to be a combination of namespace/project."""
+    """Create a new project on Mergin Maps server. `project` needs to be a combination of namespace/project."""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -393,7 +393,7 @@ def status(ctx):
 @cli.command()
 @click.pass_context
 def push(ctx):
-    """Upload local changes into Mergin repository."""
+    """Upload local changes into Mergin Maps repository."""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -425,7 +425,7 @@ def push(ctx):
 @cli.command()
 @click.pass_context
 def pull(ctx):
-    """Fetch changes from Mergin repository."""
+    """Fetch changes from Mergin Maps repository."""
     mc = ctx.obj["client"]
     if mc is None:
         return
