@@ -144,7 +144,7 @@ class MerginClient:
     @staticmethod
     def default_url():
         """ Returns URL of the public instance of Mergin Maps"""
-        return "https://app.merginmaps.com/"
+        return "https://app.merginmaps.com"
 
     def user_agent_info(self):
         """ Returns string as it is sent as User-Agent http header to the server """

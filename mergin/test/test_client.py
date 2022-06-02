@@ -44,7 +44,7 @@ def mc2():
 
 
 def create_client(user, pwd):
-    assert SERVER_URL and SERVER_URL.rstrip('/') != 'https://app.merginmaps.com/' and user and pwd
+    assert SERVER_URL and SERVER_URL.rstrip('/') != 'https://app.merginmaps.com' and user and pwd
     return MerginClient(SERVER_URL, login=user, password=pwd)
 
 
