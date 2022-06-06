@@ -36,7 +36,7 @@ except (ImportError, ModuleNotFoundError):
 
 
 class MerginProject:
-    """ Base class for Mergin local projects.
+    """ Base class for Mergin Maps local projects.
 
     Linked to existing local directory, with project metadata (mergin.json) and backups located in .mergin directory.
     """

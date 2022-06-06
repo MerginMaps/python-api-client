@@ -190,7 +190,7 @@ def conflicted_copy_file_name(path, user, version):
     :type path: str
     :param user: name of the user
     :type user: str
-    :param version: version of the mergin project
+    :param version: version of the Mergin Maps project
     :type version: str
     :returns: new file name
     :rtype: str
@@ -202,7 +202,7 @@ def conflicted_copy_file_name(path, user, version):
     ext = ''.join(Path(tail).suffixes)
     file_name = tail.replace(ext, '')
     # in case of QGIS project files we have to add "~" (tilde) to suffix
-    # to avoid having several QGIS project files inside Mergin project.
+    # to avoid having several QGIS project files inside Mergin Maps project.
     # See https://github.com/lutraconsulting/qgis-mergin-plugin/issues/382
     # for more details
     if ext.lower() in (".qgz", ".qgs"):
@@ -220,7 +220,7 @@ def edit_conflict_file_name(path, user, version):
     :type path: str
     :param user: name of the user
     :type user: str
-    :param version: version of the mergin project
+    :param version: version of the Mergin Maps project
     :type version: str
     :returns: new file name
     :rtype: str

@@ -44,7 +44,7 @@ def mc2():
 
 
 def create_client(user, pwd):
-    assert SERVER_URL and SERVER_URL.rstrip('/') != 'https://public.cloudmergin.com' and user and pwd
+    assert SERVER_URL and SERVER_URL.rstrip('/') != 'https://app.merginmaps.com' and user and pwd
     return MerginClient(SERVER_URL, login=user, password=pwd)
 
 
@@ -1681,7 +1681,7 @@ def test_report(mc):
     warnings = create_report(mc, directory, "v1", "v5", report_file)
     assert warnings
 
-    # rm local mergin project and try again
+    # rm local Mergin Maps project and try again
     shutil.rmtree(directory)
     with pytest.raises(InvalidProject):
         create_report(mc, directory, since, to, report_file)
