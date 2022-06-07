@@ -6,12 +6,12 @@ from setuptools import setup, find_packages
 setup(
     name='mergin-client',
     version='0.7.2',       # The version is also stored in mergin/version.py
-    url='https://github.com/lutraconsulting/mergin-py-client',
+    url='https://github.com/MerginMaps/mergin-py-client',
     license='MIT',
     author='Lutra Consulting Ltd.',
-    author_email='mergin@lutraconsulting.co.uk',
-    description='Mergin utils and client',
-    long_description='Mergin utils and client',
+    author_email='info@merginmaps.com',
+    description='Mergin Maps utils and client',
+    long_description='Mergin Maps utils and client',
 
     packages=find_packages(),
 

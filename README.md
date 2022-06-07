@@ -1,6 +1,6 @@
 [![PyPI version](https://badge.fury.io/py/mergin-client.svg)](https://badge.fury.io/py/mergin-client)
-[![Auto Tests/Package](https://github.com/lutraconsulting/mergin-py-client/workflows/Auto%20Tests/badge.svg)](https://github.com/lutraconsulting/mergin-py-client/actions?query=workflow%3A%22Auto+Tests%22)
-[![Coverage Status](https://img.shields.io/coveralls/lutraconsulting/mergin-py-client.svg)](https://coveralls.io/github/lutraconsulting/mergin-py-client)
+[![Auto Tests/Package](https://github.com/MerginMaps/mergin-py-client/workflows/Auto%20Tests/badge.svg)](https://github.com/MerginMaps/mergin-py-client/actions?query=workflow%3A%22Auto+Tests%22)
+[![Coverage Status](https://img.shields.io/coveralls/MerginMaps/mergin-py-client.svg)](https://coveralls.io/github/MerginMaps/mergin-py-client)
 
 # Mergin Maps Python Client
 
@@ -14,11 +14,11 @@ To install the module:
 
     pip3 install mergin-client
 
-Note: Check also [Mergin Cpp Client](https://github.com/lutraconsulting/mergin-cpp-client)
+Note: Check also [Mergin Maps Cpp Client](https://github.com/MerginMaps/mergin-cpp-client)
 
 ## Using Python API
 
-To use Mergin from Python, it is only needed to create `MerginClient` object and then use it:
+To use Mergin Maps from Python, it is only needed to create `MerginClient` object and then use it:
 
 ```python
 import mergin
@@ -27,7 +27,7 @@ client = mergin.MerginClient(login='john', password='topsecret')
 client.download_project('lutraconsulting/Basic survey', '/tmp/basic-survey')
 ```
 
-If you have Mergin plugin for QGIS installed and you want to use it from QGIS' Python console
+If you have Mergin Maps plugin for QGIS installed and you want to use it from QGIS' Python console
 
 ```python
 import Mergin.mergin as mergin
