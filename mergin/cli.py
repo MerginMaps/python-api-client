@@ -332,10 +332,8 @@ def download_file(ctx, filepath, output, version):
     mc = ctx.obj["client"]
     if mc is None:
         return
-    mp = MerginProject(os.getcwd())
-    project_path = mp.metadata["name"]
     try:
-        job = download_file_async(mc, project_path, filepath, output, version)
+        job = download_file_async(mc, os.getcwd(), filepath, output, version)
         with click.progressbar(length=job.total_size) as bar:
             last_transferred_size = 0
             while download_project_is_running(job):
@@ -377,7 +375,7 @@ def status(ctx):
         _print_unhandled_exception()
         return
 
-    if mc.has_unfinished_pull():
+    if mc.has_unfinished_pull(os.getcwd()):
         click.secho("The previous pull has not finished completely: status "
                     "of some files may be reported incorrectly. Use "
                     "resolve_unfinished_pull command to try to fix that.", fg="yellow")
