@@ -456,7 +456,7 @@ class MerginClient:
         page_i = 1
         fetched_projects = 0
         while True:
-            resp = mc.paginated_projects_list(
+            resp = self.paginated_projects_list(
                 page=page_i,
                 per_page=50,
                 tags=tags, 
