@@ -424,38 +424,6 @@ class MerginClient:
         projects = json.load(resp)
         return projects
 
-    def projects_list(self, tags=None, user=None, flag=None, q=None):
-        """
-        Find all available Mergin Maps projects. It will always retrieve max 100 projects.
-        Consider using the paginated_projects_list instead.
-
-        :param tags: Filter projects by tags ('valid_qgis', 'mappin_use', input_use')
-        :type tags: List
-
-        :param user: Username for 'flag' filter. If not provided, it means user executing request.
-        :type user: String
-
-        :param flag: Predefined filter flag ('created', 'shared')
-        :type flag: String
-
-        :param q: Search query string
-        :type q: String
-
-        :rtype: List[Dict]
-        """
-        params = {}
-        if tags:
-            params["tags"] = ",".join(tags)
-        if user:
-            params["user"] = user
-        if flag:
-            params["flag"] = flag
-        if q:
-            params["q"] = q
-        resp = self.get("/v1/project", params)
-        projects = json.load(resp)
-        return projects
-
     def project_info(self, project_path, since=None, version=None):
         """
         Fetch info about project.

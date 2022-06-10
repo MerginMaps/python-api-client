@@ -17,10 +17,10 @@ setup(
 
     platforms='any',
     install_requires=[
-        'python-dateutil==2.6.0',
-        'pygeodiff==1.0.5',
-        'pytz==2019.3',
-        'click',
+        'python-dateutil==2.8.2',
+        'pygeodiff==1.0.6',
+        'pytz==2022.1',
+        'click==8.1.3',
     ],
 
     entry_points={

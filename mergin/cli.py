@@ -228,11 +228,29 @@ def list_projects(ctx, flag):
     """List projects on the server."""
     filter_str = "(filter flag={})".format(flag) if flag is not None else "(all public)"
     click.echo("List of projects {}:".format(filter_str))
+
     mc = ctx.obj["client"]
     if mc is None:
         return
-    resp = mc.paginated_projects_list(flag=flag)
-    projects_list = resp["projects"]
+
+    projects_list = []
+    page_i = 1
+    fetched_projects = 0
+
+    while True:
+     resp = mc.paginated_projects_list(flag=flag, page=page_i)
+     fetched_projects += len(resp["projects"])
+     count = resp["count"]
+     projects_list += resp["projects"]
+     if fetched_projects < count:
+         if page_i == 2:
+             click.echo("Fetching {} projects .".format(count) , nl=False)
+         if page_i > 1:
+             click.echo(".", nl=False)
+         page_i += 1
+     else:
+         break
+
     for project in projects_list:
         full_name = "{} / {}".format(project["namespace"], project["name"])
         click.echo(

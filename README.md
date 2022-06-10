@@ -143,7 +143,7 @@ python3 -m twine upload dist/mergin-client-x.y.z.tar.gz
 
 ### Installing deps
 
-Python 3.7+ required. Create `mergin/deps` folder where [geodiff](https://github.com/lutraconsulting/geodiff) lib is supposed to be and install dependencies:
+Python 3.7+ required. Create `mergin/deps` folder where [geodiff](https://github.com/MerginMaps/geodiff) lib is supposed to be and install dependencies:
 ```
     rm -r mergin/deps
     mkdir mergin/deps
