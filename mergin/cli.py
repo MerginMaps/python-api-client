@@ -233,10 +233,10 @@ def create(ctx, project, public, from_dir):
 )
 @click.option(
     "--order_params",
-    help="optional attributes for sorting the list."
-         "It should be a comma separated attribute names"
-         "with _asc or _desc appended for sorting direction."
-         "For example: \"namespace_asc,disk_usage_desc\"."
+    help="optional attributes for sorting the list. "
+         "It should be a comma separated attribute names "
+         "with _asc or _desc appended for sorting direction. "
+         "For example: \"namespace_asc,disk_usage_desc\". "
          "Available attrs: namespace, name, created, updated, disk_usage, creator",
 )
 @click.pass_context
