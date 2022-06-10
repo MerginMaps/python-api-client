@@ -452,7 +452,7 @@ class MerginClient:
 
         :rtype: List[Dict]
         """
-        projects_list = []
+        projects = []
         page_i = 1
         fetched_projects = 0
         while True:
@@ -468,7 +468,7 @@ class MerginClient:
             )
             fetched_projects += len(resp["projects"])
             count = resp["count"]
-            projects_list += resp["projects"]
+            projects += resp["projects"]
             if fetched_projects < count:
                 page_i += 1
             else:
