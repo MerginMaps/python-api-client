@@ -424,6 +424,57 @@ class MerginClient:
         projects = json.load(resp)
         return projects
 
+    def projects_list(self, tags=None, user=None, flag=None, name=None, namespace=None, order_params=None):
+        """
+        Find all available Mergin Maps projects. 
+        
+        Calls paginated_projects_list for all pages. Can take significant time to fetch all pages. 
+
+        :param tags: Filter projects by tags ('valid_qgis', 'mappin_use', input_use')
+        :type tags: List
+
+        :param user: Username for 'flag' filter. If not provided, it means user executing request.
+        :type user: String
+
+        :param flag: Predefined filter flag ('created', 'shared')
+        :type flag: String
+
+        :param name: Filter projects with name like name
+        :type name: String
+
+        :param namespace: Filter projects with namespace like namespace
+        :type namespace: String
+
+        :param order_params: optional attributes for sorting the list. It should be a comma separated attribute names
+            with _asc or _desc appended for sorting direction. For example: "namespace_asc,disk_usage_desc".
+            Available attrs: namespace, name, created, updated, disk_usage, creator
+        :type order_params: String
+
+        :rtype: List[Dict]
+        """
+        projects_list = []
+        page_i = 1
+        fetched_projects = 0
+        while True:
+            resp = mc.paginated_projects_list(
+                page=page_i,
+                per_page=50,
+                tags=tags, 
+                user=user, 
+                flag=flag, 
+                name=name,
+                namespace=namespace, 
+                order_params=order_params
+            )
+            fetched_projects += len(resp["projects"])
+            count = resp["count"]
+            projects_list += resp["projects"]
+            if fetched_projects < count:
+                page_i += 1
+            else:
+                break
+        return projects
+
     def project_info(self, project_path, since=None, version=None):
         """
         Fetch info about project.

@@ -223,34 +223,41 @@ def create(ctx, project, public, from_dir):
     help="What kind of projects (e.g. 'created' for just my projects,"
     "'shared' for projects shared with me. No flag means returns all public projects.",
 )
+@click.option(
+    "--name",
+    help="Filter projects with name like name",
+)
+@click.option(
+    "--namespace",
+    help="Filter projects with namespace like namespace",
+)
+@click.option(
+    "--order_params",
+    help="optional attributes for sorting the list."
+         "It should be a comma separated attribute names"
+         "with _asc or _desc appended for sorting direction."
+         "For example: \"namespace_asc,disk_usage_desc\"."
+         "Available attrs: namespace, name, created, updated, disk_usage, creator",
+)
 @click.pass_context
-def list_projects(ctx, flag):
+def list_projects(ctx, flag, name, namespace, order_params):
     """List projects on the server."""
     filter_str = "(filter flag={})".format(flag) if flag is not None else "(all public)"
+    
     click.echo("List of projects {}:".format(filter_str))
 
     mc = ctx.obj["client"]
     if mc is None:
         return
 
-    projects_list = []
-    page_i = 1
-    fetched_projects = 0
-
-    while True:
-     resp = mc.paginated_projects_list(flag=flag, page=page_i)
-     fetched_projects += len(resp["projects"])
-     count = resp["count"]
-     projects_list += resp["projects"]
-     if fetched_projects < count:
-         if page_i == 2:
-             click.echo("Fetching {} projects .".format(count) , nl=False)
-         if page_i > 1:
-             click.echo(".", nl=False)
-         page_i += 1
-     else:
-         break
-
+    projects_list = mc.projects_list(                
+        flag=flag, 
+        name=name,
+        namespace=namespace, 
+        order_params=order_params
+    )
+    
+    click.echo("Fetched {} projects .".format(len(projects_list)))
     for project in projects_list:
         full_name = "{} / {}".format(project["namespace"], project["name"])
         click.echo(
