@@ -81,6 +81,8 @@ Commands:
   status               Show all changes in project files - upstream and...
 ```
 
+### Examples
+
 For example, to download a project:
 
 ```
@@ -89,6 +91,23 @@ $ mergin --username john download john/project1 ~/mergin/project1
 To download a specific version of a project:
 ```
 $ mergin --username john download --version v42 john/project1 ~/mergin/project1
+```
+
+To download a sepecific version of a single file:
+
+1. First you need to download the project:
+```
+mergin --username john download john/myproject
+```
+
+2. Go to the project directory
+```
+cd myproject
+```
+
+3. Download the version of a file you want:
+```
+mergin --username john download-file --version v273 myfile.gpkg /tmp/myfile-v273.gpkg
 ```
 
 If you do not want to specify username on the command line and be asked for you password every time,
