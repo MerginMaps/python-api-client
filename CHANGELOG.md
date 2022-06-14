@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.3
+
+- New default public server URL (#136)
+- Fix issues with files and changesets downloading (#140)
+- Fix handling of conflict files (MerginMaps/qgis-mergin-plugin#382)
+- CLI: Fix mergin-py-client list project (#133)
+- CLI: Fix individual file download (#140)
+
 ## 0.7.2
 
 - Reporting can be run without end version specified (lutraconsulting/qgis-mergin-plugin#365)
