@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='mergin-client',
-    version='0.7.2',       # The version is also stored in mergin/version.py
+    version='0.7.3',
     url='https://github.com/MerginMaps/mergin-py-client',
     license='MIT',
     author='Lutra Consulting Ltd.',
