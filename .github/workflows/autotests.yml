@@ -7,6 +7,10 @@ env:
   TEST_API_USERNAME2: test_plugin2
   TEST_API_PASSWORD2: ${{ secrets.MERGINTEST_API_PASSWORD2 }}
 
+concurrency:
+  group: ci-${{github.ref}}-autotests
+  cancel-in-progress: true
+  
 jobs:
   tests:
     runs-on: ubuntu-latest

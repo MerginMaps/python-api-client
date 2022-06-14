@@ -31,10 +31,8 @@ from mergin.client_pull import (
     download_project_finalize,
     download_project_is_running,
 )
-from mergin.client_pull import pull_project_async, pull_project_is_running, pull_project_finalize, \
-    pull_project_cancel
-from mergin.client_push import push_project_async, push_project_is_running, push_project_finalize, \
-    push_project_cancel
+from mergin.client_pull import pull_project_async, pull_project_is_running, pull_project_finalize, pull_project_cancel
+from mergin.client_push import push_project_async, push_project_is_running, push_project_finalize, push_project_cancel
 
 
 from pygeodiff import GeoDiff
@@ -143,7 +141,9 @@ def _print_unhandled_exception():
         click.echo(line)
 
 
-@click.group(epilog=f"Copyright (C) 2019-2021 Lutra Consulting\n\n(mergin-py-client v{__version__} / pygeodiff v{GeoDiff().version()})")
+@click.group(
+    epilog=f"Copyright (C) 2019-2021 Lutra Consulting\n\n(mergin-py-client v{__version__} / pygeodiff v{GeoDiff().version()})"
+)
 @click.option(
     "--url",
     envvar="MERGIN_URL",
@@ -183,9 +183,12 @@ def login(ctx):
 @cli.command()
 @click.argument("project")
 @click.option("--public", is_flag=True, default=False, help="Public project, visible to everyone")
-@click.option("--from-dir", default=None,
-              help="Content of the directory will be uploaded to the newly created project. "
-                   "The directory will get assigned to the project.")
+@click.option(
+    "--from-dir",
+    default=None,
+    help="Content of the directory will be uploaded to the newly created project. "
+    "The directory will get assigned to the project.",
+)
 @click.pass_context
 def create(ctx, project, public, from_dir):
     """Create a new project on Mergin Maps server. `project` needs to be a combination of namespace/project."""
@@ -234,29 +237,24 @@ def create(ctx, project, public, from_dir):
 @click.option(
     "--order_params",
     help="optional attributes for sorting the list. "
-         "It should be a comma separated attribute names "
-         "with _asc or _desc appended for sorting direction. "
-         "For example: \"namespace_asc,disk_usage_desc\". "
-         "Available attrs: namespace, name, created, updated, disk_usage, creator",
+    "It should be a comma separated attribute names "
+    "with _asc or _desc appended for sorting direction. "
+    'For example: "namespace_asc,disk_usage_desc". '
+    "Available attrs: namespace, name, created, updated, disk_usage, creator",
 )
 @click.pass_context
 def list_projects(ctx, flag, name, namespace, order_params):
     """List projects on the server."""
     filter_str = "(filter flag={})".format(flag) if flag is not None else "(all public)"
-    
+
     click.echo("List of projects {}:".format(filter_str))
 
     mc = ctx.obj["client"]
     if mc is None:
         return
 
-    projects_list = mc.projects_list(                
-        flag=flag, 
-        name=name,
-        namespace=namespace, 
-        order_params=order_params
-    )
-    
+    projects_list = mc.projects_list(flag=flag, name=name, namespace=namespace, order_params=order_params)
+
     click.echo("Fetched {} projects .".format(len(projects_list)))
     for project in projects_list:
         full_name = "{} / {}".format(project["namespace"], project["name"])
@@ -401,9 +399,12 @@ def status(ctx):
         return
 
     if mc.has_unfinished_pull(os.getcwd()):
-        click.secho("The previous pull has not finished completely: status "
-                    "of some files may be reported incorrectly. Use "
-                    "resolve_unfinished_pull command to try to fix that.", fg="yellow")
+        click.secho(
+            "The previous pull has not finished completely: status "
+            "of some files may be reported incorrectly. Use "
+            "resolve_unfinished_pull command to try to fix that.",
+            fg="yellow",
+        )
 
     click.secho("### Server changes:", fg="magenta")
     pretty_diff(pull_changes)
@@ -526,7 +527,7 @@ def show_file_history(ctx, path):
 @click.argument("version")
 @click.pass_context
 def show_file_changeset(ctx, path, version):
-    """ Displays information about project changes."""
+    """Displays information about project changes."""
     mc = ctx.obj["client"]
     if mc is None:
         return

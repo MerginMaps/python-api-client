@@ -42,7 +42,7 @@ def decode_token_data(token):
     if not token.startswith(token_prefix):
         raise TokenError(f"Token doesn't start with 'Bearer .': {token}")
     try:
-        data = token[len(token_prefix):].split('.')[0]
+        data = token[len(token_prefix) :].split(".")[0]
         # add proper base64 padding"
         data += "=" * (-len(data) % 4)
         decoded = zlib.decompress(base64.urlsafe_b64decode(data))
@@ -64,13 +64,14 @@ class MerginClient:
         of the server should be provided. Expected keys: "url", "port", "user", "password".
         Currently, only HTTP proxies are supported.
     """
+
     def __init__(self, url=None, auth_token=None, login=None, password=None, plugin_version=None, proxy_config=None):
         self.url = url if url is not None else MerginClient.default_url()
         self._auth_params = None
         self._auth_session = None
         self._user_info = None
         self.client_version = "Python-client/" + __version__
-        if plugin_version is not None:   # this could be e.g. "Plugin/2020.1 QGIS/3.14"
+        if plugin_version is not None:  # this could be e.g. "Plugin/2020.1 QGIS/3.14"
             self.client_version += " " + plugin_version
         self.setup_logging()
         if auth_token:
@@ -90,7 +91,9 @@ class MerginClient:
             if proxy_config["user"] and proxy_config["password"]:
                 handlers.append(
                     urllib.request.ProxyHandler(
-                        {"https": f"{proxy_config['user']}:{proxy_config['password']}@{proxy_url}:{proxy_config['port']}"}
+                        {
+                            "https": f"{proxy_config['user']}:{proxy_config['password']}@{proxy_url}:{proxy_config['port']}"
+                        }
                     )
                 )
                 handlers.append(urllib.request.HTTPBasicAuthHandler())
@@ -105,7 +108,7 @@ class MerginClient:
         if os.path.exists(default_capath):
             self.opener = urllib.request.build_opener(*handlers, urllib.request.HTTPSHandler())
         else:
-            cafile = os.path.join(this_dir, 'cert.pem')
+            cafile = os.path.join(this_dir, "cert.pem")
             if not os.path.exists(cafile):
                 raise Exception("missing " + cafile)
             ctx = ssl.SSLContext()
@@ -120,22 +123,19 @@ class MerginClient:
             raise ClientError("Unable to log in: password provided but no username/email")
 
         if login and password:
-            self._auth_params = {
-                "login": login,
-                "password": password
-            }
+            self._auth_params = {"login": login, "password": password}
             if not self._auth_session:
                 self.login(login, password)
 
     def setup_logging(self):
         """Setup Mergin Maps client logging."""
-        client_log_file = os.environ.get('MERGIN_CLIENT_LOG', None)
-        self.log = logging.getLogger('mergin.client')
+        client_log_file = os.environ.get("MERGIN_CLIENT_LOG", None)
+        self.log = logging.getLogger("mergin.client")
         self.log.setLevel(logging.DEBUG)  # log everything (it would otherwise log just warnings+errors)
         if not self.log.handlers:
             if client_log_file:
                 log_handler = logging.FileHandler(client_log_file)
-                log_handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
+                log_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
                 self.log.addHandler(log_handler)
             else:
                 # no Mergin Maps log path in the environment - create a null handler that does nothing
@@ -144,15 +144,16 @@ class MerginClient:
 
     @staticmethod
     def default_url():
-        """ Returns URL of the public instance of Mergin Maps"""
+        """Returns URL of the public instance of Mergin Maps"""
         return "https://app.merginmaps.com"
 
     def user_agent_info(self):
-        """ Returns string as it is sent as User-Agent http header to the server """
+        """Returns string as it is sent as User-Agent http header to the server"""
         system_version = "Unknown"
         if platform.system() == "Linux":
             try:
                 from pip._vendor import distro
+
                 system_version = distro.linux_distribution()[0]
             except ModuleNotFoundError:  # pip may not be installed...
                 system_version = "Linux"
@@ -164,6 +165,7 @@ class MerginClient:
 
     def _check_token(f):
         """Wrapper for creating/renewing authorization token."""
+
         def wrapper(self, *args):
             if self._auth_params:
                 if self._auth_session:
@@ -175,8 +177,9 @@ class MerginClient:
                 else:
                     # Create a new authorization token
                     self.log.info(f"No token - login user: {self._auth_params['login']}")
-                    self.login(self._auth_params['login'], self._auth_params['password'])
+                    self.login(self._auth_params["login"], self._auth_params["password"])
             return f(self, *args)
+
         return wrapper
 
     @_check_token
@@ -219,9 +222,9 @@ class MerginClient:
         """
         resp = self.get("/ping")
         data = json.load(resp)
-        if 'endpoints' not in data:
+        if "endpoints" not in data:
             return False
-        endpoints = data['endpoints']
+        endpoints = data["endpoints"]
 
         client_endpoints = {
             "data_sync": {
@@ -230,21 +233,19 @@ class MerginClient:
                     "/project/push/cancel/{transaction_id}",
                     "/project/push/finish/{transaction_id}",
                     "/project/push/{namespace}/{project_name}",
-                   # "/project/push/chunk/{transaction_id}/{chunk_id}" # issue in server
-                ]
+                    # "/project/push/chunk/{transaction_id}/{chunk_id}" # issue in server
+                ],
             },
             "project": {
                 "DELETE": ["/project/{namespace}/{project_name}"],
                 "GET": [
                     "/project",
                     "/project/{namespace}/{project_name}",
-                    "/project/version/{namespace}/{project_name}"
+                    "/project/version/{namespace}/{project_name}",
                 ],
-                "POST": ["/project/{namespace}"]
+                "POST": ["/project/{namespace}"],
             },
-            "user": {
-                "POST": ["/auth/login"]
-            }
+            "user": {"POST": ["/auth/login"]},
         }
 
         for k, v in client_endpoints.items():
@@ -268,10 +269,7 @@ class MerginClient:
         :param password: User's password
         :type password: String
         """
-        params = {
-            "login": login,
-            "password": password
-        }
+        params = {"login": login, "password": password}
         self._auth_session = None
         self.log.info(f"Going to log in user {login}")
         try:
@@ -295,16 +293,14 @@ class MerginClient:
             raise ClientError("failure reason: " + str(e.reason))
         self._auth_session = {
             "token": "Bearer %s" % session["token"],
-            "expire": dateutil.parser.parse(session["expire"])
+            "expire": dateutil.parser.parse(session["expire"]),
         }
-        self._user_info = {
-            "username": data["username"]
-        }
+        self._user_info = {"username": data["username"]}
         self.log.info(f"User {data['username']} successfully logged in.")
         return session
 
     def username(self):
-        """ Returns user name used in this session or None if not authenticated """
+        """Returns user name used in this session or None if not authenticated"""
         if not self._user_info:
             return None  # not authenticated
         return self._user_info["username"]
@@ -343,10 +339,7 @@ class MerginClient:
         if not self._user_info:
             raise Exception("Authentication required")
 
-        params = {
-            "name": project_name,
-            "public": is_public
-        }
+        params = {"name": project_name, "public": is_public}
         if namespace is None:
             namespace = self.username()
         try:
@@ -359,8 +352,8 @@ class MerginClient:
         """
         Convenience method to create project and push the initial version right after that.
         """
-        if os.path.exists(os.path.join(directory, '.mergin')):
-            raise ClientError('Directory is already assigned to a Mergin Maps project (contains .mergin sub-dir)')
+        if os.path.exists(os.path.join(directory, ".mergin")):
+            raise ClientError("Directory is already assigned to a Mergin Maps project (contains .mergin sub-dir)")
 
         if namespace is None:
             namespace = self.username()
@@ -372,8 +365,9 @@ class MerginClient:
             if mp.inspect_files():
                 self.push_project(directory)
 
-    def paginated_projects_list(self, page=1, per_page=50, tags=None, user=None, flag=None, name=None,
-                                namespace=None, order_params=None):
+    def paginated_projects_list(
+        self, page=1, per_page=50, tags=None, user=None, flag=None, name=None, namespace=None, order_params=None
+    ):
         """
         Find all available Mergin Maps projects.
 
@@ -426,9 +420,9 @@ class MerginClient:
 
     def projects_list(self, tags=None, user=None, flag=None, name=None, namespace=None, order_params=None):
         """
-        Find all available Mergin Maps projects. 
-        
-        Calls paginated_projects_list for all pages. Can take significant time to fetch all pages. 
+        Find all available Mergin Maps projects.
+
+        Calls paginated_projects_list for all pages. Can take significant time to fetch all pages.
 
         :param tags: Filter projects by tags ('valid_qgis', 'mappin_use', input_use')
         :type tags: List
@@ -459,12 +453,12 @@ class MerginClient:
             resp = self.paginated_projects_list(
                 page=page_i,
                 per_page=50,
-                tags=tags, 
-                user=user, 
-                flag=flag, 
+                tags=tags,
+                user=user,
+                flag=flag,
                 name=name,
-                namespace=namespace, 
-                order_params=order_params
+                namespace=namespace,
+                order_params=order_params,
             )
             fetched_projects += len(resp["projects"])
             count = resp["count"]
@@ -487,10 +481,10 @@ class MerginClient:
         :type version: String
         :rtype: Dict
         """
-        params = {'since': since} if since else {}
+        params = {"since": since} if since else {}
         # since and version are mutually exclusive
         if version:
-            params = {'version': version}
+            params = {"version": version}
         resp = self.get("/v1/project/{}".format(project_path), params)
         return json.load(resp)
 
@@ -515,26 +509,18 @@ class MerginClient:
         start_page = math.ceil(num_since / per_page)
         if not num_to:
             # let's get first page and count
-            params = {
-                "page": start_page,
-                "per_page": per_page,
-                "descending": False
-            }
+            params = {"page": start_page, "per_page": per_page, "descending": False}
             resp = self.get("/v1/project/versions/paginated/{}".format(project_path), params)
             resp_json = json.load(resp)
             versions = resp_json["versions"]
-            num_to = resp_json['count']
+            num_to = resp_json["count"]
             latest_version = int_version(versions[-1]["name"])
             if latest_version < num_to:
                 versions += self.project_versions(project_path, f"v{latest_version+1}", f"v{num_to}")
         else:
             end_page = math.ceil(num_to / per_page)
-            for page in range(start_page, end_page+1):
-                params = {
-                    "page": page,
-                    "per_page": per_page,
-                    "descending": False
-                }
+            for page in range(start_page, end_page + 1):
+                params = {"page": page, "per_page": per_page, "descending": False}
                 resp = self.get("/v1/project/versions/paginated/{}".format(project_path), params)
                 versions += json.load(resp)["versions"]
 
@@ -571,7 +557,7 @@ class MerginClient:
         return True, free_space
 
     def user_info(self):
-        resp = self.get('/v1/user/' + self.username())
+        resp = self.get("/v1/user/" + self.username())
         return json.load(resp)
 
     def set_project_access(self, project_path, access):
@@ -586,7 +572,7 @@ class MerginClient:
         params = {"access": access}
         path = "/v1/project/%s" % project_path
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
-        json_headers = {'Content-Type': 'application/json'}
+        json_headers = {"Content-Type": "application/json"}
         try:
             request = urllib.request.Request(url, data=json.dumps(params).encode(), headers=json_headers, method="PUT")
             self._do_request(request)
@@ -605,7 +591,7 @@ class MerginClient:
             raise ClientError("Unsupported permission level")
 
         project_info = self.project_info(project_path)
-        access = project_info.get('access')
+        access = project_info.get("access")
         for name in usernames:
             if permission_level == "owner":
                 access.get("ownersnames").append(name)
@@ -617,12 +603,12 @@ class MerginClient:
 
     def remove_user_permissions_from_project(self, project_path, usernames):
         """
-       Removes specified users from project
-       :param project_path: project full name (<namespace>/<name>)
-       :param usernames: list of usernames to be granted specified permission level
-       """
+        Removes specified users from project
+        :param project_path: project full name (<namespace>/<name>)
+        :param usernames: list of usernames to be granted specified permission level
+        """
         project_info = self.project_info(project_path)
-        access = project_info.get('access')
+        access = project_info.get("access")
         for name in usernames:
             if name in access.get("ownersnames"):
                 access.get("ownersnames").remove(name)
@@ -634,14 +620,14 @@ class MerginClient:
 
     def project_user_permissions(self, project_path):
         """
-       Returns permissions for project
-       :param project_path: project full name (<namespace>/<name>)
-       :return dict("owners": list(usernames),
-                    "writers": list(usernames),
-                    "readers": list(usernames))
-       """
+        Returns permissions for project
+        :param project_path: project full name (<namespace>/<name>)
+        :return dict("owners": list(usernames),
+                     "writers": list(usernames),
+                     "readers": list(usernames))
+        """
         project_info = self.project_info(project_path)
-        access = project_info.get('access')
+        access = project_info.get("access")
         result = {}
         result["owners"] = access.get("ownersnames")
         result["writers"] = access.get("writersnames")
@@ -657,7 +643,7 @@ class MerginClient:
         """
         job = push_project_async(self, directory)
         if job is None:
-            return   # there is nothing to push (or we only deleted some files)
+            return  # there is nothing to push (or we only deleted some files)
         push_project_wait(job)
         push_project_finalize(job)
 
@@ -670,7 +656,7 @@ class MerginClient:
         """
         job = pull_project_async(self, directory)
         if job is None:
-            return   # project is up to date
+            return  # project is up to date
         pull_project_wait(job)
         return pull_project_finalize(job)
 
@@ -687,10 +673,10 @@ class MerginClient:
         """
         path = "/v1/project/clone/%s" % source_project_path
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
-        json_headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
+        json_headers = {"Content-Type": "application/json", "Accept": "application/json"}
         data = {
-            'namespace': cloned_project_namespace if cloned_project_namespace else self.username(),
-            'project': cloned_project_name
+            "namespace": cloned_project_namespace if cloned_project_namespace else self.username(),
+            "project": cloned_project_name,
         }
 
         request = urllib.request.Request(url, data=json.dumps(data).encode(), headers=json_headers, method="POST")
@@ -730,25 +716,25 @@ class MerginClient:
         return pull_changes, push_changes, push_changes_summary
 
     def project_version_info(self, project_path, version):
-        """ Returns JSON with detailed information about a single project version"""
-        params = {'version_id': version}
+        """Returns JSON with detailed information about a single project version"""
+        params = {"version_id": version}
         resp = self.get("/v1/project/version/{}".format(project_path), params)
         return json.load(resp)
 
     def project_file_history_info(self, project_path, file_path):
-        """ Returns JSON with full history of a single file within a project """
-        params = {'path': file_path}
+        """Returns JSON with full history of a single file within a project"""
+        params = {"path": file_path}
         resp = self.get("/v1/resource/history/{}".format(project_path), params)
         return json.load(resp)
 
     def project_file_changeset_info(self, project_path, file_path, version):
-        """ Returns JSON with changeset details of a particular version of a file within a project """
-        params = {'path': file_path}
+        """Returns JSON with changeset details of a particular version of a file within a project"""
+        params = {"path": file_path}
         resp = self.get("/v1/resource/changesets/{}/{}".format(project_path, version), params)
         return json.load(resp)
 
     def get_projects_by_names(self, projects):
-        """ Returns JSON with projects' info for list of required projects.
+        """Returns JSON with projects' info for list of required projects.
         The schema of the returned information is the same as the response from projects_list().
 
         This is useful when we have a couple of Mergin Maps projects available locally and we want to
@@ -779,7 +765,7 @@ class MerginClient:
         download_file_finalize(job)
 
     def get_file_diff(self, project_dir, file_path, output_diff, version_from, version_to):
-        """ Create concatenated diff for project file diffs between versions version_from and version_to.
+        """Create concatenated diff for project file diffs between versions version_from and version_to.
 
         :param project_dir: project local directory
         :type project_dir: String
@@ -815,7 +801,7 @@ class MerginClient:
                 shutil.copy(diffs[0], output_diff)
 
     def download_file_diffs(self, project_dir, file_path, versions):
-        """ Download file diffs for specified versions if they are not present
+        """Download file diffs for specified versions if they are not present
         in the cache.
 
         :param project_dir: project local directory

@@ -10,8 +10,13 @@ from .merginproject import MerginProject, pygeodiff
 from .utils import int_version
 
 try:
-    from qgis.core import QgsGeometry, QgsDistanceArea, QgsCoordinateReferenceSystem, QgsCoordinateTransformContext, \
-        QgsWkbTypes
+    from qgis.core import (
+        QgsGeometry,
+        QgsDistanceArea,
+        QgsCoordinateReferenceSystem,
+        QgsCoordinateTransformContext,
+        QgsWkbTypes,
+    )
 
     has_qgis = True
 except ImportError:
@@ -22,7 +27,7 @@ except ImportError:
 # in geodiff lib (MIT licence)
 # ideally there should be pygeodiff api for it
 def parse_gpkgb_header_size(gpkg_wkb):
-    """ Parse header of geopackage wkb and return its size """
+    """Parse header of geopackage wkb and return its size"""
     # some constants
     no_envelope_header_size = 8
     flag_byte_pos = 3
@@ -58,7 +63,7 @@ def qgs_geom_from_wkb(geom):
 
 
 class ChangesetReportEntry:
-    """ Derivative of geodiff ChangesetEntry suitable for further processing/reporting """
+    """Derivative of geodiff ChangesetEntry suitable for further processing/reporting"""
 
     def __init__(self, changeset_entry, geom_idx, geom, qgs_distance_area=None):
         self.table = changeset_entry.table.name
@@ -126,7 +131,7 @@ class ChangesetReportEntry:
 
 
 def changeset_report(changeset_reader, schema, mp):
-    """ Parse Geodiff changeset reader and create report from it.
+    """Parse Geodiff changeset reader and create report from it.
     Aggregate individual entries based on common table, operation and geom type.
     If QGIS API is available, then lengths and areas of individual entries are summed.
 
@@ -150,7 +155,7 @@ def changeset_report(changeset_reader, schema, mp):
 
     if has_qgis:
         distance_area = QgsDistanceArea()
-        distance_area.setEllipsoid('WGS84')
+        distance_area.setEllipsoid("WGS84")
     else:
         distance_area = None
     # let's iterate through reader and populate entries
@@ -158,8 +163,9 @@ def changeset_report(changeset_reader, schema, mp):
         schema_table = next((t for t in schema if t["table"] == entry.table.name), None)
         if schema_table:
             # get geometry index in both gpkg schema and diffs values
-            geom_idx = next((index for (index, col) in enumerate(schema_table["columns"]) if col["type"] == "geometry"),
-                            None)
+            geom_idx = next(
+                (index for (index, col) in enumerate(schema_table["columns"]) if col["type"] == "geometry"), None
+            )
             if geom_idx is None:
                 continue
 
@@ -183,18 +189,12 @@ def changeset_report(changeset_reader, schema, mp):
             # sum lenghts and areas only if it makes sense (valid dimension)
             area = sum([entry.area for entry in values if entry.area]) if values[0].dim == 2 else None
             length = sum([entry.length for entry in values if entry.length]) if values[0].dim > 0 else None
-            records.append({
-                "table": table,
-                "operation": k[0],
-                "length": length,
-                "area": area,
-                "count": len(values)
-            })
+            records.append({"table": table, "operation": k[0], "length": length, "area": area, "count": len(values)})
     return records
 
 
 def create_report(mc, directory, since, to, out_file):
-    """ Creates report from geodiff changesets for a range of project versions in CSV format.
+    """Creates report from geodiff changesets for a range of project versions in CSV format.
 
     Report is created for all .gpkg files and all tables within where updates were done using Geodiff lib.
     Changeset contains operation (insert/update/delete) and geometry properties like length/perimeter and area.
@@ -248,22 +248,22 @@ def create_report(mc, directory, since, to, out_file):
                 mc.download_file(directory, f["path"], full_gpkg, to)
 
             # get gpkg schema
-            schema_file = full_gpkg + '-schema.json'  # geodiff writes schema into a file
+            schema_file = full_gpkg + "-schema.json"  # geodiff writes schema into a file
             if not os.path.exists(schema_file):
                 mp.geodiff.schema("sqlite", "", full_gpkg, schema_file)
-            with open(schema_file, 'r') as sf:
+            with open(schema_file, "r") as sf:
                 schema = json.load(sf).get("geodiff_schema")
 
             # add records for every version (diff) and all tables within geopackage
             for version in history_keys:
-                if "diff" not in f['history'][version]:
-                    if f['history'][version]["change"] == "updated":
+                if "diff" not in f["history"][version]:
+                    if f["history"][version]["change"] == "updated":
                         warnings.append(f"Missing diff: {f['path']} was overwritten in {version} - broken diff history")
                     else:
                         warnings.append(f"Missing diff: {f['path']} was {f['history'][version]['change']} in {version}")
                     continue
 
-                v_diff_file = mp.fpath_cache(f['history'][version]['diff']['path'], version=version)
+                v_diff_file = mp.fpath_cache(f["history"][version]["diff"]["path"], version=version)
                 version_data = versions_map[version]
                 cr = mp.geodiff.read_changeset(v_diff_file)
                 report = changeset_report(cr, schema, mp)
@@ -274,7 +274,7 @@ def create_report(mc, directory, since, to, out_file):
                     "author": version_data["author"],
                     "date": dt.date().isoformat(),
                     "time": dt.time().isoformat(),
-                    "version": version_data["name"]
+                    "version": version_data["name"],
                 }
                 for row in report:
                     records.append({**row, **version_fields})
@@ -286,7 +286,7 @@ def create_report(mc, directory, since, to, out_file):
     # export report to csv file
     out_dir = os.path.dirname(out_file)
     os.makedirs(out_dir, exist_ok=True)
-    with open(out_file, 'w', newline='') as f_csv:
+    with open(out_file, "w", newline="") as f_csv:
         writer = csv.DictWriter(f_csv, fieldnames=headers)
         writer.writeheader()
         writer.writerows(records)
