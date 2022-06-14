@@ -11,5 +11,6 @@ cursor = con.cursor()
 while True:
     cmd = input()
     sys.stderr.write(cmd + "\n")
-    if cmd == 'stop': break
+    if cmd == "stop":
+        break
     cursor.execute(cmd)
