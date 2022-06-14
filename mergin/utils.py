@@ -18,7 +18,7 @@ def generate_checksum(file, chunk_size=4096):
     :return: sha1 checksum
     """
     checksum = hashlib.sha1()
-    with open(file, 'rb') as f:
+    with open(file, "rb") as f:
         while True:
             chunk = f.read(chunk_size)
             if not chunk:
@@ -35,7 +35,7 @@ def save_to_file(stream, path):
     directory = os.path.abspath(os.path.dirname(path))
     os.makedirs(directory, exist_ok=True)
 
-    with open(path, 'wb') as output:
+    with open(path, "wb") as output:
         writer = io.BufferedWriter(output, buffer_size=32768)
         while True:
             part = stream.read(4096)
@@ -67,8 +67,8 @@ def find(items, fn):
 
 
 def int_version(version):
-    """ Convert v<n> format of version to integer representation. """
-    return int(version.lstrip('v')) if re.match(r'v\d', version) else None
+    """Convert v<n> format of version to integer representation."""
+    return int(version.lstrip("v")) if re.match(r"v\d", version) else None
 
 
 def do_sqlite_checkpoint(path, log=None):
@@ -84,7 +84,7 @@ def do_sqlite_checkpoint(path, log=None):
     """
     new_size = None
     new_checksum = None
-    if ".gpkg" in path and os.path.exists(f'{path}-wal'):
+    if ".gpkg" in path and os.path.exists(f"{path}-wal"):
         if log:
             log.info("checkpoint - going to add it in " + path)
         conn = sqlite3.connect(path)
@@ -103,8 +103,7 @@ def do_sqlite_checkpoint(path, log=None):
     return new_size, new_checksum
 
 
-def get_versions_with_file_changes(
-        mc, project_path, file_path, version_from=None, version_to=None, file_history=None):
+def get_versions_with_file_changes(mc, project_path, file_path, version_from=None, version_to=None, file_history=None):
     """
     Get the project version tags where the file was added, modified or deleted.
 
@@ -145,7 +144,7 @@ def get_versions_with_file_changes(
         elif version == version_to:
             idx_to = idx
             break
-    return [f"v{ver_nr}" for ver_nr in all_version_numbers[idx_from:idx_to + 1]]
+    return [f"v{ver_nr}" for ver_nr in all_version_numbers[idx_from : idx_to + 1]]
 
 
 def unique_path_name(path):
@@ -165,8 +164,8 @@ def unique_path_name(path):
 
     is_dir = os.path.isdir(path)
     head, tail = os.path.split(os.path.normpath(path))
-    ext = ''.join(Path(tail).suffixes)
-    file_name = tail.replace(ext, '')
+    ext = "".join(Path(tail).suffixes)
+    file_name = tail.replace(ext, "")
 
     i = 0
     while os.path.exists(unique_path):
@@ -196,17 +195,17 @@ def conflicted_copy_file_name(path, user, version):
     :rtype: str
     """
     if not path:
-        return ''
+        return ""
 
     head, tail = os.path.split(os.path.normpath(path))
-    ext = ''.join(Path(tail).suffixes)
-    file_name = tail.replace(ext, '')
+    ext = "".join(Path(tail).suffixes)
+    file_name = tail.replace(ext, "")
     # in case of QGIS project files we have to add "~" (tilde) to suffix
     # to avoid having several QGIS project files inside Mergin Maps project.
     # See https://github.com/lutraconsulting/qgis-mergin-plugin/issues/382
     # for more details
     if ext.lower() in (".qgz", ".qgs"):
-        ext += '~'
+        ext += "~"
     return os.path.join(head, file_name) + f" (conflicted copy, {user} v{version}){ext}"
 
 
@@ -226,9 +225,9 @@ def edit_conflict_file_name(path, user, version):
     :rtype: str
     """
     if not path:
-        return ''
+        return ""
 
     head, tail = os.path.split(os.path.normpath(path))
-    ext = ''.join(Path(tail).suffixes)
-    file_name = tail.replace(ext, '')
+    ext = "".join(Path(tail).suffixes)
+    file_name = tail.replace(ext, "")
     return os.path.join(head, file_name) + f" (edit conflict, {user} v{version}).json"

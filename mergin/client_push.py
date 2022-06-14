@@ -20,22 +20,22 @@ from .merginproject import MerginProject
 
 
 class UploadJob:
-    """ Keeps all the important data about a pending upload job """
+    """Keeps all the important data about a pending upload job"""
 
     def __init__(self, project_path, changes, transaction_id, mp, mc, tmp_dir):
-        self.project_path = project_path       # full project name ("username/projectname")
-        self.changes = changes                 # dictionary of local changes to the project
-        self.transaction_id = transaction_id   # ID of the transaction assigned by the server
-        self.total_size = 0                    # size of data to upload (in bytes)
-        self.transferred_size = 0              # size of data already uploaded (in bytes)
-        self.upload_queue_items = []           # list of items to upload in the background
-        self.mp = mp                           # MerginProject instance
-        self.mc = mc                           # MerginClient instance
-        self.tmp_dir = tmp_dir                 # TemporaryDirectory instance for any temp file we need
-        self.is_cancelled = False              # whether upload has been cancelled
-        self.executor = None                   # ThreadPoolExecutor that manages background upload tasks
-        self.futures = []                      # list of futures submitted to the executor
-        self.server_resp = None                # server response when transaction is finished
+        self.project_path = project_path  # full project name ("username/projectname")
+        self.changes = changes  # dictionary of local changes to the project
+        self.transaction_id = transaction_id  # ID of the transaction assigned by the server
+        self.total_size = 0  # size of data to upload (in bytes)
+        self.transferred_size = 0  # size of data already uploaded (in bytes)
+        self.upload_queue_items = []  # list of items to upload in the background
+        self.mp = mp  # MerginProject instance
+        self.mc = mc  # MerginClient instance
+        self.tmp_dir = tmp_dir  # TemporaryDirectory instance for any temp file we need
+        self.is_cancelled = False  # whether upload has been cancelled
+        self.executor = None  # ThreadPoolExecutor that manages background upload tasks
+        self.futures = []  # list of futures submitted to the executor
+        self.server_resp = None  # server response when transaction is finished
 
     def dump(self):
         print("--- JOB ---", self.total_size, "bytes")
@@ -45,18 +45,18 @@ class UploadJob:
 
 
 class UploadQueueItem:
-    """ A single chunk of data that needs to be uploaded """
+    """A single chunk of data that needs to be uploaded"""
 
     def __init__(self, file_path, size, transaction_id, chunk_id, chunk_index):
-        self.file_path = file_path            # full path to the file
-        self.size = size                      # size of the chunk in bytes
-        self.chunk_id = chunk_id              # ID of the chunk within transaction
-        self.chunk_index = chunk_index        # index (starting from zero) of the chunk within the file
+        self.file_path = file_path  # full path to the file
+        self.size = size  # size of the chunk in bytes
+        self.chunk_id = chunk_id  # ID of the chunk within transaction
+        self.chunk_index = chunk_index  # index (starting from zero) of the chunk within the file
         self.transaction_id = transaction_id  # ID of the transaction
 
     def upload_blocking(self, mc, mp):
 
-        with open(self.file_path, 'rb') as file_handle:
+        with open(self.file_path, "rb") as file_handle:
             file_handle.seek(self.chunk_index * UPLOAD_CHUNK_SIZE)
             data = file_handle.read(UPLOAD_CHUNK_SIZE)
 
@@ -69,7 +69,7 @@ class UploadQueueItem:
             resp = mc.post("/v1/project/push/chunk/{}/{}".format(self.transaction_id, self.chunk_id), data, headers)
             resp_dict = json.load(resp)
             mp.log.debug(f"Upload finished: {self.file_path}")
-            if not (resp_dict['size'] == len(data) and resp_dict['checksum'] == checksum.hexdigest()):
+            if not (resp_dict["size"] == len(data) and resp_dict["checksum"] == checksum.hexdigest()):
                 try:
                     mc.post("/v1/project/push/cancel/{}".format(self.transaction_id))
                 except ClientError:
@@ -78,7 +78,7 @@ class UploadQueueItem:
 
 
 def push_project_async(mc, directory):
-    """ Starts push of a project and returns pending upload job """
+    """Starts push of a project and returns pending upload job"""
 
     mp = MerginProject(directory)
     if mp.has_unfinished_pull():
@@ -110,8 +110,10 @@ def push_project_async(mc, directory):
 
     if local_version != server_version:
         mp.log.error(f"--- push {project_path} - not up to date (local {local_version} vs server {server_version})")
-        raise ClientError("There is a new version of the project on the server. Please update your local copy." +
-                          f"\n\nLocal version: {local_version}\nServer version: {server_version}")
+        raise ClientError(
+            "There is a new version of the project on the server. Please update your local copy."
+            + f"\n\nLocal version: {local_version}\nServer version: {server_version}"
+        )
 
     changes = mp.get_push_changes()
     mp.log.debug("push changes:\n" + pprint.pformat(changes))
@@ -135,7 +137,7 @@ def push_project_async(mc, directory):
     if username == project_path.split("/")[0]:
         enough_free_space, freespace = mc.enough_storage_available(changes)
         if not enough_free_space:
-            freespace = int(freespace/(1024*1024))
+            freespace = int(freespace / (1024 * 1024))
             mp.log.error(f"--- push {project_path} - not enough space")
             raise ClientError("Storage limit has been reached. Only " + str(freespace) + "MB left")
 
@@ -144,22 +146,19 @@ def push_project_async(mc, directory):
         return
 
     # drop internal info from being sent to server
-    for item in changes['updated']:
-        item.pop('origin_checksum', None)
-    data = {
-        "version": local_version,
-        "changes": changes
-    }
+    for item in changes["updated"]:
+        item.pop("origin_checksum", None)
+    data = {"version": local_version, "changes": changes}
 
     try:
-        resp = mc.post(f'/v1/project/push/{project_path}', data, {"Content-Type": "application/json"})
+        resp = mc.post(f"/v1/project/push/{project_path}", data, {"Content-Type": "application/json"})
     except ClientError as err:
         mp.log.error("Error starting transaction: " + str(err))
         mp.log.info("--- push aborted")
         raise
     server_resp = json.load(resp)
 
-    upload_files = data['changes']["added"] + data['changes']["updated"]
+    upload_files = data["changes"]["added"] + data["changes"]["updated"]
 
     transaction_id = server_resp["transaction"] if upload_files else None
     job = UploadJob(project_path, changes, transaction_id, mp, mc, tmp_dir)
@@ -168,7 +167,7 @@ def push_project_async(mc, directory):
         mp.log.info("not uploading any files")
         job.server_resp = server_resp
         push_project_finalize(job)
-        return None   # all done - no pending job
+        return None  # all done - no pending job
 
     mp.log.info(f"got transaction ID {transaction_id}")
 
@@ -176,18 +175,18 @@ def push_project_async(mc, directory):
     total_size = 0
     # prepare file chunks for upload
     for file in upload_files:
-        if 'diff' in file:
+        if "diff" in file:
             # versioned file - uploading diff
-            file_location = mp.fpath_meta(file['diff']['path'])
-            file_size = file['diff']['size']
+            file_location = mp.fpath_meta(file["diff"]["path"])
+            file_size = file["diff"]["size"]
         elif "upload_file" in file:
             # versioned file - uploading full (a temporary copy)
             file_location = file["upload_file"]
             file_size = file["size"]
         else:
             # non-versioned file
-            file_location = mp.fpath(file['path'])
-            file_size = file['size']
+            file_location = mp.fpath(file["path"])
+            file_size = file["size"]
 
         for chunk_index, chunk_id in enumerate(file["chunks"]):
             size = min(UPLOAD_CHUNK_SIZE, file_size - chunk_index * UPLOAD_CHUNK_SIZE)
@@ -210,7 +209,7 @@ def push_project_async(mc, directory):
 
 
 def push_project_wait(job):
-    """ blocks until all upload tasks are finished """
+    """blocks until all upload tasks are finished"""
 
     concurrent.futures.wait(job.futures)
 
@@ -255,7 +254,9 @@ def push_project_finalize(job):
                 raise future.exception()
 
     if job.transferred_size != job.total_size:
-        error_msg = "Transferred size ({}) and expected total size ({}) do not match!".format(job.transferred_size, job.total_size)
+        error_msg = "Transferred size ({}) and expected total size ({}) do not match!".format(
+            job.transferred_size, job.total_size
+        )
         job.mp.log.error("--- push finish failed! " + error_msg)
         raise ClientError("Upload error: " + error_msg)
 
@@ -280,9 +281,9 @@ def push_project_finalize(job):
             raise err
 
     job.mp.metadata = {
-        'name': job.project_path,
-        'version': job.server_resp['version'],
-        'files': job.server_resp["files"]
+        "name": job.project_path,
+        "version": job.server_resp["version"],
+        "files": job.server_resp["files"],
     }
     try:
         job.mp.apply_push_changes(job.changes)
@@ -291,9 +292,9 @@ def push_project_finalize(job):
         job.mp.log.info("--- push aborted")
         raise ClientError("Failed to apply push changes: " + str(e))
 
-    job.tmp_dir.cleanup()   # delete our temporary dir and all its content
+    job.tmp_dir.cleanup()  # delete our temporary dir and all its content
 
-    job.mp.log.info("--- push finished - new project version " + job.server_resp['version'])
+    job.mp.log.info("--- push finished - new project version " + job.server_resp["version"])
 
 
 def push_project_cancel(job):
@@ -317,7 +318,7 @@ def push_project_cancel(job):
 
 
 def _do_upload(item, job):
-    """ runs in worker thread """
+    """runs in worker thread"""
     if job.is_cancelled:
         return
 
