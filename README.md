@@ -7,15 +7,15 @@
 
 # Mergin Maps Python Client
 
-This repository contains a Python client module for access to [Mergin Maps](https://merginmaps.com/)
-service and a command-line tool for easy access to data stored in Mergin Maps.
+This repository contains a Python client module for access to [Mergin Maps](https://merginmaps.com/) service and a command-line tool for easy access to data stored in Mergin Maps.
 
 <div><img align="left" width="45" height="45" src="https://raw.githubusercontent.com/MerginMaps/docs/main/src/.vuepress/public/slack.svg"><a href="https://merginmaps.com/community/join">Join our community chat</a><br/>and ask questions!</div><br />
 
 
 To install the module:
-
+```bash
     pip3 install mergin-client
+```
 
 Note: Check also [Mergin Maps Cpp Client](https://github.com/MerginMaps/mergin-cpp-client)
 
@@ -151,17 +151,6 @@ it is possible to run other commands without specifying username/password.
 
 
 ## Development
-
-### How to release
-
-1. Update version in `setup.py` and `mergin/version.py`
-2. Tag git repository with the new version
-3. Create package and upload it
-
-```
-python3 setup.py sdist
-python3 -m twine upload dist/mergin-client-x.y.z.tar.gz
-```
 
 ### Installing deps
 
