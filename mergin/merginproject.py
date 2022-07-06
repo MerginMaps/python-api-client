@@ -731,3 +731,15 @@ class MerginProject:
         shutil.rmtree(self.unfinished_pull_dir)
         self.log.info("unfinished pull resolved successfuly!")
         return conflicts
+
+    def set_tables_to_skip(self, tables):
+        """
+        Set list of tables to exclude from geodiff operations. Once defined, these
+        tables will be excluded from the following operations: create changeset,
+        apply changeset, rebase, get database schema, dump database contents, copy
+        database between different drivers.
+
+        Tables passes as semicolon separated list, e.g. "table1;table2;...;tableN".
+        If empty string is passed, list will be reset.
+        """
+        self.geodiff.set_tables_to_skip(tables)
