@@ -739,7 +739,9 @@ class MerginProject:
         apply changeset, rebase, get database schema, dump database contents, copy
         database between different drivers.
 
-        Tables passes as semicolon separated list, e.g. "table1;table2;...;tableN".
-        If empty string is passed, list will be reset.
+        If empty list is passed, list will be reset.
+
+        :param tables: list of table names to ignore
+        :type tables: list[str]
         """
         self.geodiff.set_tables_to_skip(tables)
