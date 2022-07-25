@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.4
+
+- Added set_tables_to_skip() to optionally configure which tables to ignore in geodiff
+- Updated to pygeodiff 2.0.0
+
 ## 0.7.3
 
 - New default public server URL (#136)
