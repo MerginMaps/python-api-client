@@ -358,9 +358,9 @@ def test_sync_diff(mc):
 
 
 def test_list_of_push_changes(mc):
-    PUSH_CHANGES_SUMMARY = (
-        "{'base.gpkg': {'geodiff_summary': [{'table': 'simple', 'insert': 1, 'update': 0, 'delete': 0}]}}"
-    )
+    PUSH_CHANGES_SUMMARY = {
+        'base.gpkg': {'geodiff_summary': [{'table': 'simple', 'insert': 1, 'update': 0, 'delete': 0}]}
+    }
 
     test_project = "test_list_of_push_changes"
     project = API_USER + "/" + test_project
@@ -376,7 +376,7 @@ def test_list_of_push_changes(mc):
     shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
     mc._auth_session["expire"] = datetime.now().replace(tzinfo=pytz.utc) - timedelta(days=1)
     pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
-    assert str(push_changes_summary) == PUSH_CHANGES_SUMMARY
+    assert push_changes_summary == PUSH_CHANGES_SUMMARY
 
 
 def test_token_renewal(mc):
