@@ -359,7 +359,7 @@ def test_sync_diff(mc):
 
 def test_list_of_push_changes(mc):
     PUSH_CHANGES_SUMMARY = {
-        'base.gpkg': {'geodiff_summary': [{'table': 'simple', 'insert': 1, 'update': 0, 'delete': 0}]}
+        "base.gpkg": {"geodiff_summary": [{"table": "simple", "insert": 1, "update": 0, "delete": 0}]}
     }
 
     test_project = "test_list_of_push_changes"
