@@ -322,6 +322,16 @@ class MerginClient:
 
         return response
 
+    def workspaces_list(self):
+        """
+        Find all available workspaces
+
+        :rtype: List[Dict]
+        """
+        resp = self.get("/v1/workspaces")
+        workspaces = json.load(resp)
+        return workspaces
+
     def create_project(self, project_name, is_public=False, namespace=None):
         """
         Create new project repository in user namespace on Mergin Maps server.
