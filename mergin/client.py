@@ -70,6 +70,8 @@ class MerginClient:
         self._auth_params = None
         self._auth_session = None
         self._user_info = None
+        self._server_type = None
+        self._global_namespace = None
         self.client_version = "Python-client/" + __version__
         if plugin_version is not None:  # this could be e.g. "Plugin/2020.1 QGIS/3.14"
             self.client_version += " " + plugin_version
@@ -321,6 +323,51 @@ class MerginClient:
         response = json.loads(response.read())
 
         return response
+
+    def server_type(self):
+        """
+        Returns the deployment type of the server:
+        ee - server supports workspaces
+        ce - server has a global workspace
+        old - server does not support workspaces
+
+        The value is cached for self's lifetime
+
+        :returns: Type of server deployment ("ee"/"ce"/"old")
+        rtype: str
+        """
+        # todo: return enum
+        if not self._server_type:
+            try:
+                resp = self.get("/config")
+                config = json.load(resp)
+                if "user_workspaces_allowed" in config:
+                    self._server_type = "ee"
+                if "global_namespace" in config:
+                    self._server_type = "ce"
+            except ClientError as e:
+                self._server_type = "old"
+
+        return self._server_type
+
+    def global_namespace(self):
+        """"
+        Returns the name of the server's global namespace, if any.
+        (Applies to CE server types)
+
+        The value is cached for self's lifetime
+
+        :returns: server's global namespace name if exists, None otherwise
+        rtype: str
+        """
+        if not self._global_namespace:
+            try:
+                resp = self.get("/config")
+                config = json.load(resp)
+                self._global_namespace = config.get("global_namespace", None)
+            except ClientError as e:
+                self._global_namespace = None
+        return self._global_namespace
 
     def workspaces_list(self):
         """
