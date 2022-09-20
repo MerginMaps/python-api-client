@@ -351,7 +351,7 @@ class MerginClient:
         return self._server_type
 
     def global_namespace(self):
-        """"
+        """
         Returns the name of the server's global namespace, if any.
         (Applies to CE server types)
 
