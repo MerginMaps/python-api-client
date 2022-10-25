@@ -345,6 +345,7 @@ class MerginClient:
                     self._server_type = "ee"
                 if "global_namespace" in config:
                     self._server_type = "ce"
+                    self._global_namespace = config["global_namespace"]
             except ClientError as e:
                 self._server_type = "old"
 
@@ -765,6 +766,10 @@ class MerginClient:
         project_path = mp.metadata["name"]
         local_version = mp.metadata["version"]
         server_info = self.project_info(project_path, since=local_version)
+
+
+
+
         pull_changes = mp.get_pull_changes(server_info["files"])
 
         push_changes = mp.get_push_changes()
