@@ -767,9 +767,6 @@ class MerginClient:
         local_version = mp.metadata["version"]
         server_info = self.project_info(project_path, since=local_version)
 
-
-
-
         pull_changes = mp.get_pull_changes(server_info["files"])
 
         push_changes = mp.get_push_changes()
