@@ -635,7 +635,11 @@ class MerginClient:
         return True, free_space
 
     def user_info(self):
-        resp = self.get("/v1/user/" + self.username())
+        server_type = self.server_type()
+        if server_type == "old":
+            resp = self.get("/v1/user/" + self.username())
+        else:
+            resp = self.get("/v1/user/profile")
         return json.load(resp)
 
     def set_project_access(self, project_path, access):
