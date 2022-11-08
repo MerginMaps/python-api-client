@@ -424,7 +424,16 @@ class MerginClient:
                 self.push_project(directory)
 
     def paginated_projects_list(
-        self, page=1, per_page=50, tags=None, user=None, flag=None, name=None, namespace=None, order_params=None
+        self,
+        page=1,
+        per_page=50,
+        tags=None,
+        user=None,
+        flag=None,
+        name=None,
+        only_namespace=None,
+        namespace=None,
+        order_params=None,
     ):
         """
         Find all available Mergin Maps projects.
@@ -440,6 +449,9 @@ class MerginClient:
 
         :param name: Filter projects with name like name
         :type name: String
+
+        :param only_namespace: Filter projects with namespace exactly equal to namespace
+        :type namespace: String
 
         :param namespace: Filter projects with namespace like namespace
         :type namespace: String
@@ -466,7 +478,9 @@ class MerginClient:
             params["flag"] = flag
         if name:
             params["name"] = name
-        if namespace:
+        if only_namespace:
+            params["only_namespace"] = only_namespace
+        elif namespace:
             params["namespace"] = namespace
         params["page"] = page
         params["per_page"] = per_page
@@ -476,7 +490,9 @@ class MerginClient:
         projects = json.load(resp)
         return projects
 
-    def projects_list(self, tags=None, user=None, flag=None, name=None, namespace=None, order_params=None):
+    def projects_list(
+        self, tags=None, user=None, flag=None, name=None, only_namespace=None, namespace=None, order_params=None
+    ):
         """
         Find all available Mergin Maps projects.
 
@@ -493,6 +509,9 @@ class MerginClient:
 
         :param name: Filter projects with name like name
         :type name: String
+
+        :param only_namespace: Filter projects with namespace exactly equal to namespace
+        :type namespace: String
 
         :param namespace: Filter projects with namespace like namespace
         :type namespace: String
@@ -515,6 +534,7 @@ class MerginClient:
                 user=user,
                 flag=flag,
                 name=name,
+                only_namespace=only_namespace,
                 namespace=namespace,
                 order_params=order_params,
             )
