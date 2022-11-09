@@ -351,25 +351,6 @@ class MerginClient:
 
         return self._server_type
 
-    def global_namespace(self):
-        """
-        Returns the name of the server's global namespace, if any.
-        (Applies to CE server types)
-
-        The value is cached for self's lifetime
-
-        :returns: server's global namespace name if exists, None otherwise
-        rtype: str
-        """
-        if not self._global_namespace:
-            try:
-                resp = self.get("/config")
-                config = json.load(resp)
-                self._global_namespace = config.get("global_namespace", None)
-            except ClientError as e:
-                self._global_namespace = None
-        return self._global_namespace
-
     def workspaces_list(self):
         """
         Find all available workspaces
