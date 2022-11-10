@@ -12,6 +12,7 @@ import platform
 from datetime import datetime, timezone
 import dateutil.parser
 import ssl
+from enum import Enum, auto
 import re
 
 from .common import ClientError, LoginError, InvalidProject
@@ -35,6 +36,13 @@ this_dir = os.path.dirname(os.path.realpath(__file__))
 
 class TokenError(Exception):
     pass
+
+
+class ServerType(Enum):
+    OLD = auto()  # Server is old and does not support workspaces
+    CE = auto()  # Server is Community Edition
+    EE = auto()  # Server is Enterprise Edition
+    SAAS = auto()  # Server is SaaS
 
 
 def decode_token_data(token):
@@ -71,7 +79,6 @@ class MerginClient:
         self._auth_session = None
         self._user_info = None
         self._server_type = None
-        self._global_namespace = None
         self.client_version = "Python-client/" + __version__
         if plugin_version is not None:  # this could be e.g. "Plugin/2020.1 QGIS/3.14"
             self.client_version += " " + plugin_version
@@ -326,28 +333,23 @@ class MerginClient:
 
     def server_type(self):
         """
-        Returns the deployment type of the server:
-        ee - server supports workspaces
-        ce - server has a global workspace
-        old - server does not support workspaces
+        Returns the deployment type of the server
 
         The value is cached for self's lifetime
 
-        :returns: Type of server deployment ("ee"/"ce"/"old")
-        rtype: str
+        :returns: ServerType of server deployment
+        :rtype: ServerType
         """
-        # todo: return enum
         if not self._server_type:
             try:
                 resp = self.get("/config")
                 config = json.load(resp)
                 if "user_workspaces_allowed" in config:
-                    self._server_type = "ee"
+                    self._server_type = ServerType.EE
                 if "global_namespace" in config:
-                    self._server_type = "ce"
-                    self._global_namespace = config["global_namespace"]
+                    self._server_type = ServerType.CE
             except ClientError as e:
-                self._server_type = "old"
+                self._server_type = ServerType.OLD
 
         return self._server_type
 
