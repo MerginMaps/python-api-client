@@ -346,7 +346,7 @@ class MerginClient:
                 config = json.load(resp)
                 if "user_workspaces_allowed" in config:
                     self._server_type = ServerType.EE
-                if "global_namespace" in config:
+                if "global_workspace" in config:
                     self._server_type = ServerType.CE
             except ClientError as e:
                 self._server_type = ServerType.OLD
@@ -619,7 +619,7 @@ class MerginClient:
 
     def user_info(self):
         server_type = self.server_type()
-        if server_type == "old":
+        if server_type == ServerType.OLD:
             resp = self.get("/v1/user/" + self.username())
         else:
             resp = self.get("/v1/user/profile")
