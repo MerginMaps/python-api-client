@@ -118,9 +118,6 @@ def download_project_async(mc, project_path, directory, project_version=None):
         raise ClientError("Project directory already exists")
     os.makedirs(directory)
     mp = MerginProject(directory)
-    project_id = getattr(mp.metadata, "project_id", None)
-    if project_id:
-        mp.log.info(f"--- project ID {project_id}")
     mp.log.info("--- version: " + mc.user_agent_info())
     mp.log.info(f"--- start download {project_path}")
 
@@ -131,13 +128,6 @@ def download_project_async(mc, project_path, directory, project_version=None):
             project_info = mc.project_info(project_path, version=project_version)
         else:
             project_info = latest_proj_info
-        # Compare the local and server project ID (if available) to make sure that they are the same
-        if project_id:
-            server_project_id = project_info["id"]
-            if project_id != server_project_id:
-                raise ClientError(
-                    f"The local project ID ({project_id}) does not match the server project ID ({server_project_id})"
-                )
     except ClientError:
         _cleanup_failed_download(directory, mp)
         raise
