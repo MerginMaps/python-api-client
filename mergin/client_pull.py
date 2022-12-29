@@ -118,7 +118,9 @@ def download_project_async(mc, project_path, directory, project_version=None):
         raise ClientError("Project directory already exists")
     os.makedirs(directory)
     mp = MerginProject(directory)
-
+    project_id = getattr(mp.metadata, "project_id", None)
+    if project_id:
+        mp.log.info(f"--- project ID {project_id}")
     mp.log.info("--- version: " + mc.user_agent_info())
     mp.log.info(f"--- start download {project_path}")
 
@@ -129,13 +131,18 @@ def download_project_async(mc, project_path, directory, project_version=None):
             project_info = mc.project_info(project_path, version=project_version)
         else:
             project_info = latest_proj_info
-
+        # Compare the local and server project ID (if available) to make sure that they are the same
+        if project_id:
+            server_project_id = project_info["id"]
+            if project_id != server_project_id:
+                raise ClientError(
+                    f"The local project ID ({project_id}) does not match the server project ID ({server_project_id})"
+                )
     except ClientError:
         _cleanup_failed_download(directory, mp)
         raise
 
     version = project_info["version"] if project_info["version"] else "v0"
-
     mp.log.info(f"got project info. version {version}")
 
     # prepare download
@@ -217,7 +224,12 @@ def download_project_finalize(job):
 
     # final update of project metadata
     # TODO: why not exact copy of project info JSON ?
-    job.mp.metadata = {"name": job.project_path, "version": job.version, "files": job.project_info["files"]}
+    job.mp.metadata = {
+        "name": job.project_path,
+        "version": job.version,
+        "project_id": job.project_info["id"],
+        "files": job.project_info["files"],
+    }
 
 
 def download_project_cancel(job):
@@ -368,7 +380,9 @@ def pull_project_async(mc, directory):
 
     project_path = mp.metadata["name"]
     local_version = mp.metadata["version"]
-
+    project_id = getattr(mp.metadata, "project_id", None)
+    if project_id:
+        mp.log.info(f"--- project ID {project_id}")
     mp.log.info("--- version: " + mc.user_agent_info())
     mp.log.info(f"--- start pull {project_path}")
 
@@ -378,6 +392,20 @@ def pull_project_async(mc, directory):
         mp.log.error("Error getting project info: " + str(err))
         mp.log.info("--- pull aborted")
         raise
+
+    # Compare the local and server project ID (if available) to make sure that they are the same
+    try:
+        if project_id:
+            server_project_id = server_info["id"]
+            if project_id != server_project_id:
+                raise ClientError(
+                    f"The local project ID ({project_id}) does not match the server project ID ({server_project_id})"
+                )
+    except ClientError as err:
+        mp.log.error("Error pulling project: " + str(err))
+        mp.log.info("--- pull aborted")
+        raise
+
     server_version = server_info["version"]
 
     mp.log.info(f"got project info: local version {local_version} / server version {server_version}")
@@ -638,6 +666,19 @@ def download_file_async(mc, project_dir, file_path, output_file, version):
         project_info = latest_proj_info
     mp.log.info(f"Got project info. version {project_info['version']}")
 
+    # Compare the local and server project ID (if available) to make sure that they are the same
+    project_id = getattr(mp.metadata, "project_id", None)
+    try:
+        if project_id:
+            server_project_id = project_info["id"]
+            if project_id != server_project_id:
+                raise ClientError(
+                    f"The local project ID ({project_id}) does not match the server project ID ({server_project_id})"
+                )
+    except ClientError as err:
+        mp.log.error("Error downloading file: " + str(err))
+        raise
+
     # set temporary directory for download
     temp_dir = tempfile.mkdtemp(prefix="mergin-py-client-")
 
@@ -727,6 +768,19 @@ def download_diffs_async(mc, project_directory, file_path, versions):
     except ClientError as err:
         mp.log.error("Error getting project info: " + str(err))
         mp.log.info("--- downloading diffs aborted")
+        raise
+
+    # Compare the local and server project ID (if available) to make sure that they are the same
+    project_id = getattr(mp.metadata, "project_id", None)
+    try:
+        if project_id:
+            server_project_id = server_info["id"]
+            if project_id != server_project_id:
+                raise ClientError(
+                    f"The local project ID ({project_id}) does not match the server project ID ({server_project_id})"
+                )
+    except ClientError as err:
+        mp.log.error("Error downloading downloading diffs: " + str(err))
         raise
 
     fetch_files = []

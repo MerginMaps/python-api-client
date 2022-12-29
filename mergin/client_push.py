@@ -86,7 +86,9 @@ def push_project_async(mc, directory):
 
     project_path = mp.metadata["name"]
     local_version = mp.metadata["version"]
-
+    project_id = getattr(mp.metadata, "project_id", None)
+    if project_id:
+        mp.log.info(f"--- project ID {project_id}")
     mp.log.info("--- version: " + mc.user_agent_info())
     mp.log.info(f"--- start push {project_path}")
 
@@ -96,9 +98,20 @@ def push_project_async(mc, directory):
         mp.log.error("Error getting project info: " + str(err))
         mp.log.info("--- push aborted")
         raise
-    server_version = server_info["version"] if server_info["version"] else "v0"
 
+    server_version = server_info["version"] if server_info["version"] else "v0"
     mp.log.info(f"got project info: local version {local_version} / server version {server_version}")
+
+    try:
+        if project_id:
+            server_project_id = server_info["id"]
+            if project_id != server_project_id:
+                raise ClientError(
+                    f"The local project ID ({project_id}) does not match the server project ID ({server_project_id})"
+                )
+    except ClientError as err:
+        mp.log.error("Error pushing project: " + str(err))
+        raise
 
     username = mc.username()
     # permissions field contains information about update, delete and upload privileges of the user
