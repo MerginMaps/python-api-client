@@ -1866,6 +1866,7 @@ def test_recreate_with_the_same_name(mc):
     # check recreated project info
     recreated_project_info = mc.project_info(project)
     recreated_project_id = recreated_project_info["id"]
+    mp = MerginProject(project_dir)
     print(mp.metadata["project_id"], recreated_project_id)
     assert project_id != recreated_project_id
     # try to pull
