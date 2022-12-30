@@ -651,24 +651,9 @@ def download_file_async(mc, project_dir, file_path, output_file, version):
     latest_proj_info = mc.project_info(project_path)
     if version:
         project_info = mc.project_info(project_path, version=version)
-        print(project_info)
     else:
         project_info = latest_proj_info
-        print(project_info)
     mp.log.info(f"Got project info. version {project_info['version']}")
-
-    # Compare the local and server project ID (if available) to make sure that they are the same
-    project_id = local_project_id(mp)
-    try:
-        if project_id:
-            server_project_id = project_info["id"]
-            if project_id != server_project_id:
-                raise ClientError(
-                    f"The local project ID ({project_id}) does not match the server project ID ({server_project_id})"
-                )
-    except ClientError as err:
-        mp.log.error("Error downloading file: " + str(err))
-        raise
 
     # set temporary directory for download
     temp_dir = tempfile.mkdtemp(prefix="mergin-py-client-")
@@ -759,19 +744,6 @@ def download_diffs_async(mc, project_directory, file_path, versions):
     except ClientError as err:
         mp.log.error("Error getting project info: " + str(err))
         mp.log.info("--- downloading diffs aborted")
-        raise
-
-    # Compare the local and server project ID (if available) to make sure that they are the same
-    project_id = local_project_id(mp)
-    try:
-        if project_id:
-            server_project_id = server_info["id"]
-            if project_id != server_project_id:
-                raise ClientError(
-                    f"The local project ID ({project_id}) does not match the server project ID ({server_project_id})"
-                )
-    except ClientError as err:
-        mp.log.error("Error downloading downloading diffs: " + str(err))
         raise
 
     fetch_files = []

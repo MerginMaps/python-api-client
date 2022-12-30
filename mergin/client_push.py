@@ -80,10 +80,7 @@ class UploadQueueItem:
 
 def push_project_async(mc, directory):
     """Starts push of a project and returns pending upload job"""
-
     mp = MerginProject(directory)
-    if mp.has_unfinished_pull():
-        raise ClientError("Project is in unfinished pull state. Please resolve unfinished pull and try again.")
 
     project_path = mp.metadata["name"]
     local_version = mp.metadata["version"]
@@ -113,6 +110,9 @@ def push_project_async(mc, directory):
     except ClientError as err:
         mp.log.error("Error pushing project: " + str(err))
         raise
+
+    if mp.has_unfinished_pull():
+        raise ClientError("Project is in unfinished pull state. Please resolve unfinished pull and try again.")
 
     username = mc.username()
     # permissions field contains information about update, delete and upload privileges of the user
