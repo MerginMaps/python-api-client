@@ -7,6 +7,7 @@ import shutil
 from datetime import datetime, timedelta
 import pytest
 import pytz
+import re
 import sqlite3
 
 from .. import InvalidProject
@@ -1868,5 +1869,5 @@ def test_recreate_with_the_same_name(mc):
     assert project_id != recreated_project_id
     # try to pull
     error_msg = f"The local project ID ({project_id}) does not match the server project ID ({recreated_project_id})"
-    with pytest.raises(ClientError, match=error_msg):
+    with pytest.raises(ClientError, match=re.escape(error_msg)):
         mc.pull_project(project_dir)
