@@ -1866,7 +1866,7 @@ def test_recreate_with_the_same_name(mc):
     recreated_project_info = mc.project_info(project)
     recreated_project_id = recreated_project_info["id"]
     assert project_id != recreated_project_id
-    # try to pull to the
+    # try to pull
     error_msg = f"The local project ID ({project_id}) does not match the server project ID ({recreated_project_id})"
-    # with pytest.raises(ClientError, match=error_msg):
-    mc.pull_project(project_dir)
+    with pytest.raises(ClientError, match=error_msg):
+        mc.pull_project(project_dir)

@@ -360,21 +360,13 @@ def pull_project_async(mc, directory):
     """
 
     mp = MerginProject(directory)
-    if mp.has_unfinished_pull():
-        try:
-            mp.resolve_unfinished_pull(mc.username())
-        except ClientError as err:
-            mp.log.error("Error resolving unfinished pull: " + str(err))
-            mp.log.info("--- pull aborted")
-            raise
-
     project_path = mp.metadata["name"]
     local_version = mp.metadata["version"]
     project_id = getattr(mp.metadata, "project_id", None)
+    mp.log.info(f"--- start pull {project_path}")
+    mp.log.info("--- version: " + mc.user_agent_info())
     if project_id:
         mp.log.info(f"--- project ID {project_id}")
-    mp.log.info("--- version: " + mc.user_agent_info())
-    mp.log.info(f"--- start pull {project_path}")
 
     try:
         server_info = mc.project_info(project_path, since=local_version)
@@ -396,8 +388,15 @@ def pull_project_async(mc, directory):
         mp.log.info("--- pull aborted")
         raise
 
-    server_version = server_info["version"]
+    if mp.has_unfinished_pull():
+        try:
+            mp.resolve_unfinished_pull(mc.username())
+        except ClientError as err:
+            mp.log.error("Error resolving unfinished pull: " + str(err))
+            mp.log.info("--- pull aborted")
+            raise
 
+    server_version = server_info["version"]
     mp.log.info(f"got project info: local version {local_version} / server version {server_version}")
 
     if local_version == server_version:
