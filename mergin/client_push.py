@@ -296,7 +296,7 @@ def push_project_finalize(job):
     job.mp.metadata = {
         "name": job.project_path,
         "version": job.server_resp["version"],
-        "project_id": job.project_info["id"],
+        "project_id": job.server_resp["id"],
         "files": job.server_resp["files"],
     }
     try:
