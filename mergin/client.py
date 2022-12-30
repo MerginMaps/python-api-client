@@ -363,10 +363,8 @@ class MerginClient:
             project_info = self.project_info(full_project_name)
             mp = MerginProject(directory)
             mp.metadata = {"name": full_project_name, "version": "v0", "files": [], "project_id": project_info["id"]}
-            print(mp.metadata)
             if mp.inspect_files():
                 self.push_project(directory)
-            print(mp.metadata)
 
     def paginated_projects_list(
         self, page=1, per_page=50, tags=None, user=None, flag=None, name=None, namespace=None, order_params=None

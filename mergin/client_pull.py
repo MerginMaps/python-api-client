@@ -628,6 +628,7 @@ def pull_project_finalize(job):
     job.mp.metadata = {
         "name": job.project_path,
         "version": job.version if job.version else "v0",  # for new projects server version is ""
+        "project_id": job.project_info["id"],
         "files": job.project_info["files"],
     }
 
