@@ -1840,29 +1840,3 @@ def test_changesets_download(mc):
     assert os.path.exists(diff_file)
     assert mp.geodiff.has_changes(diff_file)
     assert mp.geodiff.changes_count(diff_file) == 3
-
-
-# def test_create_delete_project(mc):
-#     test_project = "test_create_delete"
-#     project = API_USER + "/" + test_project
-#     project_dir = os.path.join(TMP_DIR, test_project)
-#     download_dir = os.path.join(TMP_DIR, "download", test_project)
-#
-#     cleanup(mc, project, [project_dir, download_dir])
-#     # create new (empty) project on server
-#     mc.create_project(test_project)
-#     projects = mc.projects_list(flag="created")
-#     assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
-#
-#     # try again
-#     with pytest.raises(ClientError, match=f"Project {test_project} already exists"):
-#         mc.create_project(test_project)
-#
-#     # remove project
-#     mc.delete_project(API_USER + "/" + test_project)
-#     projects = mc.projects_list(flag="created")
-#     assert not any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
-#
-#     # try again, nothing to delete
-#     with pytest.raises(ClientError):
-#         mc.delete_project(API_USER + "/" + test_project)
