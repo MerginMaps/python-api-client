@@ -377,6 +377,7 @@ def pull_project_async(mc, directory):
 
     # Compare the local and server project ID (if available) to make sure that they are the same
     try:
+        print(project_id, server_info["id"])
         if project_id:
             server_project_id = server_info["id"]
             if project_id != server_project_id:
