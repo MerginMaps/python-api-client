@@ -1857,6 +1857,7 @@ def test_recreate_with_the_same_name(mc):
     project_id = project_info["id"]
     # read local project
     mp = MerginProject(project_dir)
+    print(mp.metadata["project_id"], project_id)
     assert mp.metadata["project_id"] == project_id
     # delete remote project
     mc.delete_project(project)
@@ -1865,8 +1866,9 @@ def test_recreate_with_the_same_name(mc):
     # check recreated project info
     recreated_project_info = mc.project_info(project)
     recreated_project_id = recreated_project_info["id"]
+    print(mp.metadata["project_id"], project_id)
     assert project_id != recreated_project_id
     # try to pull
     error_msg = f"The local project ID ({project_id}) does not match the server project ID ({recreated_project_id})"
-    #with pytest.raises(ClientError, match=error_msg):
+    # with pytest.raises(ClientError, match=error_msg):
     mc.pull_project(project_dir)
