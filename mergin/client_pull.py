@@ -362,7 +362,6 @@ def pull_project_async(mc, directory):
     project_path = mp.metadata["name"]
     local_version = mp.metadata["version"]
     project_id = local_project_id(mp)
-    print(project_id, mp.metadata["project_id"])
     mp.log.info(f"--- start pull {project_path}")
     mp.log.info("--- version: " + mc.user_agent_info())
     if project_id:
@@ -377,7 +376,6 @@ def pull_project_async(mc, directory):
 
     # Compare the local and server project ID (if available) to make sure that they are the same
     try:
-        print(project_id, server_info["id"])
         if project_id:
             server_project_id = server_info["id"]
             if project_id != server_project_id:
