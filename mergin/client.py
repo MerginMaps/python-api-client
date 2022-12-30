@@ -343,11 +343,10 @@ class MerginClient:
         if namespace is None:
             namespace = self.username()
         try:
-            resp = self.post("/v1/project/%s" % namespace, params, {"Content-Type": "application/json"})
+            self.post("/v1/project/%s" % namespace, params, {"Content-Type": "application/json"})
         except Exception as e:
             detail = f"Namespace: {namespace}, project name: {project_name}"
             raise ClientError(str(e), detail)
-        return json.load(resp)
 
     def create_project_and_push(self, project_name, directory, is_public=False, namespace=None):
         """
