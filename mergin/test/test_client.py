@@ -118,12 +118,13 @@ def test_create_remote_project_from_local(mc):
 
     # create remote project
     mc.create_project_and_push(test_project, directory=project_dir)
-
+    source_mp = MerginProject(project_dir)
     # check basic metadata about created project
     project_info = mc.project_info(project)
     assert project_info["version"] == "v1"
     assert project_info["name"] == test_project
     assert project_info["namespace"] == API_USER
+    assert project_info["id"] == source_mp.metadata["project_id"]
 
     versions = mc.project_versions(project)
     assert len(versions) == 1
@@ -191,6 +192,7 @@ def test_push_pull_changes(mc):
     f_remote_checksum = next((f["checksum"] for f in project_info["files"] if f["path"] == f_updated), None)
     assert generate_checksum(os.path.join(project_dir, f_updated)) == f_remote_checksum
     mp = MerginProject(project_dir)
+    assert project_info["id"] == mp.metadata["project_id"]
     assert len(project_info["files"]) == len(mp.inspect_files())
     project_versions = mc.project_versions(project)
     assert len(project_versions) == 2
@@ -330,6 +332,7 @@ def test_sync_diff(mc):
     # check project after push
     project_info = mc.project_info(project)
     assert project_info["version"] == "v3"
+    assert project_info["id"] == mp.metadata["project_id"]
     f_remote = next((f for f in project_info["files"] if f["path"] == f_updated), None)
     assert next((f for f in project_info["files"] if f["path"] == "renamed.gpkg"), None)
     assert not next((f for f in project_info["files"] if f["path"] == f_removed), None)
@@ -863,6 +866,7 @@ def test_get_versions_with_file_changes(mc):
 
     project_info = mc.project_info(project)
     assert project_info["version"] == "v4"
+    assert project_info["id"] == mp.metadata["project_id"]
     file_history = mc.project_file_history_info(project, f_updated)
 
     with pytest.raises(ClientError) as e:
@@ -897,6 +901,7 @@ def test_download_file(mc):
 
     project_info = mc.project_info(project)
     assert project_info["version"] == "v5"
+    assert project_info["id"] == mp.metadata["project_id"]
 
     # Versioned file should have the following content at versions 2-4
     expected_content = ("inserted_1_A.gpkg", "inserted_1_A_mod.gpkg", "inserted_1_B.gpkg")
@@ -926,6 +931,7 @@ def test_download_diffs(mc):
 
     project_info = mc.project_info(project)
     assert project_info["version"] == "v4"
+    assert project_info["id"] == mp.metadata["project_id"]
 
     # Download diffs of updated file between versions 1 and 2
     mc.get_file_diff(project_dir, f_updated, diff_file, "v1", "v2")
@@ -1834,3 +1840,29 @@ def test_changesets_download(mc):
     assert os.path.exists(diff_file)
     assert mp.geodiff.has_changes(diff_file)
     assert mp.geodiff.changes_count(diff_file) == 3
+
+
+# def test_create_delete_project(mc):
+#     test_project = "test_create_delete"
+#     project = API_USER + "/" + test_project
+#     project_dir = os.path.join(TMP_DIR, test_project)
+#     download_dir = os.path.join(TMP_DIR, "download", test_project)
+#
+#     cleanup(mc, project, [project_dir, download_dir])
+#     # create new (empty) project on server
+#     mc.create_project(test_project)
+#     projects = mc.projects_list(flag="created")
+#     assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
+#
+#     # try again
+#     with pytest.raises(ClientError, match=f"Project {test_project} already exists"):
+#         mc.create_project(test_project)
+#
+#     # remove project
+#     mc.delete_project(API_USER + "/" + test_project)
+#     projects = mc.projects_list(flag="created")
+#     assert not any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
+#
+#     # try again, nothing to delete
+#     with pytest.raises(ClientError):
+#         mc.delete_project(API_USER + "/" + test_project)

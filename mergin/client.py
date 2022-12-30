@@ -343,10 +343,11 @@ class MerginClient:
         if namespace is None:
             namespace = self.username()
         try:
-            self.post("/v1/project/%s" % namespace, params, {"Content-Type": "application/json"})
+            resp = self.post("/v1/project/%s" % namespace, params, {"Content-Type": "application/json"})
         except Exception as e:
             detail = f"Namespace: {namespace}, project name: {project_name}"
             raise ClientError(str(e), detail)
+        return json.load(resp)
 
     def create_project_and_push(self, project_name, directory, is_public=False, namespace=None):
         """
@@ -357,11 +358,11 @@ class MerginClient:
 
         if namespace is None:
             namespace = self.username()
-        self.create_project(project_name, is_public, namespace)
+        project_info = self.create_project(project_name, is_public, namespace)
         if directory:
             mp = MerginProject(directory)
             full_project_name = "{}/{}".format(namespace, project_name)
-            mp.metadata = {"name": full_project_name, "version": "v0", "files": []}
+            mp.metadata = {"name": full_project_name, "version": "v0", "files": [], "project_id": project_info["id"]}
             if mp.inspect_files():
                 self.push_project(directory)
 
