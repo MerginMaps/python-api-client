@@ -358,11 +358,12 @@ def pull_project_async(mc, directory):
     Starts project pull in background and returns handle to the pending job.
     Using that object it is possible to watch progress or cancel the ongoing work.
     """
-
+    print(directory)
     mp = MerginProject(directory)
     project_path = mp.metadata["name"]
     local_version = mp.metadata["version"]
     project_id = getattr(mp.metadata, "project_id", None)
+    print(project_id, mp.metadata["project_id"])
     mp.log.info(f"--- start pull {project_path}")
     mp.log.info("--- version: " + mc.user_agent_info())
     if project_id:
