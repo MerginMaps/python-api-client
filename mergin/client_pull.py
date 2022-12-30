@@ -20,7 +20,7 @@ import concurrent.futures
 
 from .common import CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
-from .utils import save_to_file, get_versions_with_file_changes
+from .utils import save_to_file, get_versions_with_file_changes, local_project_id
 
 
 # status = download_project_async(...)
@@ -358,11 +358,10 @@ def pull_project_async(mc, directory):
     Starts project pull in background and returns handle to the pending job.
     Using that object it is possible to watch progress or cancel the ongoing work.
     """
-    print(directory)
     mp = MerginProject(directory)
     project_path = mp.metadata["name"]
     local_version = mp.metadata["version"]
-    project_id = getattr(mp.metadata, "project_id", None)
+    project_id = local_project_id(mp)
     print(project_id, mp.metadata["project_id"])
     mp.log.info(f"--- start pull {project_path}")
     mp.log.info("--- version: " + mc.user_agent_info())
@@ -659,7 +658,7 @@ def download_file_async(mc, project_dir, file_path, output_file, version):
     mp.log.info(f"Got project info. version {project_info['version']}")
 
     # Compare the local and server project ID (if available) to make sure that they are the same
-    project_id = getattr(mp.metadata, "project_id", None)
+    project_id = local_project_id(mp)
     try:
         if project_id:
             server_project_id = project_info["id"]
@@ -763,7 +762,7 @@ def download_diffs_async(mc, project_directory, file_path, versions):
         raise
 
     # Compare the local and server project ID (if available) to make sure that they are the same
-    project_id = getattr(mp.metadata, "project_id", None)
+    project_id = local_project_id(mp)
     try:
         if project_id:
             server_project_id = server_info["id"]

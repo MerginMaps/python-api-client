@@ -17,6 +17,7 @@ import concurrent.futures
 
 from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
+from .utils import local_project_id
 
 
 class UploadJob:
@@ -86,7 +87,7 @@ def push_project_async(mc, directory):
 
     project_path = mp.metadata["name"]
     local_version = mp.metadata["version"]
-    project_id = getattr(mp.metadata, "project_id", None)
+    project_id = local_project_id(mp)
     if project_id:
         mp.log.info(f"--- project ID {project_id}")
     mp.log.info("--- version: " + mc.user_agent_info())

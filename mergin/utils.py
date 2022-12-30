@@ -231,3 +231,12 @@ def edit_conflict_file_name(path, user, version):
     ext = "".join(Path(tail).suffixes)
     file_name = tail.replace(ext, "")
     return os.path.join(head, file_name) + f" (edit conflict, {user} v{version}).json"
+
+
+def local_project_id(mp):
+    """Get local project ID from metadata."""
+    try:
+        project_id = mp.metadata["project_id"]
+    except KeyError:
+        project_id = None
+    return project_id
