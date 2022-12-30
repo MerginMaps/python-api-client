@@ -1853,17 +1853,17 @@ def test_recreate_with_the_same_name(mc):
 
     # create remote project
     mc.create_project_and_push(test_project, directory=project_dir)
-    project_info = mc.project_info(test_project)
+    project_info = mc.project_info(project)
     project_id = project_info["id"]
     # read local project
     mp = MerginProject(project_dir)
     assert mp.metadata["project_id"] == project_id
     # delete remote project
-    mc.delete_project(test_project)
+    mc.delete_project(project)
     # recreate project with the same name
     mc.create_project(test_project)
     # check recreated project info
-    recreated_project_info = mc.project_info(test_project)
+    recreated_project_info = mc.project_info(project)
     recreated_project_id = recreated_project_info["id"]
     assert project_id != recreated_project_id
     # try to pull to the
