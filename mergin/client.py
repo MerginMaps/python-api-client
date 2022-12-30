@@ -363,6 +363,7 @@ class MerginClient:
             project_info = self.project_info(full_project_name)
             mp = MerginProject(directory)
             mp.metadata = {"name": full_project_name, "version": "v0", "files": [], "project_id": project_info["id"]}
+            print(mp.metadata)
             if mp.inspect_files():
                 self.push_project(directory)
 
