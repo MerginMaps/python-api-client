@@ -1840,3 +1840,33 @@ def test_changesets_download(mc):
     assert os.path.exists(diff_file)
     assert mp.geodiff.has_changes(diff_file)
     assert mp.geodiff.changes_count(diff_file) == 3
+
+
+def test_recreate_with_the_same_name(mc):
+    test_project = "test_project"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+
+    cleanup(mc, project, [project_dir])
+    # prepare local project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+
+    # create remote project
+    mc.create_project_and_push(test_project, directory=project_dir)
+    project_info = mc.project_info(test_project)
+    project_id = project_info["id"]
+    # read local project
+    mp = MerginProject(project_dir)
+    assert mp.metadata["project_id"] == project_id
+    # delete remote project
+    mc.delete_project(test_project)
+    # recreate project with the same name
+    mc.create_project(test_project)
+    # check recreated project info
+    recreated_project_info = mc.project_info(test_project)
+    recreated_project_id = recreated_project_info["id"]
+    assert project_id != recreated_project_id
+    # try to pull to the
+    error_msg = f"The local project ID ({project_id}) does not match the server project ID ({recreated_project_id})"
+    with pytest.raises(ClientError, match=error_msg):
+        mc.pull_project(project_dir)
