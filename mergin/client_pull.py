@@ -651,8 +651,10 @@ def download_file_async(mc, project_dir, file_path, output_file, version):
     latest_proj_info = mc.project_info(project_path)
     if version:
         project_info = mc.project_info(project_path, version=version)
+        print(project_info)
     else:
         project_info = latest_proj_info
+        print(project_info)
     mp.log.info(f"Got project info. version {project_info['version']}")
 
     # Compare the local and server project ID (if available) to make sure that they are the same
