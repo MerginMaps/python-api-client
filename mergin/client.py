@@ -359,9 +359,10 @@ class MerginClient:
             namespace = self.username()
         self.create_project(project_name, is_public, namespace)
         if directory:
-            mp = MerginProject(directory)
             full_project_name = "{}/{}".format(namespace, project_name)
-            mp.metadata = {"name": full_project_name, "version": "v0", "files": []}
+            project_info = self.project_info(full_project_name)
+            mp = MerginProject(directory)
+            mp.metadata = {"name": full_project_name, "version": "v0", "files": [], "project_id": project_info["id"]}
             if mp.inspect_files():
                 self.push_project(directory)
 

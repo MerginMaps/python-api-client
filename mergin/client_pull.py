@@ -217,7 +217,12 @@ def download_project_finalize(job):
 
     # final update of project metadata
     # TODO: why not exact copy of project info JSON ?
-    job.mp.metadata = {"name": job.project_path, "version": job.version, "files": job.project_info["files"]}
+    job.mp.metadata = {
+        "name": job.project_path,
+        "version": job.version,
+        "project_id": job.project_info["id"],
+        "files": job.project_info["files"],
+    }
 
 
 def download_project_cancel(job):
@@ -610,6 +615,7 @@ def pull_project_finalize(job):
     job.mp.metadata = {
         "name": job.project_path,
         "version": job.version if job.version else "v0",  # for new projects server version is ""
+        "project_id": job.project_info["id"],
         "files": job.project_info["files"],
     }
 
