@@ -12,6 +12,7 @@ import platform
 from datetime import datetime, timezone
 import dateutil.parser
 import ssl
+from enum import Enum, auto
 import re
 
 from .common import ClientError, LoginError, InvalidProject
@@ -35,6 +36,13 @@ this_dir = os.path.dirname(os.path.realpath(__file__))
 
 class TokenError(Exception):
     pass
+
+
+class ServerType(Enum):
+    OLD = auto()  # Server is old and does not support workspaces
+    CE = auto()  # Server is Community Edition
+    EE = auto()  # Server is Enterprise Edition
+    SAAS = auto()  # Server is SaaS
 
 
 def decode_token_data(token):
@@ -70,6 +78,7 @@ class MerginClient:
         self._auth_params = None
         self._auth_session = None
         self._user_info = None
+        self._server_type = None
         self.client_version = "Python-client/" + __version__
         if plugin_version is not None:  # this could be e.g. "Plugin/2020.1 QGIS/3.14"
             self.client_version += " " + plugin_version
@@ -310,6 +319,7 @@ class MerginClient:
         Requests information about user from /user/service endpoint if such exists in self.url server.
 
         Returns response from server as JSON dict or None if endpoint is not found
+        This can be removed once our SaaS server is upgraded to support workspaces
         """
 
         try:
@@ -321,6 +331,58 @@ class MerginClient:
         response = json.loads(response.read())
 
         return response
+
+    def workspace_service(self, workspace_id):
+        """
+        This Requests information about a workspace service from /workspace/{id}/service endpoint,
+        if such exists in self.url server.
+
+        Returns response from server as JSON dict or None if endpoint is not found
+        """
+
+        try:
+            response = self.get(f"/v1/workspace/{workspace_id}/service")
+        except ClientError as e:
+            self.log.debug(f"Unable to query for /workspace/{workspace_id}/service endpoint")
+            return
+
+        response = json.loads(response.read())
+
+        return response
+
+    def server_type(self):
+        """
+        Returns the deployment type of the server
+
+        The value is cached for self's lifetime
+
+        :returns: ServerType of server deployment
+        :rtype: ServerType
+        """
+        if not self._server_type:
+            try:
+                resp = self.get("/config")
+                config = json.load(resp)
+                if config["server_type"] == "ce":
+                    self._server_type = ServerType.CE
+                elif config["server_type"] == "ee":
+                    self._server_type = ServerType.EE
+                elif config["server_type"] == "saas":
+                    self._server_type = ServerType.SAAS
+            except (ClientError, KeyError):
+                self._server_type = ServerType.OLD
+
+        return self._server_type
+
+    def workspaces_list(self):
+        """
+        Find all available workspaces
+
+        :rtype: List[Dict]
+        """
+        resp = self.get("/v1/workspaces")
+        workspaces = json.load(resp)
+        return workspaces
 
     def create_project(self, project_name, is_public=False, namespace=None):
         """
@@ -367,7 +429,16 @@ class MerginClient:
                 self.push_project(directory)
 
     def paginated_projects_list(
-        self, page=1, per_page=50, tags=None, user=None, flag=None, name=None, namespace=None, order_params=None
+        self,
+        page=1,
+        per_page=50,
+        tags=None,
+        user=None,
+        flag=None,
+        name=None,
+        only_namespace=None,
+        namespace=None,
+        order_params=None,
     ):
         """
         Find all available Mergin Maps projects.
@@ -383,6 +454,9 @@ class MerginClient:
 
         :param name: Filter projects with name like name
         :type name: String
+
+        :param only_namespace: Filter projects with namespace exactly equal to namespace
+        :type namespace: String
 
         :param namespace: Filter projects with namespace like namespace
         :type namespace: String
@@ -409,7 +483,9 @@ class MerginClient:
             params["flag"] = flag
         if name:
             params["name"] = name
-        if namespace:
+        if only_namespace:
+            params["only_namespace"] = only_namespace
+        elif namespace:
             params["namespace"] = namespace
         params["page"] = page
         params["per_page"] = per_page
@@ -419,7 +495,9 @@ class MerginClient:
         projects = json.load(resp)
         return projects
 
-    def projects_list(self, tags=None, user=None, flag=None, name=None, namespace=None, order_params=None):
+    def projects_list(
+        self, tags=None, user=None, flag=None, name=None, only_namespace=None, namespace=None, order_params=None
+    ):
         """
         Find all available Mergin Maps projects.
 
@@ -436,6 +514,9 @@ class MerginClient:
 
         :param name: Filter projects with name like name
         :type name: String
+
+        :param only_namespace: Filter projects with namespace exactly equal to namespace
+        :type namespace: String
 
         :param namespace: Filter projects with namespace like namespace
         :type namespace: String
@@ -458,6 +539,7 @@ class MerginClient:
                 user=user,
                 flag=flag,
                 name=name,
+                only_namespace=only_namespace,
                 namespace=namespace,
                 order_params=order_params,
             )
@@ -558,7 +640,11 @@ class MerginClient:
         return True, free_space
 
     def user_info(self):
-        resp = self.get("/v1/user/" + self.username())
+        server_type = self.server_type()
+        if server_type == ServerType.OLD:
+            resp = self.get("/v1/user/" + self.username())
+        else:
+            resp = self.get("/v1/user/profile")
         return json.load(resp)
 
     def set_project_access(self, project_path, access):
@@ -709,6 +795,7 @@ class MerginClient:
         project_path = mp.metadata["name"]
         local_version = mp.metadata["version"]
         server_info = self.project_info(project_path, since=local_version)
+
         pull_changes = mp.get_pull_changes(server_info["files"])
 
         push_changes = mp.get_push_changes()
