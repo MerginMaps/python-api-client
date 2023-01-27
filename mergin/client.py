@@ -439,6 +439,7 @@ class MerginClient:
         only_namespace=None,
         namespace=None,
         order_params=None,
+        only_public=None,
     ):
         """
         Find all available Mergin Maps projects.
@@ -472,6 +473,9 @@ class MerginClient:
             Available attrs: namespace, name, created, updated, disk_usage, creator
         :type order_params: String
 
+        :param only_public: Only fetch public projects
+        :type only_public: Bool
+
         :rtype: List[Dict]
         """
         params = {}
@@ -487,6 +491,8 @@ class MerginClient:
             params["only_namespace"] = only_namespace
         elif namespace:
             params["namespace"] = namespace
+        if only_public:
+            params["only_public"] = only_public
         params["page"] = page
         params["per_page"] = per_page
         if order_params is not None:
@@ -496,7 +502,15 @@ class MerginClient:
         return projects
 
     def projects_list(
-        self, tags=None, user=None, flag=None, name=None, only_namespace=None, namespace=None, order_params=None
+        self,
+        tags=None,
+        user=None,
+        flag=None,
+        name=None,
+        only_namespace=None,
+        namespace=None,
+        order_params=None,
+        only_public=None,
     ):
         """
         Find all available Mergin Maps projects.
@@ -526,6 +540,9 @@ class MerginClient:
             Available attrs: namespace, name, created, updated, disk_usage, creator
         :type order_params: String
 
+        :param only_public: Only fetch public projects
+        :type only_public: Bool
+
         :rtype: List[Dict]
         """
         projects = []
@@ -542,6 +559,7 @@ class MerginClient:
                 only_namespace=only_namespace,
                 namespace=namespace,
                 order_params=order_params,
+                only_public=only_public,
             )
             fetched_projects += len(resp["projects"])
             count = resp["count"]
