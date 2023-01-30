@@ -10,7 +10,7 @@ import pytz
 import sqlite3
 
 from .. import InvalidProject
-from ..client import MerginClient, ClientError, MerginProject, LoginError, decode_token_data, TokenError
+from ..client import MerginClient, ClientError, MerginProject, LoginError, decode_token_data, TokenError, ServerType
 from ..client_push import push_project_async, push_project_cancel
 from ..utils import (
     generate_checksum,
@@ -586,9 +586,17 @@ def test_available_storage_validation(mc):
     # download project
     mc.download_project(test_project_fullname, project_dir)
 
-    # get user_info about storage capacity
-    user_info = mc.user_info()
-    storage_remaining = user_info["storage"] - user_info["disk_usage"]
+    # get info about storage capacity
+    storage_remaining = 0
+
+    if mc.server_type() == ServerType.OLD:
+        user_info = mc.user_info()
+        storage_remaining = user_info["storage"] - user_info["disk_usage"]
+    else:
+        for workspace in mc.workspaces_list():
+            if workspace["name"] == API_USER:
+                storage_remaining = workspace["storage"] - workspace["disk_usage"]
+                break
 
     # generate dummy data (remaining storage + extra 1024b)
     dummy_data_path = project_dir + "/data"
@@ -600,8 +608,8 @@ def test_available_storage_validation(mc):
     try:
         mc.push_project(project_dir)
     except ClientError as e:
-        # Expecting "Storage limit has been reached" error msg.
-        assert str(e).startswith("Storage limit has been reached")
+        # Expecting "You have reached a data limit" 400 server error msg.
+        assert str(e) == "You have reached a data limit"
         got_right_err = True
     assert got_right_err
 
@@ -609,6 +617,9 @@ def test_available_storage_validation(mc):
     project_info = get_project_info(mc, API_USER, test_project)
     assert project_info["version"] == "v0"
     assert project_info["disk_usage"] == 0
+
+    # remove dummy big file from a disk
+    remove_folders([project_dir])
 
 
 def test_available_storage_validation2(mc, mc2):
@@ -643,9 +654,14 @@ def test_available_storage_validation2(mc, mc2):
     # download project
     mc.download_project(test_project_fullname, project_dir)
 
-    # get user_info about storage capacity
-    user_info = mc.user_info()
-    storage_remaining = user_info["storage"] - user_info["disk_usage"]
+    # get info about storage capacity
+    storage_remaining = 0
+    if mc.server_type() == ServerType.OLD:
+        user_info = mc.user_info()
+        storage_remaining = user_info["storage"] - user_info["disk_usage"]
+    else:
+        # This test does not make sense in newer servers as quotas are tied to workspaces, not users
+        return
 
     # generate dummy data (remaining storage + extra 1024b)
     dummy_data_path = project_dir + "/data"
