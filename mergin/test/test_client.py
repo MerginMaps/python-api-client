@@ -36,14 +36,14 @@ CHANGED_SCHEMA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "
 @pytest.fixture(scope="function")
 def mc():
     client = create_client(API_USER, USER_PWD)
-    create_workspace_for_client( client )
+    create_workspace_for_client(client)
     return client
 
 
 @pytest.fixture(scope="function")
 def mc2():
     client = create_client(API_USER2, USER_PWD2)
-    create_workspace_for_client( client )
+    create_workspace_for_client(client)
     return client
 
 
@@ -56,11 +56,11 @@ def create_workspace_for_client(mc):
     info = mc.user_info()
 
     # check if mc already have workspace with its name
-    wsAlreadyCreated = len( list( filter( lambda x: x.name == mc.username, info.get("workspaces") ) ) ) > 0
+    wsAlreadyCreated = len(list(filter(lambda x: x.name == mc.username, info.get("workspaces")))) > 0
     if wsAlreadyCreated:
         return
 
-    mc.create_workspace( mc.username )
+    mc.create_workspace(mc.username)
 
 
 def cleanup(mc, project, dirs):

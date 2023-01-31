@@ -402,7 +402,6 @@ class MerginClient:
             detail = f"Username: {self.username}, workspace name: {workspace_name}"
             raise ClientError(str(e), detail)
 
-
     def create_project(self, project_name, is_public=False, namespace=None):
         """
         Create new project repository in user namespace on Mergin Maps server.
