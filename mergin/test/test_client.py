@@ -1780,13 +1780,7 @@ def test_project_versions_list(mc, mc2):
     # now user shold have write access
     assert mc.has_writing_permissions(test_project_fullname)
 
-    # test organization permissions
-    test_project_fullname = "testorg" + "/" + "test_org_permissions"
-
     # owner should have write access
-    assert mc.has_writing_permissions(test_project_fullname)
-
-    # writer should have write access
     assert mc2.has_writing_permissions(test_project_fullname)
 
 
