@@ -646,17 +646,6 @@ class MerginClient:
         download_project_wait(job)
         download_project_finalize(job)
 
-    def enough_storage_available(self, data):
-        info = self.user_info()
-        free_space = int(info["storage_limit"]) - int(info["disk_usage"])
-        upload_files_sizes = [f["size"] for f in data["updated"] + data["added"]]
-        size_to_upload = sum(upload_files_sizes)
-
-        if size_to_upload > free_space:
-            return False, free_space
-
-        return True, free_space
-
     def user_info(self):
         server_type = self.server_type()
         if server_type == ServerType.OLD:
