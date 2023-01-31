@@ -399,7 +399,7 @@ class MerginClient:
         try:
             self.post("/v1/workspace", params, {"Content-Type": "application/json"})
         except Exception as e:
-            detail = f"Username: {self.username}, workspace name: {workspace_name}"
+            detail = f"Workspace name: {workspace_name}"
             raise ClientError(str(e), detail)
 
     def create_project(self, project_name, is_public=False, namespace=None):
