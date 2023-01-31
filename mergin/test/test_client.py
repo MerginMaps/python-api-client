@@ -35,17 +35,32 @@ CHANGED_SCHEMA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "
 
 @pytest.fixture(scope="function")
 def mc():
-    return create_client(API_USER, USER_PWD)
+    client = create_client(API_USER, USER_PWD)
+    create_workspace_for_client( client )
+    return client
 
 
 @pytest.fixture(scope="function")
 def mc2():
-    return create_client(API_USER2, USER_PWD2)
+    client = create_client(API_USER2, USER_PWD2)
+    create_workspace_for_client( client )
+    return client
 
 
 def create_client(user, pwd):
     assert SERVER_URL and SERVER_URL.rstrip("/") != "https://app.merginmaps.com" and user and pwd
     return MerginClient(SERVER_URL, login=user, password=pwd)
+
+
+def create_workspace_for_client(mc):
+    info = mc.user_info()
+
+    # check if mc already have workspace with its name
+    wsAlreadyCreated = len( list( filter( lambda x: x.name == mc.username, info.get("workspaces") ) ) ) > 0
+    if wsAlreadyCreated:
+        return
+
+    mc.create_workspace( mc.username )
 
 
 def cleanup(mc, project, dirs):

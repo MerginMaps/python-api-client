@@ -384,6 +384,25 @@ class MerginClient:
         workspaces = json.load(resp)
         return workspaces
 
+    def create_workspace(self, workspace_name):
+        """
+        Create new workspace for currently active user.
+
+        :param workspace_name: Workspace name to create
+        :type workspace_name: String
+        """
+        if not self._user_info:
+            raise Exception("Authentication required")
+
+        params = {"name": workspace_name}
+
+        try:
+            self.post("/v1/workspace", params, {"Content-Type": "application/json"})
+        except Exception as e:
+            detail = f"Username: {self.username}, workspace name: {workspace_name}"
+            raise ClientError(str(e), detail)
+
+
     def create_project(self, project_name, is_public=False, namespace=None):
         """
         Create new project repository in user namespace on Mergin Maps server.
