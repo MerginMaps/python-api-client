@@ -211,7 +211,6 @@ def download_project_finalize(job):
     job.mp.log.info("--- download finished")
 
     for task in job.update_tasks:
-
         # right now only copy tasks...
         task.apply(job.directory, job.mp)
 

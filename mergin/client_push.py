@@ -55,7 +55,6 @@ class UploadQueueItem:
         self.transaction_id = transaction_id  # ID of the transaction
 
     def upload_blocking(self, mc, mp):
-
         with open(self.file_path, "rb") as file_handle:
             file_handle.seek(self.chunk_index * UPLOAD_CHUNK_SIZE)
             data = file_handle.read(UPLOAD_CHUNK_SIZE)
