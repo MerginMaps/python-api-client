@@ -33,6 +33,7 @@ def save_to_file(stream, path):
     :param path: destination file path
     """
     directory = os.path.abspath(os.path.dirname(path))
+
     os.makedirs(directory, exist_ok=True)
 
     with open(path, "wb") as output:

@@ -35,17 +35,28 @@ CHANGED_SCHEMA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "
 
 @pytest.fixture(scope="function")
 def mc():
-    return create_client(API_USER, USER_PWD)
+    client = create_client(API_USER, USER_PWD)
+    create_workspace_for_client(client)
+    return client
 
 
 @pytest.fixture(scope="function")
 def mc2():
-    return create_client(API_USER2, USER_PWD2)
+    client = create_client(API_USER2, USER_PWD2)
+    create_workspace_for_client(client)
+    return client
 
 
 def create_client(user, pwd):
     assert SERVER_URL and SERVER_URL.rstrip("/") != "https://app.merginmaps.com" and user and pwd
     return MerginClient(SERVER_URL, login=user, password=pwd)
+
+
+def create_workspace_for_client(mc):
+    try:
+        mc.create_workspace(mc.username())
+    except ClientError:
+        return
 
 
 def cleanup(mc, project, dirs):
@@ -1765,13 +1776,7 @@ def test_project_versions_list(mc, mc2):
     # now user shold have write access
     assert mc.has_writing_permissions(test_project_fullname)
 
-    # test organization permissions
-    test_project_fullname = "testorg" + "/" + "test_org_permissions"
-
     # owner should have write access
-    assert mc.has_writing_permissions(test_project_fullname)
-
-    # writer should have write access
     assert mc2.has_writing_permissions(test_project_fullname)
 
 
