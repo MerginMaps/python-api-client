@@ -53,14 +53,10 @@ def create_client(user, pwd):
 
 
 def create_workspace_for_client(mc):
-    info = mc.user_info()
-
-    # check if mc already have workspace with its name
-    wsAlreadyCreated = len(list(filter(lambda x: x["name"] == mc.username(), info.get("workspaces")))) > 0
-    if wsAlreadyCreated:
+    try:
+        mc.create_workspace(mc.username())
+    except ClientError:
         return
-
-    mc.create_workspace(mc.username())
 
 
 def cleanup(mc, project, dirs):
