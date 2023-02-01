@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.0
+
+- Added workspace API to list available workspaces, creating a new workspace and listing projects (#150, #152, #158)
+- Removed check for available storage when syncing to personal namespace (#159)
+- Added storing project IDs to project metadata files (#154)
+
 ## 0.7.4
 
 - Added set_tables_to_skip() to optionally configure which tables to ignore in geodiff
