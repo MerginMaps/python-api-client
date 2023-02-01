@@ -305,7 +305,6 @@ def test_ignore_files(mc):
 
 
 def test_sync_diff(mc):
-
     test_project = f"test_sync_diff"
     project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
