@@ -10,20 +10,16 @@ env:
 concurrency:
   group: ci-${{github.ref}}-autotests
   cancel-in-progress: true
-  
+
 jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
 
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.x'
-
       - name: Install python package dependencies
         run: |
-          python -m pip install --upgrade pip
+          python3 -m pip install --upgrade pip
           pip install python-dateutil pytz pytest pytest-cov pygeodiff coveralls
 
       - name: Run tests
