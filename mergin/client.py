@@ -163,7 +163,7 @@ class MerginClient:
             try:
                 from pip._vendor import distro
 
-                system_version = distro.linux_distribution()[0]
+                system_version = distro.id().capitalize()
             except ModuleNotFoundError:  # pip may not be installed...
                 system_version = "Linux"
         elif platform.system() == "Windows":
