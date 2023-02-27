@@ -4,7 +4,7 @@ import os
 import tempfile
 import subprocess
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import pytest
 import pytz
 import sqlite3
@@ -1860,3 +1860,33 @@ def test_changesets_download(mc):
     assert os.path.exists(diff_file)
     assert mp.geodiff.has_changes(diff_file)
     assert mp.geodiff.changes_count(diff_file) == 3
+
+def test_version_info(mc):
+    """Check retrieving detailed information about single project version.
+    """
+    test_project = "test_version_info"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
+    test_gpkg = "test.gpkg"
+    file_path = os.path.join(project_dir, "test.gpkg")
+
+    cleanup(mc, project, [project_dir])
+
+    os.makedirs(project_dir, exist_ok=True)
+    shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), file_path)
+    mc.create_project_and_push(test_project, project_dir)
+
+    shutil.copy(os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"), file_path)
+    mc.push_project(project_dir)
+
+    shutil.copy(os.path.join(TEST_DATA_DIR, "inserted_1_A_mod.gpkg"), file_path)
+    mc.push_project(project_dir)
+
+    info = mc.project_version_info(project, 2)[0]
+    assert info["namespace"] == API_USER
+    assert info["project_name"] == test_project
+    assert info["name"] == "v2"
+    assert info["author"] == API_USER
+    created = datetime.strptime(info["created"], "%Y-%m-%dT%H:%M:%SZ")
+    assert created.date() == date.today()
+    assert info["changes"]["updated"][0]["size"] == 98304

@@ -831,8 +831,14 @@ class MerginClient:
     def project_version_info(self, project_path, version):
         """Returns JSON with detailed information about a single project version"""
         params = {"version_id": version}
-        resp = self.get("/v1/project/version/{}".format(project_path), params)
-        return json.load(resp)
+        params = {
+          "page": version,
+          "per_page": 1,
+          "descending": False
+        }
+        resp = self.get(f"/v1/project/versions/paginated/{project_path}", params)
+        j = json.load(resp)
+        return j["versions"]
 
     def project_file_history_info(self, project_path, file_path):
         """Returns JSON with full history of a single file within a project"""

@@ -493,7 +493,7 @@ def show_version(ctx, version):
     project_path = mp.metadata["name"]
     # TODO: handle exception when version not found
     version_info_dict = mc.project_version_info(project_path, version)[0]
-    click.secho("Project: " + version_info_dict["project"]["namespace"] + "/" + version_info_dict["project"]["name"])
+    click.secho("Project: " + version_info_dict["namespace"] + "/" + version_info_dict["project_name"])
     click.secho("Version: " + version_info_dict["name"] + " by " + version_info_dict["author"])
     click.secho("Time:    " + version_info_dict["created"])
     pretty_diff(version_info_dict["changes"])
