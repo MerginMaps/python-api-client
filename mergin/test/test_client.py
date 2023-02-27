@@ -1861,9 +1861,9 @@ def test_changesets_download(mc):
     assert mp.geodiff.has_changes(diff_file)
     assert mp.geodiff.changes_count(diff_file) == 3
 
+
 def test_version_info(mc):
-    """Check retrieving detailed information about single project version.
-    """
+    """Check retrieving detailed information about single project version."""
     test_project = "test_version_info"
     project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir

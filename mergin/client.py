@@ -831,11 +831,7 @@ class MerginClient:
     def project_version_info(self, project_path, version):
         """Returns JSON with detailed information about a single project version"""
         params = {"version_id": version}
-        params = {
-          "page": version,
-          "per_page": 1,
-          "descending": False
-        }
+        params = {"page": version, "per_page": 1, "descending": False}
         resp = self.get(f"/v1/project/versions/paginated/{project_path}", params)
         j = json.load(resp)
         return j["versions"]
