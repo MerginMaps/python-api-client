@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.2
+
+- Updated to pygeodiff 2.0.2
+
 ## 0.8.1
 
 - Use new endpoint to retrieve detailed information about project version (#167)
