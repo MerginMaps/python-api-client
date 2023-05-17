@@ -151,6 +151,17 @@ class MerginClient:
                 null_logger = logging.NullHandler()
                 self.log.addHandler(null_logger)
 
+    def close_log_file(self) -> None:
+        """Close log file if the logging to file is specified."""
+        for handler in self.log.handlers:
+            if isinstance(handler, logging.FileHandler):
+                self.log.removeHandler(handler)
+                handler.close()
+        # if not handler exist, create a null handler
+        if not self.log.handlers:
+            null_logger = logging.NullHandler()
+            self.log.addHandler(null_logger)
+
     @staticmethod
     def default_url():
         """Returns URL of the public instance of Mergin Maps"""

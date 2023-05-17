@@ -1890,3 +1890,20 @@ def test_version_info(mc):
     created = datetime.strptime(info["created"], "%Y-%m-%dT%H:%M:%SZ")
     assert created.date() == date.today()
     assert info["changes"]["updated"][0]["size"] == 98304
+
+
+def test_logging_file():
+    # with ENV variable the FileHandle is created
+    os.environ["MERGIN_CLIENT_LOG"] = "true"
+    client = create_client(API_USER, USER_PWD)
+    del os.environ["MERGIN_CLIENT_LOG"]
+
+    # logger if FileHandler
+    assert len(client.log.handlers) == 1
+    assert isinstance(client.log.handlers[0], logging.FileHandler)
+
+    client.close_log_file()
+
+    # after closing log file the logger is NullHandler
+    assert len(client.log.handlers) == 1
+    assert isinstance(client.log.handlers[0], logging.NullHandler)
