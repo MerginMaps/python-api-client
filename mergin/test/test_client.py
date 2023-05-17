@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, date
 import pytest
 import pytz
 import sqlite3
+import importlib
 
 from .. import InvalidProject
 from ..client import MerginClient, ClientError, MerginProject, LoginError, decode_token_data, TokenError, ServerType
@@ -1893,6 +1894,9 @@ def test_version_info(mc):
 
 
 def test_logging_file():
+
+    importlib.reload(logging)
+
     # with ENV variable the FileHandle is created
     os.environ["MERGIN_CLIENT_LOG"] = "true"
     client = create_client(API_USER, USER_PWD)
