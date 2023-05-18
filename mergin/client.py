@@ -202,8 +202,17 @@ class MerginClient:
         except urllib.error.HTTPError as e:
             if e.headers.get("Content-Type", "") == "application/problem+json":
                 info = json.load(e)
-                raise ClientError(info.get("detail"))
-            raise ClientError(e.read().decode("utf-8"))
+                err_detail = info.get("detail")
+            else:
+                err_detail = e.read().decode("utf-8")
+
+            error_msg = (
+                f"HTTP Error: {e.code} {e.reason}\n"
+                f"URL: {request.get_full_url()}\n"
+                f"Method: {request.get_method()}\n"
+                f"Detail: {err_detail}"
+            )
+            raise ClientError(error_msg)
         except urllib.error.URLError as e:
             # e.g. when DNS resolution fails (no internet connection?)
             raise ClientError("Error requesting " + request.full_url + ": " + str(e))

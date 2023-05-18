@@ -620,7 +620,7 @@ def test_available_storage_validation(mc):
         mc.push_project(project_dir)
     except ClientError as e:
         # Expecting "You have reached a data limit" 400 server error msg.
-        assert str(e) == "You have reached a data limit"
+        assert "You have reached a data limit" in str(e)
         got_right_err = True
     assert got_right_err
 
