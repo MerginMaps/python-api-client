@@ -142,9 +142,12 @@ is not permanent - it will expire after several hours.
 $ mergin --username john login
 Password: topsecret
 Login successful!
-To set the MERGIN_AUTH variable run:
+To set the MERGIN_AUTH variable run in Linux:
 export MERGIN_AUTH="Bearer ......."
+In Windows:
+SET MERGIN_AUTH=Bearer .......
 ```
+When setting the variable in Windows you do not quote the value.
 
 When the MERGIN_AUTH env variable is set (or passed with `--auth-token` command line argument),
 it is possible to run other commands without specifying username/password.
