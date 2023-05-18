@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import click
 import json
 import os
+import platform
 import sys
 import time
 import traceback
@@ -177,7 +178,11 @@ def login(ctx):
     if mc is not None:
         click.secho("Login successful!", fg="green")
         token = mc._auth_session["token"]
-        click.secho(f'To set the MERGIN_AUTH variable run:\nexport MERGIN_AUTH="{token}"')
+        if platform.system() == "Windows":
+            hint = f'To set the MERGIN_AUTH variable run:\nset MERGIN_AUTH={token}'
+        else:
+            hint = f'To set the MERGIN_AUTH variable run:\nexport MERGIN_AUTH="{token}"'
+        click.secho(hint)
 
 
 @cli.command()
