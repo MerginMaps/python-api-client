@@ -337,7 +337,7 @@ class MerginClient:
         This Requests information about a workspace service from /workspace/{id}/service endpoint,
         if such exists in self.url server.
 
-        Returns response from server as JSON dict or None if endpoint is not found
+        Returns response from server as JSON dict or None if endpoint is not found   
         """
 
         try:
