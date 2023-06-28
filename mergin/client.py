@@ -759,7 +759,6 @@ class MerginClient:
             return  # there is nothing to push (or we only deleted some files)
         push_project_wait(job)
         push_project_finalize(job)
-        self.clean_temp_files(directory)
 
     def pull_project(self, directory):
         """
@@ -992,15 +991,3 @@ class MerginClient:
         """
         info = self.project_info(project_path)
         return info["permissions"]["upload"]
-
-    def clean_temp_files(self, directory: str) -> None:
-        """
-        Removes all files matchning patter "*-diff-*" from .mergin folder inside specified folder.
-
-        :param directory: project's local path
-        :type directory: str
-        """
-        mergin_dir = Path(directory) / ".mergin"
-        if mergin_dir.exists():
-            for file in mergin_dir.glob("*-diff-*"):
-                file.unlink()
