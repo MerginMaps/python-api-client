@@ -316,3 +316,13 @@ def _do_upload(item, job):
 
     item.upload_blocking(job.mc, job.mp)
     job.transferred_size += item.size
+
+
+def remove_diff_files(job) -> None:
+    """Looks for diff files in the job and removes them."""
+
+    for change in job.changes["updated"]:
+        if "diff" in change.keys():
+            diff_file = job.mp.fpath_meta(change["diff"]["path"])
+            if os.path.exists(diff_file):
+                os.remove(diff_file)
