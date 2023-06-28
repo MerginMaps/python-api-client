@@ -14,6 +14,7 @@ import hashlib
 import pprint
 import tempfile
 import concurrent.futures
+import os
 
 from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
