@@ -347,15 +347,19 @@ class MerginProject:
                 self.geodiff.create_changeset(origin_file, current_file, diff_file)
                 if self.geodiff.has_changes(diff_file):
                     diff_size = os.path.getsize(diff_file)
-                    file["checksum"] = file["origin_checksum"]  # need to match basefile on server
-                    file["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(diff_size / UPLOAD_CHUNK_SIZE))]
-                    file["mtime"] = datetime.fromtimestamp(os.path.getmtime(current_file), tzlocal())
-                    file["diff"] = {
-                        "path": diff_name,
-                        "checksum": generate_checksum(diff_file),
-                        "size": diff_size,
-                        "mtime": datetime.fromtimestamp(os.path.getmtime(diff_file), tzlocal()),
-                    }
+                    if diff_size > 0:
+                        file["checksum"] = file["origin_checksum"]  # need to match basefile on server
+                        file["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(diff_size / UPLOAD_CHUNK_SIZE))]
+                        file["mtime"] = datetime.fromtimestamp(os.path.getmtime(current_file), tzlocal())
+                        file["diff"] = {
+                            "path": diff_name,
+                            "checksum": generate_checksum(diff_file),
+                            "size": diff_size,
+                            "mtime": datetime.fromtimestamp(os.path.getmtime(diff_file), tzlocal()),
+                        }
+                    else:
+                        os.remove(diff_file)
+                        not_updated.append(file)
                 else:
                     not_updated.append(file)
             except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as e:
