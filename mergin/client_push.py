@@ -286,6 +286,8 @@ def push_project_finalize(job):
 
     job.tmp_dir.cleanup()  # delete our temporary dir and all its content
 
+    remove_diff_files(job)
+
     job.mp.log.info("--- push finished - new project version " + job.server_resp["version"])
 
 
