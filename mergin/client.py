@@ -14,7 +14,6 @@ import dateutil.parser
 import ssl
 from enum import Enum, auto
 import re
-from pathlib import Path
 
 from .common import ClientError, LoginError, InvalidProject
 from .merginproject import MerginProject
