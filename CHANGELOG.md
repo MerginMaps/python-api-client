@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.3
+
+- Clean up temporary files in .mergin folder (#47)
+- Improved hint how to set MERGIN_AUTH on Windows (#170)
+- Better error reporting of HTTP errors (#174)
+
 ## 0.8.2
 
 - Updated to pygeodiff 2.0.2
