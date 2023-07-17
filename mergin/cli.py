@@ -179,7 +179,7 @@ def login(ctx):
         click.secho("Login successful!", fg="green")
         token = mc._auth_session["token"]
         if platform.system() == "Windows":
-            hint = f'To set the MERGIN_AUTH variable run:\nset MERGIN_AUTH={token}'
+            hint = f"To set the MERGIN_AUTH variable run:\nset MERGIN_AUTH={token}"
         else:
             hint = f'To set the MERGIN_AUTH variable run:\nexport MERGIN_AUTH="{token}"'
         click.secho(hint)
