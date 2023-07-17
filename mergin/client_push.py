@@ -14,6 +14,7 @@ import hashlib
 import pprint
 import tempfile
 import concurrent.futures
+import os
 
 from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
@@ -286,6 +287,8 @@ def push_project_finalize(job):
 
     job.tmp_dir.cleanup()  # delete our temporary dir and all its content
 
+    remove_diff_files(job)
+
     job.mp.log.info("--- push finished - new project version " + job.server_resp["version"])
 
 
@@ -316,3 +319,13 @@ def _do_upload(item, job):
 
     item.upload_blocking(job.mc, job.mp)
     job.transferred_size += item.size
+
+
+def remove_diff_files(job) -> None:
+    """Looks for diff files in the job and removes them."""
+
+    for change in job.changes["updated"]:
+        if "diff" in change.keys():
+            diff_file = job.mp.fpath_meta(change["diff"]["path"])
+            if os.path.exists(diff_file):
+                os.remove(diff_file)

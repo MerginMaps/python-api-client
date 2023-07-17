@@ -357,6 +357,8 @@ class MerginProject:
                         "mtime": datetime.fromtimestamp(os.path.getmtime(diff_file), tzlocal()),
                     }
                 else:
+                    if os.path.exists(diff_file):
+                        os.remove(diff_file)
                     not_updated.append(file)
             except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as e:
                 self.log.warning("failed to create changeset for " + path)

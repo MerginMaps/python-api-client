@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, date
 import pytest
 import pytz
 import sqlite3
+import glob
 
 from .. import InvalidProject
 from ..client import MerginClient, ClientError, MerginProject, LoginError, decode_token_data, TokenError, ServerType
@@ -1890,3 +1891,27 @@ def test_version_info(mc):
     created = datetime.strptime(info["created"], "%Y-%m-%dT%H:%M:%SZ")
     assert created.date() == date.today()
     assert info["changes"]["updated"][0]["size"] == 98304
+
+
+def test_clean_diff_files(mc):
+    test_project = "test_clean"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
+    project_dir_2 = os.path.join(TMP_DIR, test_project + "_2")  # concurrent project dir
+
+    cleanup(mc, project, [project_dir, project_dir_2])
+    # create remote project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
+
+    # test push changes with diffs:
+    mp = MerginProject(project_dir)
+    f_updated = "base.gpkg"
+    # step 1) base.gpkg updated to inserted_1_A (inserted A feature)
+    shutil.move(mp.fpath(f_updated), mp.fpath_meta(f_updated))  # make local copy for changeset calculation
+    shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
+    mc.push_project(project_dir)
+
+    diff_files = glob.glob("*-diff-*", root_dir=os.path.split(mp.fpath_meta("inserted_1_A.gpkg"))[0])
+
+    assert diff_files == []
