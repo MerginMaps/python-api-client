@@ -1039,6 +1039,8 @@ def _use_wal(db_file):
     con = sqlite3.connect(db_file)
     cursor = con.cursor()
     cursor.execute("PRAGMA journal_mode=wal;")
+    cursor.close()
+    con.close()
 
 
 def _create_test_table(db_file):
