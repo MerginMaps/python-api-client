@@ -1076,18 +1076,18 @@ def _delete_spatial_table(db_file):
 
 def _check_test_table(db_file):
     """Checks whether the 'test' table exists and has one row - otherwise fails with an exception."""
-    # con_verify = sqlite3.connect(db_file)
-    # cursor_verify = con_verify.cursor()
-    # cursor_verify.execute('select count(*) from test;')
-    # assert cursor_verify.fetchone()[0] == 1
     assert _get_table_row_count(db_file, "test") == 1
 
 
 def _get_table_row_count(db_file, table):
-    con_verify = sqlite3.connect(db_file)
-    cursor_verify = con_verify.cursor()
-    cursor_verify.execute("select count(*) from {};".format(table))
-    return cursor_verify.fetchone()[0]
+    try:
+        con_verify = sqlite3.connect(db_file)
+        cursor_verify = con_verify.cursor()
+        cursor_verify.execute("select count(*) from {};".format(table))
+        return cursor_verify.fetchone()[0]
+    finally:
+        cursor_verify.close()
+        con_verify.close()
 
 
 def _is_file_updated(filename, changes_dict):
