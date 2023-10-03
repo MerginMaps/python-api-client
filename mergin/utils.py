@@ -246,7 +246,7 @@ def is_version_acceptable(version, min_version):
     min_major, min_minor = m.group(1), m.group(2)
 
     if len(version) == 0:
-        return False   # unknown version is assumed to be old
+        return False  # unknown version is assumed to be old
 
     m = re.search("(\\d+)[.](\\d+)", version)
     if m is None:
