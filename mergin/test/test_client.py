@@ -76,6 +76,11 @@ def remove_folders(dirs):
             shutil.rmtree(d)
 
 
+def sudo_works():
+    sudo_res = subprocess.run(["sudo", "echo", "test"])
+    return sudo_res.returncode != 0
+
+
 def test_login(mc):
     token = mc._auth_session["token"]
     assert MerginClient(mc.url, auth_token=token)
@@ -1484,6 +1489,7 @@ def create_directory(root, data):
                 open(os.path.join(root, file_name), "w").close()
 
 
+@pytest.mark.skipif(sudo_works(), reason="needs working sudo")
 def test_unfinished_pull(mc):
     """
     Checks whether a pull with failed rebase (due to remote DB schema change)
@@ -1527,7 +1533,8 @@ def test_unfinished_pull(mc):
 
     # lock base file to emulate situation when we can't overwrite it, because
     # it is used by another process
-    subprocess.run(["sudo", "chattr", "+i", test_gpkg])
+    sudo_res = subprocess.run(["sudo", "chattr", "+i", test_gpkg])
+    assert sudo_res.returncode == 0
 
     mc.pull_project(project_dir)
 
@@ -1549,7 +1556,8 @@ def test_unfinished_pull(mc):
     assert _get_table_row_count(test_gpkg_unfinished_pull, "simple") == 3
 
     # unlock base file, so we can apply changes from the unfinished pull
-    subprocess.run(["sudo", "chattr", "-i", test_gpkg])
+    sudo_res = subprocess.run(["sudo", "chattr", "-i", test_gpkg])
+    assert sudo_res.returncode == 0
 
     mc.resolve_unfinished_pull(project_dir)
 
@@ -1570,6 +1578,7 @@ def test_unfinished_pull(mc):
     assert _get_table_row_count(test_gpkg_conflict, "simple") == 4
 
 
+@pytest.mark.skipif(sudo_works(), reason="needs working sudo")
 def test_unfinished_pull_push(mc):
     """
     Checks client behaviour when performing push and pull of the project
@@ -1612,7 +1621,8 @@ def test_unfinished_pull_push(mc):
 
     # lock base file to emulate situation when we can't overwrite it, because
     # it is used by another process
-    subprocess.run(["sudo", "chattr", "+i", test_gpkg])
+    sudo_res = subprocess.run(["sudo", "chattr", "+i", test_gpkg])
+    assert sudo_res.returncode == 0
 
     mc.pull_project(project_dir)
 
@@ -1644,7 +1654,8 @@ def test_unfinished_pull_push(mc):
         mc.pull_project(project_dir)
 
     # unlock base file, so we can apply changes from the unfinished pull
-    subprocess.run(["sudo", "chattr", "-i", test_gpkg])
+    sudo_res = subprocess.run(["sudo", "chattr", "-i", test_gpkg])
+    assert sudo_res.returncode == 0
 
     # perform pull. This should resolve unfinished pull first and then
     # collect data from the server
