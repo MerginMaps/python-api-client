@@ -28,7 +28,7 @@ from .client_pull import (
 )
 from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
 from .client_push import push_project_async, push_project_wait, push_project_finalize
-from .utils import DateTimeEncoder, get_versions_with_file_changes, int_version
+from .utils import DateTimeEncoder, get_versions_with_file_changes, int_version, is_version_acceptable
 from .version import __version__
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
@@ -79,6 +79,7 @@ class MerginClient:
         self._auth_session = None
         self._user_info = None
         self._server_type = None
+        self._server_version = None
         self.client_version = "Python-client/" + __version__
         if plugin_version is not None:  # this could be e.g. "Plugin/2020.1 QGIS/3.14"
             self.client_version += " " + plugin_version
@@ -382,6 +383,23 @@ class MerginClient:
                 self._server_type = ServerType.OLD
 
         return self._server_type
+
+    def server_version(self):
+        """
+        Returns version of the server
+
+        :returns: Version string, e.g. "2023.5.0". For old servers (pre-2023) this may be empty string.
+        :rtype: str
+        """
+        if self._server_version is None:
+            try:
+                resp = self.get("/config")
+                config = json.load(resp)
+                self._server_version = config["version"]
+            except (ClientError, KeyError):
+                self._server_version = ""
+
+        return self._server_version
 
     def workspaces_list(self):
         """
@@ -803,14 +821,48 @@ class MerginClient:
         request = urllib.request.Request(url, data=json.dumps(data).encode(), headers=json_headers, method="POST")
         self._do_request(request)
 
-    def delete_project(self, project_path):
+    def delete_project_now(self, project_path):
         """
-        Delete project repository on server.
+        Delete project repository on server immediately.
+
+        This should be typically in development, e.g. auto tests, where we
+        do not want scheduled project deletes as done by delete_project().
 
         :param project_path: Project's full name (<namespace>/<name>)
         :type project_path: String
 
         """
+        # TODO: this version check should be replaced by checking against the list
+        # of endpoints that server publishes in /config (once implemented)
+        if not is_version_acceptable(self.server_version(), "2023.5"):
+            raise NotImplementedError("This needs server at version 2023.5 or later")
+
+        project_info = self.project_info(project_path)
+        project_id = project_info["id"]
+        path = "/v2/projects/" + project_id
+        url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
+        request = urllib.request.Request(url, method="DELETE")
+        self._do_request(request)
+
+    def delete_project(self, project_path):
+        """
+        Delete project repository on server. Newer servers since 2023
+        will schedule deletion of the project, but not fully remove it immediately.
+        This is the preferred way when the removal is user initiated, so that
+        it is not possible to replace the project with another one with the same
+        name, which would confuse clients that do not use project IDs yet.
+
+        There is also delete_project_now() on newer servers which deletes projects
+        immediately.
+
+        :param project_path: Project's full name (<namespace>/<name>)
+        :type project_path: String
+
+        """
+        # TODO: newer server version (since 2023.5.0) have a new endpoint
+        # (POST /v2/projects/<id>/scheduleDelete) that does the same thing,
+        # but using project ID instead of the name. At some point we may
+        # want to migrate to it.
         path = "/v1/project/%s" % project_path
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         request = urllib.request.Request(url, method="DELETE")

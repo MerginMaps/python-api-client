@@ -63,7 +63,7 @@ def create_workspace_for_client(mc):
 def cleanup(mc, project, dirs):
     # cleanup leftovers from previous test if needed such as remote project and local directories
     try:
-        mc.delete_project(project)
+        mc.delete_project_now(project)
     except ClientError:
         pass
     remove_folders(dirs)
@@ -105,17 +105,17 @@ def test_create_delete_project(mc):
     assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
 
     # try again
-    with pytest.raises(ClientError, match=f"Project {test_project} already exists"):
+    with pytest.raises(ClientError, match=f"already exists"):
         mc.create_project(test_project)
 
     # remove project
-    mc.delete_project(API_USER + "/" + test_project)
+    mc.delete_project_now(API_USER + "/" + test_project)
     projects = mc.projects_list(flag="created")
     assert not any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
 
     # try again, nothing to delete
     with pytest.raises(ClientError):
-        mc.delete_project(API_USER + "/" + test_project)
+        mc.delete_project_now(API_USER + "/" + test_project)
 
 
 def test_create_remote_project_from_local(mc):
