@@ -232,3 +232,26 @@ def edit_conflict_file_name(path, user, version):
     ext = "".join(Path(tail).suffixes)
     file_name = tail.replace(ext, "")
     return os.path.join(head, file_name) + f" (edit conflict, {user} v{version}).json"
+
+
+def is_version_acceptable(version, min_version):
+    """
+    Checks whether given version is at least min_version or later (both given as strings).
+
+    Versions are expected to be using syntax X.Y.Z
+
+    Returns true if version >= min_version
+    """
+    m = re.search("(\\d+)[.](\\d+)", min_version)
+    min_major, min_minor = m.group(1), m.group(2)
+
+    if len(version) == 0:
+        return False   # unknown version is assumed to be old
+
+    m = re.search("(\\d+)[.](\\d+)", version)
+    if m is None:
+        return False
+
+    major, minor = m.group(1), m.group(2)
+
+    return major > min_major or (major == min_major and minor >= min_minor)
