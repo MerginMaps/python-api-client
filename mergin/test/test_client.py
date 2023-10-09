@@ -135,13 +135,20 @@ def test_create_remote_project_from_local(mc):
 
     # create remote project
     mc.create_project_and_push(test_project, directory=project_dir)
+
+    # verify we have correct metadata
     source_mp = MerginProject(project_dir)
+    assert source_mp.project_full_name() == f"{API_USER}/{test_project}"
+    assert source_mp.project_name() == test_project
+    assert source_mp.workspace_name() == API_USER
+    assert source_mp.version() == "v1"
+
     # check basic metadata about created project
     project_info = mc.project_info(project)
     assert project_info["version"] == "v1"
     assert project_info["name"] == test_project
     assert project_info["namespace"] == API_USER
-    assert project_info["id"] == source_mp.metadata["project_id"]
+    assert project_info["id"] == source_mp.project_id()
 
     versions = mc.project_versions(project)
     assert len(versions) == 1
@@ -176,6 +183,12 @@ def test_push_pull_changes(mc):
     # make sure we have v1 also in concurrent project dir
     mc.download_project(project, project_dir_2)
 
+    mp2 = MerginProject(project_dir_2)
+    assert mp2.project_full_name() == f"{API_USER}/{test_project}"
+    assert mp2.project_name() == test_project
+    assert mp2.workspace_name() == API_USER
+    assert mp2.version() == "v1"
+
     # test push changes (add, remove, rename, update)
     f_added = "new.txt"
     with open(os.path.join(project_dir, f_added), "w") as f:
@@ -200,6 +213,11 @@ def test_push_pull_changes(mc):
     assert not pull_changes["renamed"]  # not supported
 
     mc.push_project(project_dir)
+
+    mp = MerginProject(project_dir)
+    assert mp.project_full_name() == f"{API_USER}/{test_project}"
+    assert mp.version() == "v2"
+
     project_info = mc.project_info(project)
     assert project_info["version"] == "v2"
     assert not next((f for f in project_info["files"] if f["path"] == f_removed), None)
@@ -208,8 +226,7 @@ def test_push_pull_changes(mc):
     assert next((f for f in project_info["files"] if f["path"] == f_added), None)
     f_remote_checksum = next((f["checksum"] for f in project_info["files"] if f["path"] == f_updated), None)
     assert generate_checksum(os.path.join(project_dir, f_updated)) == f_remote_checksum
-    mp = MerginProject(project_dir)
-    assert project_info["id"] == mp.metadata["project_id"]
+    assert project_info["id"] == mp.project_id()
     assert len(project_info["files"]) == len(mp.inspect_files())
     project_versions = mc.project_versions(project)
     assert len(project_versions) == 2
@@ -285,7 +302,7 @@ def test_cancel_push(mc):
     # download the project to a different directory and check the version and content
     mc.download_project(project, project_dir_2)
     mp = MerginProject(project_dir_2)
-    assert mp.metadata["version"] == "v2"
+    assert mp.version() == "v2"
     assert os.path.exists(os.path.join(project_dir_2, f_added))
     with open(os.path.join(project_dir_2, f_updated), "r") as f:
         assert f.read() == modification
@@ -348,7 +365,7 @@ def test_sync_diff(mc):
     # check project after push
     project_info = mc.project_info(project)
     assert project_info["version"] == "v3"
-    assert project_info["id"] == mp.metadata["project_id"]
+    assert project_info["id"] == mp.project_id()
     f_remote = next((f for f in project_info["files"] if f["path"] == f_updated), None)
     assert next((f for f in project_info["files"] if f["path"] == "renamed.gpkg"), None)
     assert not next((f for f in project_info["files"] if f["path"] == f_removed), None)
@@ -898,7 +915,7 @@ def test_get_versions_with_file_changes(mc):
 
     project_info = mc.project_info(project)
     assert project_info["version"] == "v4"
-    assert project_info["id"] == mp.metadata["project_id"]
+    assert project_info["id"] == mp.project_id()
     file_history = mc.project_file_history_info(project, f_updated)
 
     with pytest.raises(ClientError) as e:
@@ -933,7 +950,7 @@ def test_download_file(mc):
 
     project_info = mc.project_info(project)
     assert project_info["version"] == "v5"
-    assert project_info["id"] == mp.metadata["project_id"]
+    assert project_info["id"] == mp.project_id()
 
     # Versioned file should have the following content at versions 2-4
     expected_content = ("inserted_1_A.gpkg", "inserted_1_A_mod.gpkg", "inserted_1_B.gpkg")
@@ -963,7 +980,7 @@ def test_download_diffs(mc):
 
     project_info = mc.project_info(project)
     assert project_info["version"] == "v4"
-    assert project_info["id"] == mp.metadata["project_id"]
+    assert project_info["id"] == mp.project_id()
 
     # Download diffs of updated file between versions 1 and 2
     mc.get_file_diff(project_dir, f_updated, diff_file, "v1", "v2")

@@ -56,6 +56,9 @@ class MerginProject:
         if not os.path.exists(self.cache_dir):
             os.mkdir(self.cache_dir)
 
+        # metadata from JSON are lazy loaded
+        self._metadata = None
+
         self.setup_logging(directory)
 
         # make sure we can load correct pygeodiff
@@ -132,16 +135,84 @@ class MerginProject:
             return self.fpath(file, os.path.join(self.cache_dir, version))
         return self.fpath(file, self.cache_dir)
 
+    def project_full_name(self) -> str:
+        """ Returns fully qualified project name: <workspace>/<name> """
+        if self._metadata is None:
+            self._read_metadata()
+        return self._metadata["name"]
+
+    def project_name(self) -> str:
+        """ Returns only project name, without its workspace name """
+        full_name = self.project_full_name()
+        slash_index = full_name.index("/")
+        return full_name[slash_index+1:]
+
+    def workspace_name(self) -> str:
+        """ Returns name of the workspace where the project belongs """
+        full_name = self.project_full_name()
+        slash_index = full_name.index("/")
+        return full_name[:slash_index]
+
+    def project_id(self) -> str:
+        """ Returns ID of the project (UUID using 8-4-4-4-12 formatting without braces) """
+        if self._metadata is None:
+            self._read_metadata()
+        return self._metadata["project_id"]
+
+    def workspace_id(self) -> int:
+        """ Returns ID of the workspace where the project belongs """
+        # unfortunately we currently do not have information about workspace ID
+        # in project's metadata...
+        raise NotImplementedError
+
+    def version(self) -> str:
+        """ Returns project version (e.g. "v123") """
+        if self._metadata is None:
+            self._read_metadata()
+        return self._metadata["version"]
+
+    def files(self) -> list:
+        """ Returns project's list of files (each file being a dictionary) """
+        if self._metadata is None:
+            self._read_metadata()
+        return self._metadata["files"]
+
     @property
-    def metadata(self):
+    def metadata(self) -> dict:
+        """ Gets raw access to metadata. Kept only for backwards compatibility and will be removed. """
+        # as we will change what is written in mergin.json, we do not want
+        # client code to use this getter, and rather use project_full_name(), version() etc.
+        from warnings import warn
+        warn("MerginProject.metadata getter should not be used anymore", DeprecationWarning)
+        if self._metadata is None:
+            self._read_metadata()
+        return self._metadata
+
+    def _read_metadata(self):
+        """ Loads the project's metadata from JSON """
         if not os.path.exists(self.fpath_meta("mergin.json")):
             raise InvalidProject("Project metadata has not been created yet")
         with open(self.fpath_meta("mergin.json"), "r") as file:
-            return json.load(file)
+            self._metadata = json.load(file)
 
-    @metadata.setter
-    def metadata(self, data):
-        with open(self.fpath_meta("mergin.json"), "w") as file:
+    def update_metadata(self, data: dict):
+        """ Writes project metadata and updates cached metadata. """
+        self._metadata = data
+        MerginProject.write_metadata(self.dir, data)
+
+    @staticmethod
+    def write_metadata(project_directory: str, data: dict):
+        """ Writes project metadata to <project_directory>/.mergin/mergin.json
+
+        In most cases it is better to call update_metadata() as that will also
+        update in-memory cache of metadata in MerginProject - this static method is
+        useful for cases when this is the first time metadata are being written
+        (and therefore creating MerginProject would fail).
+         """
+        meta_dir = os.path.join(project_directory, ".mergin")
+        os.makedirs(meta_dir, exist_ok=True)
+        metadata_json_file = os.path.abspath(os.path.join(meta_dir, "mergin.json"))
+        with open(metadata_json_file, "w") as file:
             json.dump(data, file, indent=2)
 
     def is_versioned_file(self, file):
@@ -270,7 +341,7 @@ class MerginProject:
         """
 
         # first let's have a look at the added/updated/removed files
-        changes = self.compare_file_sets(self.metadata["files"], server_files)
+        changes = self.compare_file_sets(self.files(), server_files)
 
         # then let's inspect our versioned files (geopackages) if there are any relevant changes
         not_updated = []
@@ -290,7 +361,7 @@ class MerginProject:
 
             # need to track geodiff file history to see if there were any changes
             for version, version_info in history_list:
-                if version <= int_version(self.metadata["version"]):
+                if version <= int_version(self.version()):
                     continue  # ignore history of no interest
                 is_updated = True
                 if "diff" in version_info:
@@ -321,7 +392,7 @@ class MerginProject:
         :returns: changes metadata for files to be pushed to server
         :rtype: dict
         """
-        changes = self.compare_file_sets(self.metadata["files"], self.inspect_files())
+        changes = self.compare_file_sets(self.files(), self.inspect_files())
         # do checkpoint to push changes from wal file to gpkg
         for file in changes["added"] + changes["updated"]:
             size, checksum = do_sqlite_checkpoint(self.fpath(file["path"]), self.log)
@@ -514,7 +585,7 @@ class MerginProject:
         # they will be stored in a JSON file - if there are no conflicts, the file
         # won't even be created
         rebase_conflicts = unique_path_name(
-            edit_conflict_file_name(self.fpath(path), user_name, int_version(self.metadata["version"]))
+            edit_conflict_file_name(self.fpath(path), user_name, int_version(self.version()))
         )
 
         # try to do rebase magic
@@ -628,7 +699,7 @@ class MerginProject:
             return
 
         backup_path = unique_path_name(
-            conflicted_copy_file_name(self.fpath(file), user_name, int_version(self.metadata["version"]))
+            conflicted_copy_file_name(self.fpath(file), user_name, int_version(self.version()))
         )
 
         if self.is_versioned_file(file):

@@ -216,12 +216,14 @@ def download_project_finalize(job):
 
     # final update of project metadata
     # TODO: why not exact copy of project info JSON ?
-    job.mp.metadata = {
-        "name": job.project_path,
-        "version": job.version,
-        "project_id": job.project_info["id"],
-        "files": job.project_info["files"],
-    }
+    job.mp.update_metadata(
+        {
+            "name": job.project_path,
+            "version": job.version,
+            "project_id": job.project_info["id"],
+            "files": job.project_info["files"],
+        }
+    )
 
 
 def download_project_cancel(job):
@@ -370,8 +372,8 @@ def pull_project_async(mc, directory):
             mp.log.info("--- pull aborted")
             raise
 
-    project_path = mp.metadata["name"]
-    local_version = mp.metadata["version"]
+    project_path = mp.project_full_name()
+    local_version = mp.version()
 
     mp.log.info("--- version: " + mc.user_agent_info())
     mp.log.info(f"--- start pull {project_path}")
@@ -611,17 +613,19 @@ def pull_project_finalize(job):
         job.mp.log.info("--- pull aborted")
         raise ClientError("Failed to apply pull changes: " + str(e))
 
-    job.mp.metadata = {
-        "name": job.project_path,
-        "version": job.version if job.version else "v0",  # for new projects server version is ""
-        "project_id": job.project_info["id"],
-        "files": job.project_info["files"],
-    }
+    job.mp.update_metadata(
+        {
+            "name": job.project_path,
+            "version": job.version if job.version else "v0",  # for new projects server version is ""
+            "project_id": job.project_info["id"],
+            "files": job.project_info["files"],
+        }
+    )
 
     if job.mp.has_unfinished_pull():
         job.mp.log.info("--- failed to complete pull -- project left in the unfinished pull state")
     else:
-        job.mp.log.info("--- pull finished -- at version " + job.mp.metadata["version"])
+        job.mp.log.info("--- pull finished -- at version " + job.mp.version())
 
     shutil.rmtree(job.temp_dir)
     return conflicts
@@ -633,7 +637,7 @@ def download_file_async(mc, project_dir, file_path, output_file, version):
     Returns handle to the pending download.
     """
     mp = MerginProject(project_dir)
-    project_path = mp.metadata["name"]
+    project_path = mp.project_full_name()
     ver_info = f"at version {version}" if version is not None else "at latest version"
     mp.log.info(f"Getting {file_path} {ver_info}")
     latest_proj_info = mc.project_info(project_path)
@@ -720,7 +724,7 @@ def download_diffs_async(mc, project_directory, file_path, versions):
         PullJob/None: a handle for the pending download.
     """
     mp = MerginProject(project_directory)
-    project_path = mp.metadata["name"]
+    project_path = mp.project_full_name()
     file_history = mc.project_file_history_info(project_path, file_path)
     mp.log.info(f"--- version: {mc.user_agent_info()}")
     mp.log.info(f"--- start download diffs for {file_path} of {project_path}, versions: {[v for v in versions]}")
