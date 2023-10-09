@@ -468,8 +468,16 @@ class MerginClient:
         if directory:
             full_project_name = "{}/{}".format(namespace, project_name)
             project_info = self.project_info(full_project_name)
+            MerginProject.write_metadata(
+                directory,
+                {
+                    "name": full_project_name,
+                    "version": "v0",
+                    "files": [],
+                    "project_id": project_info["id"],
+                },
+            )
             mp = MerginProject(directory)
-            mp.metadata = {"name": full_project_name, "version": "v0", "files": [], "project_id": project_info["id"]}
             if mp.inspect_files():
                 self.push_project(directory)
 
@@ -878,9 +886,7 @@ class MerginClient:
         :rtype: dict, dict
         """
         mp = MerginProject(directory)
-        project_path = mp.metadata["name"]
-        local_version = mp.metadata["version"]
-        server_info = self.project_info(project_path, since=local_version)
+        server_info = self.project_info(mp.project_full_name(), since=mp.version())
 
         pull_changes = mp.get_pull_changes(server_info["files"])
 
@@ -955,7 +961,7 @@ class MerginClient:
         :type version_to: String
         """
         mp = MerginProject(project_dir)
-        project_path = mp.metadata["name"]
+        project_path = mp.project_full_name()
         file_history = self.project_file_history_info(project_path, file_path)
         versions_to_fetch = get_versions_with_file_changes(
             self, project_path, file_path, version_from=version_from, version_to=version_to, file_history=file_history

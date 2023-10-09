@@ -495,7 +495,7 @@ def show_version(ctx, version):
         return
     directory = os.getcwd()
     mp = MerginProject(directory)
-    project_path = mp.metadata["name"]
+    project_path = mp.project_full_name()
     # TODO: handle exception when version not found
     version_info_dict = mc.project_version_info(project_path, version)[0]
     click.secho("Project: " + version_info_dict["namespace"] + "/" + version_info_dict["project_name"])
@@ -514,7 +514,7 @@ def show_file_history(ctx, path):
         return
     directory = os.getcwd()
     mp = MerginProject(directory)
-    project_path = mp.metadata["name"]
+    project_path = mp.project_full_name()
     info_dict = mc.project_file_history_info(project_path, path)
     # TODO: handle exception if history not found
     history_dict = info_dict["history"]
@@ -538,7 +538,7 @@ def show_file_changeset(ctx, path, version):
         return
     directory = os.getcwd()
     mp = MerginProject(directory)
-    project_path = mp.metadata["name"]
+    project_path = mp.project_full_name()
     info_dict = mc.project_file_changeset_info(project_path, path, version)
     # TODO: handle exception if Diff not found
     click.secho(json.dumps(info_dict, indent=2))

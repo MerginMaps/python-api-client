@@ -214,7 +214,7 @@ def create_report(mc, directory, since, to, out_file):
           List of warnings/issues for versions which could not be processed (e.g. broken history with missing diff)
     """
     mp = MerginProject(directory)
-    project = mp.metadata["name"]
+    project = mp.project_full_name()
     mp.log.info(f"--- Creating changesets report for {project} from {since} to {to if to else 'latest'} versions ----")
     versions = mc.project_versions(project, since, to if to else None)
     versions_map = {v["name"]: v for v in versions}

@@ -84,8 +84,8 @@ def push_project_async(mc, directory):
     if mp.has_unfinished_pull():
         raise ClientError("Project is in unfinished pull state. Please resolve unfinished pull and try again.")
 
-    project_path = mp.metadata["name"]
-    local_version = mp.metadata["version"]
+    project_path = mp.project_full_name()
+    local_version = mp.version()
 
     mp.log.info("--- version: " + mc.user_agent_info())
     mp.log.info(f"--- start push {project_path}")
@@ -272,12 +272,14 @@ def push_project_finalize(job):
                 job.mp.log.info("cancel response: " + str(err2))
             raise err
 
-    job.mp.metadata = {
-        "name": job.project_path,
-        "version": job.server_resp["version"],
-        "project_id": job.server_resp["id"],
-        "files": job.server_resp["files"],
-    }
+    job.mp.update_metadata(
+        {
+            "name": job.project_path,
+            "version": job.server_resp["version"],
+            "project_id": job.server_resp["id"],
+            "files": job.server_resp["files"],
+        }
+    )
     try:
         job.mp.apply_push_changes(job.changes)
     except Exception as e:
