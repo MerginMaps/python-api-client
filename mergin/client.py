@@ -623,7 +623,7 @@ class MerginClient:
                 break
         return projects
 
-    def project_info(self, project_path, since=None, version=None):
+    def project_info(self, project_path_or_id, since=None, version=None):
         """
         Fetch info about project.
 
@@ -639,7 +639,11 @@ class MerginClient:
         # since and version are mutually exclusive
         if version:
             params = {"version": version}
-        resp = self.get("/v1/project/{}".format(project_path), params)
+
+        if re.match("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", project_path_or_id):
+            resp = self.get("/v1/project/by_uuid/{}".format(project_path_or_id), params)
+        else:
+            resp = self.get("/v1/project/{}".format(project_path_or_id), params)
         return json.load(resp)
 
     def project_versions(self, project_path, since=None, to=None):
