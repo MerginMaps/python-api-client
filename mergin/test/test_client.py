@@ -150,6 +150,13 @@ def test_create_remote_project_from_local(mc):
     assert project_info["namespace"] == API_USER
     assert project_info["id"] == source_mp.project_id()
 
+    # check project metadata retrieval by id
+    project_info = mc.project_info(source_mp.project_id())
+    assert project_info["version"] == "v1"
+    assert project_info["name"] == test_project
+    assert project_info["namespace"] == API_USER
+    assert project_info["id"] == source_mp.project_id()
+
     versions = mc.project_versions(project)
     assert len(versions) == 1
     assert versions[0]["name"] == "v1"
