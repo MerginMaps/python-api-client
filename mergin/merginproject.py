@@ -136,79 +136,80 @@ class MerginProject:
         return self.fpath(file, self.cache_dir)
 
     def project_full_name(self) -> str:
-        """ Returns fully qualified project name: <workspace>/<name> """
+        """Returns fully qualified project name: <workspace>/<name>"""
         if self._metadata is None:
             self._read_metadata()
         return self._metadata["name"]
 
     def project_name(self) -> str:
-        """ Returns only project name, without its workspace name """
+        """Returns only project name, without its workspace name"""
         full_name = self.project_full_name()
         slash_index = full_name.index("/")
-        return full_name[slash_index+1:]
+        return full_name[slash_index + 1 :]
 
     def workspace_name(self) -> str:
-        """ Returns name of the workspace where the project belongs """
+        """Returns name of the workspace where the project belongs"""
         full_name = self.project_full_name()
         slash_index = full_name.index("/")
         return full_name[:slash_index]
 
     def project_id(self) -> str:
-        """ Returns ID of the project (UUID using 8-4-4-4-12 formatting without braces) """
+        """Returns ID of the project (UUID using 8-4-4-4-12 formatting without braces)"""
         if self._metadata is None:
             self._read_metadata()
         return self._metadata["project_id"]
 
     def workspace_id(self) -> int:
-        """ Returns ID of the workspace where the project belongs """
+        """Returns ID of the workspace where the project belongs"""
         # unfortunately we currently do not have information about workspace ID
         # in project's metadata...
         raise NotImplementedError
 
     def version(self) -> str:
-        """ Returns project version (e.g. "v123") """
+        """Returns project version (e.g. "v123")"""
         if self._metadata is None:
             self._read_metadata()
         return self._metadata["version"]
 
     def files(self) -> list:
-        """ Returns project's list of files (each file being a dictionary) """
+        """Returns project's list of files (each file being a dictionary)"""
         if self._metadata is None:
             self._read_metadata()
         return self._metadata["files"]
 
     @property
     def metadata(self) -> dict:
-        """ Gets raw access to metadata. Kept only for backwards compatibility and will be removed. """
+        """Gets raw access to metadata. Kept only for backwards compatibility and will be removed."""
         # as we will change what is written in mergin.json, we do not want
         # client code to use this getter, and rather use project_full_name(), version() etc.
         from warnings import warn
+
         warn("MerginProject.metadata getter should not be used anymore", DeprecationWarning)
         if self._metadata is None:
             self._read_metadata()
         return self._metadata
 
     def _read_metadata(self):
-        """ Loads the project's metadata from JSON """
+        """Loads the project's metadata from JSON"""
         if not os.path.exists(self.fpath_meta("mergin.json")):
             raise InvalidProject("Project metadata has not been created yet")
         with open(self.fpath_meta("mergin.json"), "r") as file:
             self._metadata = json.load(file)
 
     def update_metadata(self, data: dict):
-        """ Writes project metadata and updates cached metadata. """
+        """Writes project metadata and updates cached metadata."""
         self._metadata = data
         MerginProject.write_metadata(self.dir, data)
 
     @staticmethod
     def write_metadata(project_directory: str, data: dict):
-        """ Writes project metadata to <project_directory>/.mergin/mergin.json
+        """Writes project metadata to <project_directory>/.mergin/mergin.json
 
         In most cases it is better to call update_metadata() as that will also
         update in-memory cache of metadata in MerginProject - this static method is
         useful for cases when this is the first time metadata are being written
         (and therefore creating MerginProject would fail).
-         """
+        """
         meta_dir = os.path.join(project_directory, ".mergin")
         os.makedirs(meta_dir, exist_ok=True)
         metadata_json_file = os.path.abspath(os.path.join(meta_dir, "mergin.json"))
