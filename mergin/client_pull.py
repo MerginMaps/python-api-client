@@ -16,6 +16,7 @@ import pprint
 import shutil
 import tempfile
 import typing
+from pathlib import Path
 
 import concurrent.futures
 
@@ -104,7 +105,25 @@ def _cleanup_failed_download(directory, mergin_project=None):
     if mergin_project is not None:
         mergin_project.remove_logging_handler()
 
+    # keep log file as it might contain useful debug info
+    log_file = os.path.join(directory, ".mergin", "client-log.txt")
+    dest_file = None
+
+    if os.path.exists(log_file):
+        dest_file = os.path.join(tempfile.gettempdir(), os.path.split(log_file)[1])
+        head, tail = os.path.split(os.path.normpath(dest_file))
+        ext = "".join(Path(tail).suffixes)
+        file_name = tail.replace(ext, "")
+
+        i = 0
+        while os.path.exists(dest_file):
+            i += 1
+            dest_file = os.path.join(head, file_name) + f"_{i}{ext}"
+
+        shutil.copyfile(log_file, dest_file)
+
     shutil.rmtree(directory)
+    return dest_file
 
 
 def download_project_async(mc, project_path, directory, project_version=None):
@@ -131,9 +150,10 @@ def download_project_async(mc, project_path, directory, project_version=None):
         else:
             project_info = latest_proj_info
 
-    except ClientError:
-        _cleanup_failed_download(directory, mp)
-        raise
+    except ClientError as e:
+        file_path = _cleanup_failed_download(directory, mp)
+        e.log_file = file_path
+        raise e
 
     version = project_info["version"] if project_info["version"] else "v0"
 
@@ -184,8 +204,10 @@ def download_project_is_running(job):
     """
     for future in job.futures:
         if future.done() and future.exception() is not None:
-            _cleanup_failed_download(job.directory, job.mp)
-            raise future.exception()
+            file_path = _cleanup_failed_download(job.directory, job.mp)
+            e = future.exception()
+            e.log_file = file_path
+            raise e
         if future.running():
             return True
     return False
@@ -206,8 +228,10 @@ def download_project_finalize(job):
     # make sure any exceptions from threads are not lost
     for future in job.futures:
         if future.exception() is not None:
-            _cleanup_failed_download(job.directory, job.mp)
-            raise future.exception()
+            file_path = _cleanup_failed_download(job.directory, job.mp)
+            e = future.exception()
+            e.log_file = file_path
+            raise e
 
     job.mp.log.info("--- download finished")
 
