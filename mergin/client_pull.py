@@ -16,7 +16,6 @@ import pprint
 import shutil
 import tempfile
 import typing
-from pathlib import Path
 
 import concurrent.futures
 
@@ -56,6 +55,7 @@ class DownloadJob:
         self.mp = mp  # MerginProject instance
         self.is_cancelled = False
         self.project_info = project_info  # parsed JSON with project info returned from the server
+        self.failure_log_file = None # log file, copied from the project directory if download fails
 
     def dump(self):
         print("--- JOB ---", self.total_size, "bytes")
@@ -100,6 +100,8 @@ def _cleanup_failed_download(directory, mergin_project=None):
     If a download job fails, there will be the newly created directory left behind with some
     temporary files in it. We want to remove it because a new download would fail because
     the directory already exists.
+
+    Returns path to the client log file or None if log file does not exist.
     """
     # First try to get the Mergin Maps project logger and remove its handlers to allow the log file deletion
     if mergin_project is not None:
@@ -107,23 +109,16 @@ def _cleanup_failed_download(directory, mergin_project=None):
 
     # keep log file as it might contain useful debug info
     log_file = os.path.join(directory, ".mergin", "client-log.txt")
-    dest_file = None
+    dest_path = None
 
     if os.path.exists(log_file):
-        dest_file = os.path.join(tempfile.gettempdir(), os.path.split(log_file)[1])
-        head, tail = os.path.split(os.path.normpath(dest_file))
-        ext = "".join(Path(tail).suffixes)
-        file_name = tail.replace(ext, "")
-
-        i = 0
-        while os.path.exists(dest_file):
-            i += 1
-            dest_file = os.path.join(head, file_name) + f"_{i}{ext}"
-
-        shutil.copyfile(log_file, dest_file)
+        tmp_file = tempfile.NamedTemporaryFile(prefix="mergin-", suffix=".txt", delete=False)
+        tmp_file.close()
+        dest_path = tmp_file.name
+        shutil.copyfile(log_file, dest_path)
 
     shutil.rmtree(directory)
-    return dest_file
+    return dest_path
 
 
 def download_project_async(mc, project_path, directory, project_version=None):
@@ -151,8 +146,7 @@ def download_project_async(mc, project_path, directory, project_version=None):
             project_info = latest_proj_info
 
     except ClientError as e:
-        file_path = _cleanup_failed_download(directory, mp)
-        e.log_file = file_path
+        _cleanup_failed_download(directory, mp)
         raise e
 
     version = project_info["version"] if project_info["version"] else "v0"
@@ -204,10 +198,8 @@ def download_project_is_running(job):
     """
     for future in job.futures:
         if future.done() and future.exception() is not None:
-            file_path = _cleanup_failed_download(job.directory, job.mp)
-            e = future.exception()
-            e.log_file = file_path
-            raise e
+            job.failure_log_file = _cleanup_failed_download(job.directory, job.mp)
+            raise future.exception()
         if future.running():
             return True
     return False
@@ -228,10 +220,8 @@ def download_project_finalize(job):
     # make sure any exceptions from threads are not lost
     for future in job.futures:
         if future.exception() is not None:
-            file_path = _cleanup_failed_download(job.directory, job.mp)
-            e = future.exception()
-            e.log_file = file_path
-            raise e
+            job.failure_log_file = _cleanup_failed_download(job.directory, job.mp)
+            raise future.exception()
 
     job.mp.log.info("--- download finished")
 
