@@ -2216,6 +2216,7 @@ def test_download_files(mc: MerginClient):
     with pytest.raises(ClientError, match=f"No \\[non_existing\\.file\\] exists at version v3"):
         mc.download_files(project_dir, [f_updated, "non_existing.file"], version="v3")
 
+
 def test_download_failure(mc):
     test_project = "test_download_failure"
     project = API_USER + "/" + test_project

@@ -55,7 +55,7 @@ class DownloadJob:
         self.mp = mp  # MerginProject instance
         self.is_cancelled = False
         self.project_info = project_info  # parsed JSON with project info returned from the server
-        self.failure_log_file = None # log file, copied from the project directory if download fails
+        self.failure_log_file = None  # log file, copied from the project directory if download fails
 
     def dump(self):
         print("--- JOB ---", self.total_size, "bytes")
