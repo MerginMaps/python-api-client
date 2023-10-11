@@ -179,10 +179,14 @@ def download_project_is_running(job):
     Returns true/false depending on whether we have some pending downloads.
 
     It also forwards any exceptions from workers (e.g. some network errors). If an exception
-    is raised, it is advised to call download_project_cancel() to abort the job.
+    is raised, aborts the job.
     """
     for future in job.futures:
         if future.done() and future.exception() is not None:
+            # wait for any runinnig futures and cancel any pending futures before performing cleanup, as this may cause
+            # issues while performing cleanup, see https://github.com/MerginMaps/mergin-py-client/issues/157
+            job.is_cancelled = True
+            job.executor.shutdown(wait=True, cancel_futures=True)
             _cleanup_failed_download(job.directory, job.mp)
             raise future.exception()
         if future.running():
