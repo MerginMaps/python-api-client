@@ -272,14 +272,7 @@ def push_project_finalize(job):
                 job.mp.log.info("cancel response: " + str(err2))
             raise err
 
-    job.mp.update_metadata(
-        {
-            "name": job.project_path,
-            "version": job.server_resp["version"],
-            "project_id": job.server_resp["id"],
-            "files": job.server_resp["files"],
-        }
-    )
+    job.mp.update_metadata(job.server_resp)
     try:
         job.mp.apply_push_changes(job.changes)
     except Exception as e:
