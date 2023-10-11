@@ -627,8 +627,8 @@ class MerginClient:
         """
         Fetch info about project.
 
-        :param project_path: Project's full name (<namespace>/<name>)
-        :type project_path: String
+        :param project_path_or_id: Project's full name (<namespace>/<name>) or id
+        :type project_path_or_id: String
         :param since: Version to track history of geodiff files from
         :type since: String
         :param version: Project version to get details for (particularly list of files)
