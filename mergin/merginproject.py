@@ -139,7 +139,11 @@ class MerginProject:
         """Returns fully qualified project name: <workspace>/<name>"""
         if self._metadata is None:
             self._read_metadata()
-        return self._metadata["name"]
+        return (
+            self._metadata["name"]
+            if "/" in self._metadata["name"]
+            else f"{self._metadata['namespace']}/{self._metadata['name']}"
+        )
 
     def project_name(self) -> str:
         """Returns only project name, without its workspace name"""
@@ -154,10 +158,18 @@ class MerginProject:
         return full_name[:slash_index]
 
     def project_id(self) -> str:
-        """Returns ID of the project (UUID using 8-4-4-4-12 formatting without braces)"""
+        """Returns ID of the project (UUID using 8-4-4-4-12 formatting without braces)
+
+        Raises ClientError if project id is not present in the project metadata.
+        """
         if self._metadata is None:
             self._read_metadata()
-        return self._metadata["project_id"]
+
+        # "id" or "project_id" may not exist in projects downloaded with old client version
+        if "id" not in self._metadata and "project_id" not in self._metadata:
+            raise ClientError("Missed project id metadata. Please re-download your project.")
+
+        return self._metadata["project_id"] if "/" in self._metadata["name"] else self._metadata["id"]
 
     def workspace_id(self) -> int:
         """Returns ID of the workspace where the project belongs"""
@@ -169,7 +181,7 @@ class MerginProject:
         """Returns project version (e.g. "v123")"""
         if self._metadata is None:
             self._read_metadata()
-        return self._metadata["version"]
+        return self._metadata["version"] if self._metadata["version"] else "v0"
 
     def files(self) -> list:
         """Returns project's list of files (each file being a dictionary)"""

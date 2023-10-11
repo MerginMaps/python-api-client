@@ -519,15 +519,7 @@ class MerginClient:
         self.create_project(project_name, is_public)
         if directory:
             project_info = self.project_info(project_name)
-            MerginProject.write_metadata(
-                directory,
-                {
-                    "name": project_name,
-                    "version": "v0",
-                    "files": [],
-                    "project_id": project_info["id"],
-                },
-            )
+            MerginProject.write_metadata(directory, project_info)
             mp = MerginProject(directory)
             if mp.inspect_files():
                 self.push_project(directory)

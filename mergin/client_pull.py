@@ -215,15 +215,7 @@ def download_project_finalize(job):
         task.apply(job.directory, job.mp)
 
     # final update of project metadata
-    # TODO: why not exact copy of project info JSON ?
-    job.mp.update_metadata(
-        {
-            "name": job.project_path,
-            "version": job.version,
-            "project_id": job.project_info["id"],
-            "files": job.project_info["files"],
-        }
-    )
+    job.mp.update_metadata(job.project_info)
 
 
 def download_project_cancel(job):
@@ -613,14 +605,7 @@ def pull_project_finalize(job):
         job.mp.log.info("--- pull aborted")
         raise ClientError("Failed to apply pull changes: " + str(e))
 
-    job.mp.update_metadata(
-        {
-            "name": job.project_path,
-            "version": job.version if job.version else "v0",  # for new projects server version is ""
-            "project_id": job.project_info["id"],
-            "files": job.project_info["files"],
-        }
-    )
+    job.mp.update_metadata(job.project_info)
 
     if job.mp.has_unfinished_pull():
         job.mp.log.info("--- failed to complete pull -- project left in the unfinished pull state")
