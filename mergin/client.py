@@ -461,9 +461,8 @@ class MerginClient:
                     "The parameter will be ignored."
                 )
 
-            splitted = project_name.split("/")
-            project_name = splitted[1]
-            namespace = splitted[0]
+            namespace, project_name = project_name.split("/")
+
         elif namespace is None:
             warnings.warn(
                 "The use of only project name in `create_project()` is deprecated."
@@ -862,9 +861,8 @@ class MerginClient:
                     "The parameter will be ignored."
                 )
 
-            splitted = cloned_project_name.split("/")
-            cloned_project_name = splitted[1]
-            cloned_project_namespace = splitted[0]
+            cloned_project_namespace, cloned_project_name = cloned_project_name.split("/")
+
         elif cloned_project_namespace is None:
             warnings.warn(
                 "The use of only project name as `cloned_project_name` in `clone_project()` is deprecated."
