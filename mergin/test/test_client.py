@@ -2003,3 +2003,28 @@ def test_clean_diff_files(mc):
     diff_files = glob.glob("*-diff-*", root_dir=os.path.split(mp.fpath_meta("inserted_1_A.gpkg"))[0])
 
     assert diff_files == []
+
+
+def test_project_metadata(mc):
+    test_project = "test_project_metadata"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+
+    cleanup(mc, project, [project_dir])
+    # prepare local project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+
+    # create remote project
+    mc.create_project_and_push(test_project, directory=project_dir)
+
+    # copy metadata in old format
+    project_metadata = os.path.join(project_dir, ".mergin", "mergin.json")
+    old_metadata = os.path.join(project_dir, "old_metadata.json")
+    shutil.copyfile(old_metadata, project_metadata)
+
+    # verify we have correct metadata
+    mp = MerginProject(project_dir)
+    assert mp.project_full_name() == f"{API_USER}/{test_project}"
+    assert mp.project_name() == test_project
+    assert mp.workspace_name() == API_USER
+    assert mp.version() == "v1"
