@@ -228,11 +228,6 @@ def create(ctx, project, public, from_dir):
 @cli.command()
 @click.argument("namespace")
 @click.option(
-    "--flag",
-    help="What kind of projects (e.g. 'created' for just my projects,"
-    "'shared' for projects shared with me. No flag means returns all public projects.",
-)
-@click.option(
     "--name",
     help="Filter projects with name like name",
 )
@@ -245,17 +240,14 @@ def create(ctx, project, public, from_dir):
     "Available attrs: namespace, name, created, updated, disk_usage, creator",
 )
 @click.pass_context
-def list_projects(ctx, flag, name, namespace, order_params):
+def list_projects(ctx, name, namespace, order_params):
     """List projects on the server."""
-    filter_str = "(filter flag={})".format(flag) if flag is not None else "(all public)"
-
-    click.echo("List of projects {}:".format(filter_str))
 
     mc = ctx.obj["client"]
     if mc is None:
         return
 
-    projects_list = mc.projects_list(flag=flag, name=name, namespace=namespace, order_params=order_params)
+    projects_list = mc.projects_list(name=name, namespace=namespace, order_params=order_params)
 
     click.echo("Fetched {} projects .".format(len(projects_list)))
     for project in projects_list:
