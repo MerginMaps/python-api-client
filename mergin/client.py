@@ -450,7 +450,7 @@ class MerginClient:
         if namespace and "/" not in project_name:
             warnings.warn(
                 "The usage of `namespace` parameter in `create_project()` is deprecated."
-                "Specify `project_name` as full name (<namespace>/<name>)) instead.",
+                "Specify `project_name` as full name (<namespace>/<name>) instead.",
                 category=DeprecationWarning,
             )
 
