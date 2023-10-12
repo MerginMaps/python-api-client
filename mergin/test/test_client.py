@@ -161,7 +161,7 @@ def test_create_remote_project_from_local(mc):
     shutil.copytree(TEST_DATA_DIR, project_dir)
 
     # create remote project
-    mc.create_project_and_push(test_project, directory=project_dir)
+    mc.create_project_and_push(project, directory=project_dir)
 
     # verify we have correct metadata
     source_mp = MerginProject(project_dir)
@@ -212,7 +212,7 @@ def test_push_pull_changes(mc):
     cleanup(mc, project, [project_dir, project_dir_2])
     # create remote project
     shutil.copytree(TEST_DATA_DIR, project_dir)
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     # make sure we have v1 also in concurrent project dir
     mc.download_project(project, project_dir_2)
@@ -309,7 +309,7 @@ def test_cancel_push(mc):
     cleanup(mc, project, [project_dir, project_dir_2])
     # create remote project
     shutil.copytree(TEST_DATA_DIR, project_dir)
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     # modify the project (add, update)
     f_added = "new.txt"
@@ -351,7 +351,7 @@ def test_ignore_files(mc):
     # create remote project
     shutil.copytree(TEST_DATA_DIR, project_dir)
     shutil.copy(os.path.join(project_dir, "test.qgs"), os.path.join(project_dir, "test.qgs~"))
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
     project_info = mc.project_info(project)
     assert not next((f for f in project_info["files"] if f["path"] == "test.qgs~"), None)
 
@@ -371,7 +371,7 @@ def test_sync_diff(mc):
     cleanup(mc, project, [project_dir, project_dir_2, project_dir_3])
     # create remote project
     shutil.copytree(TEST_DATA_DIR, project_dir)
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     # make sure we have v1 also in concurrent project dirs
     mc.download_project(project, project_dir_2)
@@ -438,7 +438,7 @@ def test_list_of_push_changes(mc):
 
     cleanup(mc, project, [project_dir])
     shutil.copytree(TEST_DATA_DIR, project_dir)
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     f_updated = "base.gpkg"
     mp = MerginProject(project_dir)
@@ -457,7 +457,7 @@ def test_token_renewal(mc):
 
     cleanup(mc, project, [project_dir])
     shutil.copytree(TEST_DATA_DIR, project_dir)
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     mc._auth_session["expire"] = datetime.now().replace(tzinfo=pytz.utc) - timedelta(days=1)
     pull_changes, push_changes, _ = mc.project_status(project_dir)
@@ -473,7 +473,7 @@ def test_force_gpkg_update(mc):
     cleanup(mc, project, [project_dir])
     # create remote project
     shutil.copytree(TEST_DATA_DIR, project_dir)
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     # test push changes with force gpkg file upload:
     mp = MerginProject(project_dir)
@@ -539,7 +539,7 @@ def test_missing_basefile_pull(mc):
     cleanup(mc, project, [project_dir, project_dir_2])
     # create remote project
     shutil.copytree(test_data_dir, project_dir)
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     # update our gpkg in a different directory
     mc.download_project(project, project_dir_2)
@@ -570,7 +570,7 @@ def test_empty_file_in_subdir(mc):
     cleanup(mc, project, [project_dir, project_dir_2])
     # create remote project
     shutil.copytree(test_data_dir, project_dir)
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     # try to check out the project
     mc.download_project(project, project_dir_2)
@@ -823,7 +823,7 @@ def test_download_versions(mc):
     cleanup(mc, project, [project_dir, project_dir_v1, project_dir_v2, project_dir_v3])
     # create remote project
     shutil.copytree(TEST_DATA_DIR, project_dir)
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     # create new version - v2
     f_added = "new.txt"
@@ -892,7 +892,7 @@ def test_missing_local_file_pull(mc):
     cleanup(mc, project, [project_dir, project_dir_2])
     # create remote project
     shutil.copytree(test_data_dir, project_dir)
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     # remove a file in a different directory
     mc.download_project(project, project_dir_2)
@@ -935,7 +935,7 @@ def create_versioned_project(mc, project_name, project_dir, updated_file, remove
 
     # create remote project
     shutil.copytree(TEST_DATA_DIR, project_dir)
-    mc.create_project_and_push(project_name, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     mp = MerginProject(project_dir)
 
@@ -1083,7 +1083,7 @@ def test_modify_project_permissions(mc):
     shutil.copytree(TEST_DATA_DIR, project_dir)
 
     # create remote project
-    mc.create_project_and_push(test_project, directory=project_dir)
+    mc.create_project_and_push(project, directory=project_dir)
 
     # check basic metadata about created project
     project_info = mc.project_info(project)
@@ -1219,7 +1219,7 @@ def test_push_gpkg_schema_change(mc):
     os.makedirs(project_dir)
     shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), test_gpkg)
     # shutil.copytree(TEST_DATA_DIR, project_dir)
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     mp = MerginProject(project_dir)
 
@@ -1298,7 +1298,7 @@ def test_rebase_local_schema_change(mc, extra_connection):
     os.makedirs(project_dir)
     shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), test_gpkg)
     _use_wal(test_gpkg)  # make sure we use WAL, that's the more common and more difficult scenario
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     if extra_connection:
         # open a connection and keep it open (qgis does this with a pool of connections too)
@@ -1364,7 +1364,7 @@ def test_rebase_remote_schema_change(mc, extra_connection):
     os.makedirs(project_dir)
     shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), test_gpkg)
     _use_wal(test_gpkg)  # make sure we use WAL, that's the more common and more difficult scenario
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     # Download project to the concurrent dir + change DB schema + push a new version
     mc.download_project(project, project_dir_2)
@@ -1429,7 +1429,7 @@ def test_rebase_success(mc, extra_connection):
     os.makedirs(project_dir)
     shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), test_gpkg)
     _use_wal(test_gpkg)  # make sure we use WAL, that's the more common and more difficult scenario
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     # Download project to the concurrent dir + add a row + push a new version
     mc.download_project(project, project_dir_2)
@@ -1590,7 +1590,7 @@ def test_unfinished_pull(mc):
     os.makedirs(project_dir)
     shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), test_gpkg)
     _use_wal(test_gpkg)  # make sure we use WAL, that's the more common and more difficult scenario
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     # Download project to the concurrent dir + change DB schema + push a new version
     mc.download_project(project, project_dir_2)
@@ -1678,7 +1678,7 @@ def test_unfinished_pull_push(mc):
     os.makedirs(project_dir)
     shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), test_gpkg)
     _use_wal(test_gpkg)  # make sure we use WAL, that's the more common and more difficult scenario
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     # Download project to the concurrent dir + change DB schema + push a new version
     mc.download_project(project, project_dir_2)
@@ -1882,7 +1882,7 @@ def test_report_failure(mc):
 
     os.makedirs(project_dir)
     shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), test_gpkg)
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     shutil.copy(os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"), test_gpkg)
     mc.push_project(project_dir)
@@ -1919,7 +1919,7 @@ def test_changesets_download(mc):
 
     os.makedirs(project_dir, exist_ok=True)
     shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), file_path)
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     shutil.copy(os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"), file_path)
     mc.push_project(project_dir)
@@ -1963,7 +1963,7 @@ def test_version_info(mc):
 
     os.makedirs(project_dir, exist_ok=True)
     shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), file_path)
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     shutil.copy(os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"), file_path)
     mc.push_project(project_dir)
@@ -1990,7 +1990,7 @@ def test_clean_diff_files(mc):
     cleanup(mc, project, [project_dir, project_dir_2])
     # create remote project
     shutil.copytree(TEST_DATA_DIR, project_dir)
-    mc.create_project_and_push(test_project, project_dir)
+    mc.create_project_and_push(project, project_dir)
 
     # test push changes with diffs:
     mp = MerginProject(project_dir)
