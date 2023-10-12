@@ -14,6 +14,7 @@ import dateutil.parser
 import ssl
 from enum import Enum, auto
 import re
+import warnings
 
 from .common import ClientError, LoginError, InvalidProject
 from .merginproject import MerginProject
@@ -434,23 +435,41 @@ class MerginClient:
         Create new project repository in user namespace on Mergin Maps server.
         Optionally initialized from given local directory.
 
-        :param project_name: Project name
+        :param project_name: Project's full name (<namespace>/<name>)
         :type project_name: String
 
         :param is_public: Flag for public/private project, defaults to False
         :type is_public: Boolean
 
-        :param namespace: Optional namespace for a new project. If empty username is used.
+        :param namespace: Deprecated. project_name should be full project name. Optional namespace for a new project. If empty username is used.
         :type namespace: String
         """
         if not self._user_info:
             raise Exception("Authentication required")
 
+        if namespace and "/" not in project_name:
+            warnings.warn("The usage of `namespace` parameter in `create_project()` is deprecated."
+                          "Specify `project_name` as full name (<namespace>/<name>)) instead.",
+                          category=DeprecationWarning)
+
+        if "/" in project_name:
+            if namespace:
+                warnings.warn("Parameter `namespace` specified with full project name (<namespace>/<name>)."
+                              "The parameter will be ignored.")
+
+            splitted = project_name.split("/")
+            project_name = splitted[1]
+            namespace = splitted[0]
+        elif namespace is None:
+            warnings.warn("The use of only project name in `create_project()` is deprecated."
+                          "The `project_name` should be full name (<namespace>/<name>).",
+                          category=DeprecationWarning)
+
         params = {"name": project_name, "public": is_public}
         if namespace is None:
             namespace = self.username()
         try:
-            self.post("/v1/project/%s" % namespace, params, {"Content-Type": "application/json"})
+            self.post(f"/v1/project/{namespace}", params, {"Content-Type": "application/json"})
         except Exception as e:
             detail = f"Namespace: {namespace}, project name: {project_name}"
             raise ClientError(str(e), detail)

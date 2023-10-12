@@ -97,7 +97,7 @@ def test_login(mc):
         mc.login("foo", "bar")
 
 
-def test_create_delete_project(mc):
+def test_create_delete_project(mc: MerginClient):
     test_project = "test_create_delete"
     project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)
@@ -121,6 +121,33 @@ def test_create_delete_project(mc):
     # try again, nothing to delete
     with pytest.raises(ClientError):
         mc.delete_project_now(API_USER + "/" + test_project)
+
+    # test that using namespace triggers deprecate warning, but creates project correctly
+    with pytest.deprecated_call(match=r"The usage of `namespace` parameter in `create_project\(\)` is deprecated."):
+        mc.create_project(test_project, namespace=API_USER)
+    projects = mc.projects_list(flag="created")
+    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
+    mc.delete_project_now(project)
+
+    # test that using only project name triggers deprecate warning, but creates project correctly
+    with pytest.deprecated_call(match=r"The use of only project name in `create_project\(\)` is deprecated"):
+        mc.create_project(test_project)
+    projects = mc.projects_list(flag="created")
+    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
+    mc.delete_project_now(project)
+
+    # test that even if project is specified with full name and namespace is specified a warning is raised, but still create project correctly
+    with pytest.warns(UserWarning, match="Parameter `namespace` specified with full project name"):
+        mc.create_project(project, namespace=API_USER)
+    projects = mc.projects_list(flag="created")
+    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
+    mc.delete_project_now(project)
+
+    # test that create project with full name works
+    mc.create_project(project)
+    projects = mc.projects_list(flag="created")
+    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
+    mc.delete_project_now(project)
 
 
 def test_create_remote_project_from_local(mc):
