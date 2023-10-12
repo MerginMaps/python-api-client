@@ -15,7 +15,6 @@ import platform
 import sys
 import time
 import traceback
-import warnings
 
 from mergin import (
     ClientError,
@@ -568,8 +567,9 @@ def clone(ctx, source_project_path, cloned_project_name, cloned_project_namespac
                 "The `cloned_project_name` should be full name (<namespace>/<name>).",
                 fg="yellow",
             )
-        warnings.filterwarnings("ignore")
-        mc.clone_project(source_project_path, cloned_project_name, cloned_project_namespace)
+        if cloned_project_namespace and "/" not in cloned_project_name:
+            cloned_project_name = f"{cloned_project_namespace}/{cloned_project_name}"
+        mc.clone_project(source_project_path, cloned_project_name)
         click.echo("Done")
     except ClientError as e:
         click.secho("Error: " + str(e), fg="red")
