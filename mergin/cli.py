@@ -226,6 +226,7 @@ def create(ctx, project, public, from_dir):
 
 
 @cli.command()
+@click.argument("namespace")
 @click.option(
     "--flag",
     help="What kind of projects (e.g. 'created' for just my projects,"
@@ -234,10 +235,6 @@ def create(ctx, project, public, from_dir):
 @click.option(
     "--name",
     help="Filter projects with name like name",
-)
-@click.option(
-    "--namespace",
-    help="Filter projects with namespace like namespace",
 )
 @click.option(
     "--order_params",
