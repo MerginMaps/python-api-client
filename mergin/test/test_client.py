@@ -9,11 +9,18 @@ import pytest
 import pytz
 import sqlite3
 import glob
+import time
 
 from .. import InvalidProject
 from ..client import MerginClient, ClientError, MerginProject, LoginError, decode_token_data, TokenError, ServerType
 from ..client_push import push_project_async, push_project_cancel
-from ..client_pull import download_project_async, download_project_wait, download_project_finalize
+from ..client_pull import (
+    download_project_async,
+    download_project_wait,
+    download_project_finalize,
+    download_project_is_running,
+    download_project_cancel,
+)
 from ..utils import (
     generate_checksum,
     get_versions_with_file_changes,
@@ -2236,5 +2243,26 @@ def test_download_failure(mc):
         os.makedirs(os.path.join(download_dir, "base.gpkg.0"))
         download_project_wait(job)
         download_project_finalize(job)
+
+    assert job.failure_log_file is not None
+
+    # active waiting
+    remove_folders([download_dir])
+    job = download_project_async(mc, project, download_dir)
+    os.makedirs(os.path.join(download_dir, "base.gpkg.0"))
+    is_running = True
+    while is_running:
+        time.sleep(1)
+        try:
+            is_running = download_project_is_running(job)
+        except Exception:
+            download_project_cancel(job)
+            break
+
+    if not is_running:
+        try:
+            download_project_finalize(job)
+        except Exception:
+            pass
 
     assert job.failure_log_file is not None
