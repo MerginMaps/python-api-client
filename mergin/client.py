@@ -835,20 +835,38 @@ class MerginClient:
         Clone project on server.
         :param source_project_path: Project's full name (<namespace>/<name>)
         :type source_project_path: String
-        :param cloned_project_name: Cloned project's name
+        :param cloned_project_name: Cloned project's full name (<namespace>/<name>)
         :type cloned_project_name: String
-        :param cloned_project_namespace: Cloned project's namespace, username is used if not defined
+        :param cloned_project_namespace: Deprecated. cloned_project_name should be full project name. Cloned project's namespace, username is used if not defined
         :type cloned_project_namespace: String
 
         """
-        path = "/v1/project/clone/%s" % source_project_path
+
+        if cloned_project_namespace and "/" not in cloned_project_name:
+            warnings.warn("The usage of `cloned_project_namespace` parameter in `clone_project()` is deprecated."
+                          "Speficy `cloned_project_name` as full name (<namespace>/<name>)) instead.",
+                          category=DeprecationWarning)
+
+        if "/" in cloned_project_name:
+            if cloned_project_namespace:
+                warnings.warn("Parameter `cloned_project_namespace` specified with full cloned project name (<namespace>/<name>)."
+                              "The parameter will be ignored.")
+
+            splitted = cloned_project_name.split("/")
+            cloned_project_name = splitted[1]
+            cloned_project_namespace = splitted[0]
+        elif cloned_project_namespace is None:
+            warnings.warn("The use of only project name as `cloned_project_name` in `clone_project()` is deprecated."
+                          "The `cloned_project_name` should be full name (<namespace>/<name>).",
+                          category=DeprecationWarning)
+
+        path = f"/v1/project/clone/{source_project_path}"
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         json_headers = {"Content-Type": "application/json", "Accept": "application/json"}
         data = {
             "namespace": cloned_project_namespace if cloned_project_namespace else self.username(),
             "project": cloned_project_name,
         }
-
         request = urllib.request.Request(url, data=json.dumps(data).encode(), headers=json_headers, method="POST")
         self._do_request(request)
 

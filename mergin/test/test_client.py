@@ -586,7 +586,7 @@ def test_empty_file_in_subdir(mc):
     assert os.path.exists(os.path.join(project_dir_2, "subdir2", "empty2.txt"))
 
 
-def test_clone_project(mc):
+def test_clone_project(mc: MerginClient):
     test_project = "test_clone_project"
     test_project_fullname = API_USER + "/" + test_project
 
@@ -600,14 +600,38 @@ def test_clone_project(mc):
     assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
 
     cloned_project_name = test_project + "_cloned"
+    test_cloned_project_fullname = API_USER + "/" + cloned_project_name
+
     # cleanup cloned project
     cloned_project_dir = os.path.join(TMP_DIR, cloned_project_name)
     cleanup(mc, API_USER + "/" + cloned_project_name, [cloned_project_dir])
 
-    # clone project
-    mc.clone_project(test_project_fullname, cloned_project_name, API_USER)
+    # clone specifying cloned_project_namespace, does clone but raises deprecation warning 
+    with pytest.deprecated_call(match=r"The usage of `cloned_project_namespace` parameter in `clone_project\(\)`"):
+        mc.clone_project(test_project_fullname, cloned_project_name, API_USER)
     projects = mc.projects_list(flag="created")
     assert any(p for p in projects if p["name"] == cloned_project_name and p["namespace"] == API_USER)
+    cleanup(mc, API_USER + "/" + cloned_project_name, [cloned_project_dir])
+
+    # clone without specifying cloned_project_namespace relies on workspace with user name, does clone but raises deprecation warning 
+    with pytest.deprecated_call(match=r"The use of only project name as `cloned_project_name` in `clone_project\(\)`"):
+        mc.clone_project(test_project_fullname, cloned_project_name)
+    projects = mc.projects_list(flag="created")
+    assert any(p for p in projects if p["name"] == cloned_project_name and p["namespace"] == API_USER)
+    cleanup(mc, API_USER + "/" + cloned_project_name, [cloned_project_dir])
+
+    # clone project with full cloned project name with specification of `cloned_project_namespace` raises warning
+    with pytest.warns(match=r"Parameter `cloned_project_namespace` specified with full cloned project name"):
+        mc.clone_project(test_project_fullname, test_cloned_project_fullname, API_USER)
+    projects = mc.projects_list(flag="created")
+    assert any(p for p in projects if p["name"] == cloned_project_name and p["namespace"] == API_USER)
+    cleanup(mc, API_USER + "/" + cloned_project_name, [cloned_project_dir])
+
+    # clone project using project full name
+    mc.clone_project(test_project_fullname, test_cloned_project_fullname)
+    projects = mc.projects_list(flag="created")
+    assert any(p for p in projects if p["name"] == cloned_project_name and p["namespace"] == API_USER)
+    cleanup(mc, API_USER + "/" + cloned_project_name, [cloned_project_dir])
 
 
 def test_set_read_write_access(mc):
