@@ -559,7 +559,7 @@ def clone(ctx, source_project_path, cloned_project_name, cloned_project_namespac
         if cloned_project_namespace:
             click.secho(
                 "The usage of `cloned_project_namespace` parameter in `mergin clone` is deprecated."
-                "Speficy `cloned_project_name` as full name (<namespace>/<name>)) instead.",
+                "Specify `cloned_project_name` as full name (<namespace>/<name>) instead.",
                 fg="yellow",
             )
         if cloned_project_namespace is None and "/" not in cloned_project_name:
