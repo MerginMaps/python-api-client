@@ -851,7 +851,7 @@ class MerginClient:
         if cloned_project_namespace and "/" not in cloned_project_name:
             warnings.warn(
                 "The usage of `cloned_project_namespace` parameter in `clone_project()` is deprecated."
-                "Speficy `cloned_project_name` as full name (<namespace>/<name>)) instead.",
+                "Specify `cloned_project_name` as full name (<namespace>/<name>) instead.",
                 category=DeprecationWarning,
             )
 
