@@ -606,14 +606,14 @@ def test_clone_project(mc: MerginClient):
     cloned_project_dir = os.path.join(TMP_DIR, cloned_project_name)
     cleanup(mc, API_USER + "/" + cloned_project_name, [cloned_project_dir])
 
-    # clone specifying cloned_project_namespace, does clone but raises deprecation warning 
+    # clone specifying cloned_project_namespace, does clone but raises deprecation warning
     with pytest.deprecated_call(match=r"The usage of `cloned_project_namespace` parameter in `clone_project\(\)`"):
         mc.clone_project(test_project_fullname, cloned_project_name, API_USER)
     projects = mc.projects_list(flag="created")
     assert any(p for p in projects if p["name"] == cloned_project_name and p["namespace"] == API_USER)
     cleanup(mc, API_USER + "/" + cloned_project_name, [cloned_project_dir])
 
-    # clone without specifying cloned_project_namespace relies on workspace with user name, does clone but raises deprecation warning 
+    # clone without specifying cloned_project_namespace relies on workspace with user name, does clone but raises deprecation warning
     with pytest.deprecated_call(match=r"The use of only project name as `cloned_project_name` in `clone_project\(\)`"):
         mc.clone_project(test_project_fullname, cloned_project_name)
     projects = mc.projects_list(flag="created")

@@ -448,22 +448,28 @@ class MerginClient:
             raise Exception("Authentication required")
 
         if namespace and "/" not in project_name:
-            warnings.warn("The usage of `namespace` parameter in `create_project()` is deprecated."
-                          "Specify `project_name` as full name (<namespace>/<name>)) instead.",
-                          category=DeprecationWarning)
+            warnings.warn(
+                "The usage of `namespace` parameter in `create_project()` is deprecated."
+                "Specify `project_name` as full name (<namespace>/<name>)) instead.",
+                category=DeprecationWarning,
+            )
 
         if "/" in project_name:
             if namespace:
-                warnings.warn("Parameter `namespace` specified with full project name (<namespace>/<name>)."
-                              "The parameter will be ignored.")
+                warnings.warn(
+                    "Parameter `namespace` specified with full project name (<namespace>/<name>)."
+                    "The parameter will be ignored."
+                )
 
             splitted = project_name.split("/")
             project_name = splitted[1]
             namespace = splitted[0]
         elif namespace is None:
-            warnings.warn("The use of only project name in `create_project()` is deprecated."
-                          "The `project_name` should be full name (<namespace>/<name>).",
-                          category=DeprecationWarning)
+            warnings.warn(
+                "The use of only project name in `create_project()` is deprecated."
+                "The `project_name` should be full name (<namespace>/<name>).",
+                category=DeprecationWarning,
+            )
 
         params = {"name": project_name, "public": is_public}
         if namespace is None:
@@ -843,22 +849,28 @@ class MerginClient:
         """
 
         if cloned_project_namespace and "/" not in cloned_project_name:
-            warnings.warn("The usage of `cloned_project_namespace` parameter in `clone_project()` is deprecated."
-                          "Speficy `cloned_project_name` as full name (<namespace>/<name>)) instead.",
-                          category=DeprecationWarning)
+            warnings.warn(
+                "The usage of `cloned_project_namespace` parameter in `clone_project()` is deprecated."
+                "Speficy `cloned_project_name` as full name (<namespace>/<name>)) instead.",
+                category=DeprecationWarning,
+            )
 
         if "/" in cloned_project_name:
             if cloned_project_namespace:
-                warnings.warn("Parameter `cloned_project_namespace` specified with full cloned project name (<namespace>/<name>)."
-                              "The parameter will be ignored.")
+                warnings.warn(
+                    "Parameter `cloned_project_namespace` specified with full cloned project name (<namespace>/<name>)."
+                    "The parameter will be ignored."
+                )
 
             splitted = cloned_project_name.split("/")
             cloned_project_name = splitted[1]
             cloned_project_namespace = splitted[0]
         elif cloned_project_namespace is None:
-            warnings.warn("The use of only project name as `cloned_project_name` in `clone_project()` is deprecated."
-                          "The `cloned_project_name` should be full name (<namespace>/<name>).",
-                          category=DeprecationWarning)
+            warnings.warn(
+                "The use of only project name as `cloned_project_name` in `clone_project()` is deprecated."
+                "The `cloned_project_name` should be full name (<namespace>/<name>).",
+                category=DeprecationWarning,
+            )
 
         path = f"/v1/project/clone/{source_project_path}"
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
