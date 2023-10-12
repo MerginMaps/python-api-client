@@ -15,6 +15,7 @@ import platform
 import sys
 import time
 import traceback
+import warnings
 
 from mergin import (
     ClientError,
@@ -555,6 +556,15 @@ def clone(ctx, source_project_path, cloned_project_name, cloned_project_namespac
     if mc is None:
         return
     try:
+        if cloned_project_namespace:
+            click.secho("The usage of `cloned_project_namespace` parameter in `mergin clone` is deprecated."
+                        "Speficy `cloned_project_name` as full name (<namespace>/<name>)) instead.",
+                        fg="yellow")
+        if cloned_project_namespace is None and "/" not in cloned_project_name:
+            click.secho("The use of only project name as `cloned_project_name` in `clone_project()` is deprecated."
+                        "The `cloned_project_name` should be full name (<namespace>/<name>).",
+                        fg="yellow")
+        warnings.filterwarnings("ignore")
         mc.clone_project(source_project_path, cloned_project_name, cloned_project_namespace)
         click.echo("Done")
     except ClientError as e:
