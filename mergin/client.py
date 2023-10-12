@@ -482,20 +482,47 @@ class MerginClient:
     def create_project_and_push(self, project_name, directory, is_public=False, namespace=None):
         """
         Convenience method to create project and push the initial version right after that.
+
+        :param project_name: Project's full name (<namespace>/<name>)
+        :type project_name: String
+
+        :param namespace: Deprecated. project_name should be full project name. Optional namespace for a new project. If empty username is used.
+        :type namespace: String
         """
         if os.path.exists(os.path.join(directory, ".mergin")):
             raise ClientError("Directory is already assigned to a Mergin Maps project (contains .mergin sub-dir)")
 
-        if namespace is None:
+        if namespace and "/" not in project_name:
+            warnings.warn(
+                "The usage of `namespace` parameter in `create_project_and_push()` is deprecated."
+                "Specify `project_name` as full name (<namespace>/<name>) instead.",
+                category=DeprecationWarning,
+            )
+            project_name = f"{namespace}/{project_name}"
+
+        if "/" in project_name:
+            if namespace:
+                warnings.warn(
+                    "Parameter `namespace` specified with full project name (<namespace>/<name>)."
+                    "The parameter will be ignored."
+                )
+
+        elif namespace is None:
+            warnings.warn(
+                "The use of only project name in `create_project()` is deprecated."
+                "The `project_name` should be full name (<namespace>/<name>).",
+                category=DeprecationWarning,
+            )
             namespace = self.username()
-        self.create_project(project_name, is_public, namespace)
+            project_name = f"{namespace}/{project_name}"
+
+        self.create_project(project_name, is_public)
         if directory:
-            full_project_name = "{}/{}".format(namespace, project_name)
-            project_info = self.project_info(full_project_name)
+            project_info = self.project_info(project_name)
             MerginProject.write_metadata(
                 directory,
                 {
-                    "name": full_project_name,
+                    "name": project_name,
                     "version": "v0",
                     "files": [],
                     "project_id": project_info["id"],
