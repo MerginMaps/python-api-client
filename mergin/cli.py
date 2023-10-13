@@ -211,13 +211,14 @@ def create(ctx, project, public, from_dir):
     else:
         # namespace not specified, use current user namespace
         namespace = mc.username()
+    project_full_name = f"{namespace}/{project}"
     try:
         if from_dir is None:
-            mc.create_project(project, is_public=public, namespace=namespace)
-            click.echo("Created project " + project)
+            mc.create_project(project_full_name, is_public=public)
+            click.echo("Created project " + project_full_name)
         else:
-            mc.create_project_and_push(project, from_dir, is_public=public, namespace=namespace)
-            click.echo("Created project " + project + " and pushed content from directory " + from_dir)
+            mc.create_project_and_push(project_full_name, from_dir, is_public=public)
+            click.echo("Created project " + project_full_name + " and pushed content from directory " + from_dir)
     except ClientError as e:
         click.secho("Error: " + str(e), fg="red")
         return
