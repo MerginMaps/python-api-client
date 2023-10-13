@@ -14,6 +14,7 @@ import dateutil.parser
 import ssl
 from enum import Enum, auto
 import re
+import typing
 
 from .common import ClientError, LoginError, InvalidProject
 from .merginproject import MerginProject
@@ -1061,3 +1062,34 @@ class MerginClient:
         """
         info = self.project_info(project_path)
         return info["permissions"]["upload"]
+
+    def reset_local_changes(self, directory: str, files_to_reset: typing.List[str] = None) -> None:
+        """
+        Reset local changes to either all files or only listed files.
+        Added files are removed, removed files are brought back and updates are discarded.
+
+        :param directory: Project's directory
+        :type directory: String
+        :param files_to_reset List of files to reset, relative paths of file
+        :type files_to_reset: List of strings, default None
+        """
+        all_files = files_to_reset is None
+
+        mp = MerginProject(directory)
+
+        push_changes = mp.get_push_changes()
+
+        # remove all added files
+        for file in push_changes["added"]:
+            if all_files or file["path"] in files_to_reset:
+                os.remove(mp.fpath(file["path"]))
+
+        # update files get override with previous version
+        for file in push_changes["updated"]:
+            if all_files or file["path"] in files_to_reset:
+                mp.geodiff.make_copy_sqlite(mp.fpath_meta(file["path"]), mp.fpath(file["path"]))
+
+        # removed files are redownloaded
+        for file in push_changes["removed"]:
+            if all_files or file["path"] in files_to_reset:
+                self.download_file(directory, file["path"], mp.fpath(file["path"]))
