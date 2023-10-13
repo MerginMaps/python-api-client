@@ -1952,3 +1952,78 @@ def test_clean_diff_files(mc):
     diff_files = glob.glob("*-diff-*", root_dir=os.path.split(mp.fpath_meta("inserted_1_A.gpkg"))[0])
 
     assert diff_files == []
+
+
+def test_reset_local_changes(mc: MerginClient):
+    test_project = f"test_reset_local_changes"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
+
+    cleanup(mc, project, [project_dir])
+    # create remote project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
+
+    # test push changes with diffs:
+    mp = MerginProject(project_dir)
+
+    f_updated = "base.gpkg"
+    shutil.move(mp.fpath(f_updated), mp.fpath_meta(f_updated))  # make local copy for changeset calculation
+    shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
+    shutil.copy(mp.fpath("test.txt"), mp.fpath("new_test.txt"))
+    shutil.copy(mp.fpath("test.txt"), mp.fpath("new_dir/new_test.txt"))
+    os.remove(mp.fpath("test.txt"))
+    os.remove(mp.fpath("test_dir/test2.txt"))
+
+    # push changes prior to reset
+    mp = MerginProject(project_dir)
+    push_changes = mp.get_push_changes()
+
+    assert len(push_changes["added"]) == 2
+    assert len(push_changes["removed"]) == 2
+    assert len(push_changes["updated"]) == 1
+
+    # reset all files back
+    mc.reset_local_changes(project_dir)
+
+    # push changes after the reset
+    mp = MerginProject(project_dir)
+    push_changes = mp.get_push_changes()
+
+    assert len(push_changes["added"]) == 0
+    assert len(push_changes["removed"]) == 0
+    assert len(push_changes["updated"]) == 0
+
+    cleanup(mc, project, [project_dir])
+    # create remote project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
+
+    # test push changes with diffs:
+    mp = MerginProject(project_dir)
+
+    shutil.move(mp.fpath(f_updated), mp.fpath_meta(f_updated))  # make local copy for changeset calculation
+    shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
+    shutil.copy(mp.fpath("test.txt"), mp.fpath("new_test.txt"))
+    shutil.copy(mp.fpath("test.txt"), mp.fpath("new_dir/new_test.txt"))
+    os.remove(mp.fpath("test.txt"))
+    os.remove(mp.fpath("test_dir/test2.txt"))
+
+    # push changes prior to reset
+    mp = MerginProject(project_dir)
+    push_changes = mp.get_push_changes()
+
+    assert len(push_changes["added"]) == 2
+    assert len(push_changes["removed"]) == 2
+    assert len(push_changes["updated"]) == 1
+
+    # reset local changes only to certain files, one added and one removed
+    mc.reset_local_changes(project_dir, files_to_reset=["new_test.txt", "test_dir/test2.txt"])
+
+    # push changes after the reset
+    mp = MerginProject(project_dir)
+    push_changes = mp.get_push_changes()
+
+    assert len(push_changes["added"]) == 1
+    assert len(push_changes["removed"]) == 1
+    assert len(push_changes["updated"]) == 1
