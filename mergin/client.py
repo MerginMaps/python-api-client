@@ -1087,7 +1087,10 @@ class MerginClient:
         # update files get override with previous version
         for file in push_changes["updated"]:
             if all_files or file["path"] in files_to_reset:
-                mp.geodiff.make_copy_sqlite(mp.fpath_meta(file["path"]), mp.fpath(file["path"]))
+                if mp.is_versioned_file(file["path"]):
+                    mp.geodiff.make_copy_sqlite(mp.fpath_meta(file["path"]), mp.fpath(file["path"]))
+                else:
+                    self.download_file(directory, file["path"], mp.fpath(file["path"]))
 
         # removed files are redownloaded
         for file in push_changes["removed"]:
