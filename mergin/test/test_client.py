@@ -1958,6 +1958,7 @@ def test_reset_local_changes(mc: MerginClient):
     test_project = f"test_reset_local_changes"
     project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
+    project_dir_2 = os.path.join(TMP_DIR, test_project + "_v2")  # primary project dir for updates
 
     cleanup(mc, project, [project_dir])
     # create remote project
@@ -2029,3 +2030,46 @@ def test_reset_local_changes(mc: MerginClient):
     assert len(push_changes["added"]) == 1
     assert len(push_changes["removed"]) == 1
     assert len(push_changes["updated"]) == 1
+
+    cleanup(mc, project, [project_dir, project_dir_2])
+    # create remote project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
+
+    # test push changes with diffs:
+    mp = MerginProject(project_dir)
+
+    # make changes creating two another versions
+    shutil.move(mp.fpath(f_updated), mp.fpath_meta(f_updated))  # make local copy for changeset calculation
+    shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
+    mc.push_project(project_dir)
+    shutil.copy(mp.fpath("test.txt"), mp.fpath("new_test.txt"))
+    shutil.copy(mp.fpath("test.txt"), mp.fpath("new_dir/new_test.txt"))
+    mc.push_project(project_dir)
+    os.remove(mp.fpath("test.txt"))
+    os.remove(mp.fpath("test_dir/test2.txt"))
+
+    # download version 2 and create MerginProject for it
+    mc.download_project(project, project_dir_2, version="v2")
+    mp = MerginProject(project_dir_2)
+
+    # make some changes
+    shutil.copy(mp.fpath("test.txt"), mp.fpath("new_test.txt"))
+    shutil.copy(mp.fpath("test.txt"), mp.fpath("new_dir/new_test.txt"))
+    os.remove(mp.fpath("test.txt"))
+    os.remove(mp.fpath("test_dir/test2.txt"))
+
+    # check changes
+    push_changes = mp.get_push_changes()
+    assert len(push_changes["added"]) == 2
+    assert len(push_changes["removed"]) == 2
+    assert len(push_changes["updated"]) == 0
+
+    # reset back to original version we had - v2
+    mc.reset_local_changes(project_dir_2)
+
+    # push changes after the reset - should be none
+    push_changes = mp.get_push_changes()
+    assert len(push_changes["added"]) == 0
+    assert len(push_changes["removed"]) == 0
+    assert len(push_changes["updated"]) == 0
