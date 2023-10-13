@@ -1969,7 +1969,6 @@ def test_reset_local_changes(mc: MerginClient):
     mp = MerginProject(project_dir)
 
     f_updated = "base.gpkg"
-    shutil.move(mp.fpath(f_updated), mp.fpath_meta(f_updated))  # make local copy for changeset calculation
     shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
     shutil.copy(mp.fpath("test.txt"), mp.fpath("new_test.txt"))
     shutil.copy(mp.fpath("test.txt"), mp.fpath("new_dir/new_test.txt"))
@@ -2005,7 +2004,6 @@ def test_reset_local_changes(mc: MerginClient):
     # test push changes with diffs:
     mp = MerginProject(project_dir)
 
-    shutil.move(mp.fpath(f_updated), mp.fpath_meta(f_updated))  # make local copy for changeset calculation
     shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
     shutil.copy(mp.fpath("test.txt"), mp.fpath("new_test.txt"))
     shutil.copy(mp.fpath("test.txt"), mp.fpath("new_dir/new_test.txt"))
@@ -2040,7 +2038,6 @@ def test_reset_local_changes(mc: MerginClient):
     mp = MerginProject(project_dir)
 
     # make changes creating two another versions
-    shutil.move(mp.fpath(f_updated), mp.fpath_meta(f_updated))  # make local copy for changeset calculation
     shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
     mc.push_project(project_dir)
     shutil.copy(mp.fpath("test.txt"), mp.fpath("new_test.txt"))
