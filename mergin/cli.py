@@ -200,25 +200,13 @@ def create(ctx, project, public, from_dir):
     mc = ctx.obj["client"]
     if mc is None:
         return
-    if "/" in project:
-        try:
-            namespace, project = project.split("/")
-            assert namespace, "No namespace given"
-            assert project, "No project name given"
-        except (ValueError, AssertionError) as e:
-            click.secho(f"Incorrect namespace/project format: {e}", fg="red")
-            return
-    else:
-        # namespace not specified, use current user namespace
-        namespace = mc.username()
-    project_full_name = f"{namespace}/{project}"
     try:
         if from_dir is None:
-            mc.create_project(project_full_name, is_public=public)
-            click.echo("Created project " + project_full_name)
+            mc.create_project(project, is_public=public)
+            click.echo("Created project " + project)
         else:
-            mc.create_project_and_push(project_full_name, from_dir, is_public=public)
-            click.echo("Created project " + project_full_name + " and pushed content from directory " + from_dir)
+            mc.create_project_and_push(project, from_dir, is_public=public)
+            click.echo("Created project " + project + " and pushed content from directory " + from_dir)
     except ClientError as e:
         click.secho("Error: " + str(e), fg="red")
         return
