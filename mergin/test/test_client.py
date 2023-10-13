@@ -1974,6 +1974,8 @@ def test_reset_local_changes(mc: MerginClient):
     shutil.copy(mp.fpath("test.txt"), mp.fpath("new_dir/new_test.txt"))
     os.remove(mp.fpath("test.txt"))
     os.remove(mp.fpath("test_dir/test2.txt"))
+    with open(mp.fpath("test3.txt"), mode="a", encoding="utf-8") as file:
+        file.write(" Add some text.")
 
     # push changes prior to reset
     mp = MerginProject(project_dir)
@@ -1981,7 +1983,7 @@ def test_reset_local_changes(mc: MerginClient):
 
     assert len(push_changes["added"]) == 2
     assert len(push_changes["removed"]) == 2
-    assert len(push_changes["updated"]) == 1
+    assert len(push_changes["updated"]) == 2
 
     # reset all files back
     mc.reset_local_changes(project_dir)
