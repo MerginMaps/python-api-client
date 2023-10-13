@@ -14,6 +14,7 @@ import dateutil.parser
 import ssl
 from enum import Enum, auto
 import re
+import warnings
 
 from .common import ClientError, LoginError, InvalidProject
 from .merginproject import MerginProject
@@ -434,23 +435,46 @@ class MerginClient:
         Create new project repository in user namespace on Mergin Maps server.
         Optionally initialized from given local directory.
 
-        :param project_name: Project name
+        :param project_name: Project's full name (<namespace>/<name>)
         :type project_name: String
 
         :param is_public: Flag for public/private project, defaults to False
         :type is_public: Boolean
 
-        :param namespace: Optional namespace for a new project. If empty username is used.
+        :param namespace: Deprecated. project_name should be full project name. Optional namespace for a new project. If empty username is used.
         :type namespace: String
         """
         if not self._user_info:
             raise Exception("Authentication required")
 
+        if namespace and "/" not in project_name:
+            warnings.warn(
+                "The usage of `namespace` parameter in `create_project()` is deprecated."
+                "Specify `project_name` as full name (<namespace>/<name>) instead.",
+                category=DeprecationWarning,
+            )
+
+        if "/" in project_name:
+            if namespace:
+                warnings.warn(
+                    "Parameter `namespace` specified with full project name (<namespace>/<name>)."
+                    "The parameter will be ignored."
+                )
+
+            namespace, project_name = project_name.split("/")
+
+        elif namespace is None:
+            warnings.warn(
+                "The use of only project name in `create_project()` is deprecated."
+                "The `project_name` should be full name (<namespace>/<name>).",
+                category=DeprecationWarning,
+            )
+
         params = {"name": project_name, "public": is_public}
         if namespace is None:
             namespace = self.username()
         try:
-            self.post("/v1/project/%s" % namespace, params, {"Content-Type": "application/json"})
+            self.post(f"/v1/project/{namespace}", params, {"Content-Type": "application/json"})
         except Exception as e:
             detail = f"Namespace: {namespace}, project name: {project_name}"
             raise ClientError(str(e), detail)
@@ -458,20 +482,47 @@ class MerginClient:
     def create_project_and_push(self, project_name, directory, is_public=False, namespace=None):
         """
         Convenience method to create project and push the initial version right after that.
+
+        :param project_name: Project's full name (<namespace>/<name>)
+        :type project_name: String
+
+        :param namespace: Deprecated. project_name should be full project name. Optional namespace for a new project. If empty username is used.
+        :type namespace: String
         """
         if os.path.exists(os.path.join(directory, ".mergin")):
             raise ClientError("Directory is already assigned to a Mergin Maps project (contains .mergin sub-dir)")
 
-        if namespace is None:
+        if namespace and "/" not in project_name:
+            warnings.warn(
+                "The usage of `namespace` parameter in `create_project_and_push()` is deprecated."
+                "Specify `project_name` as full name (<namespace>/<name>) instead.",
+                category=DeprecationWarning,
+            )
+            project_name = f"{namespace}/{project_name}"
+
+        if "/" in project_name:
+            if namespace:
+                warnings.warn(
+                    "Parameter `namespace` specified with full project name (<namespace>/<name>)."
+                    "The parameter will be ignored."
+                )
+
+        elif namespace is None:
+            warnings.warn(
+                "The use of only project name in `create_project()` is deprecated."
+                "The `project_name` should be full name (<namespace>/<name>).",
+                category=DeprecationWarning,
+            )
             namespace = self.username()
-        self.create_project(project_name, is_public, namespace)
+            project_name = f"{namespace}/{project_name}"
+
+        self.create_project(project_name, is_public)
         if directory:
-            full_project_name = "{}/{}".format(namespace, project_name)
-            project_info = self.project_info(full_project_name)
+            project_info = self.project_info(project_name)
             MerginProject.write_metadata(
                 directory,
                 {
-                    "name": full_project_name,
+                    "name": project_name,
                     "version": "v0",
                     "files": [],
                     "project_id": project_info["id"],
@@ -816,20 +867,43 @@ class MerginClient:
         Clone project on server.
         :param source_project_path: Project's full name (<namespace>/<name>)
         :type source_project_path: String
-        :param cloned_project_name: Cloned project's name
+        :param cloned_project_name: Cloned project's full name (<namespace>/<name>)
         :type cloned_project_name: String
-        :param cloned_project_namespace: Cloned project's namespace, username is used if not defined
+        :param cloned_project_namespace: Deprecated. cloned_project_name should be full project name. Cloned project's namespace, username is used if not defined
         :type cloned_project_namespace: String
 
         """
-        path = "/v1/project/clone/%s" % source_project_path
+
+        if cloned_project_namespace and "/" not in cloned_project_name:
+            warnings.warn(
+                "The usage of `cloned_project_namespace` parameter in `clone_project()` is deprecated."
+                "Specify `cloned_project_name` as full name (<namespace>/<name>) instead.",
+                category=DeprecationWarning,
+            )
+
+        if "/" in cloned_project_name:
+            if cloned_project_namespace:
+                warnings.warn(
+                    "Parameter `cloned_project_namespace` specified with full cloned project name (<namespace>/<name>)."
+                    "The parameter will be ignored."
+                )
+
+            cloned_project_namespace, cloned_project_name = cloned_project_name.split("/")
+
+        elif cloned_project_namespace is None:
+            warnings.warn(
+                "The use of only project name as `cloned_project_name` in `clone_project()` is deprecated."
+                "The `cloned_project_name` should be full name (<namespace>/<name>).",
+                category=DeprecationWarning,
+            )
+
+        path = f"/v1/project/clone/{source_project_path}"
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         json_headers = {"Content-Type": "application/json", "Accept": "application/json"}
         data = {
             "namespace": cloned_project_namespace if cloned_project_namespace else self.username(),
             "project": cloned_project_name,
         }
-
         request = urllib.request.Request(url, data=json.dumps(data).encode(), headers=json_headers, method="POST")
         self._do_request(request)
 

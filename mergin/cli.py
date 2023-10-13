@@ -200,23 +200,12 @@ def create(ctx, project, public, from_dir):
     mc = ctx.obj["client"]
     if mc is None:
         return
-    if "/" in project:
-        try:
-            namespace, project = project.split("/")
-            assert namespace, "No namespace given"
-            assert project, "No project name given"
-        except (ValueError, AssertionError) as e:
-            click.secho(f"Incorrect namespace/project format: {e}", fg="red")
-            return
-    else:
-        # namespace not specified, use current user namespace
-        namespace = mc.username()
     try:
         if from_dir is None:
-            mc.create_project(project, is_public=public, namespace=namespace)
+            mc.create_project(project, is_public=public)
             click.echo("Created project " + project)
         else:
-            mc.create_project_and_push(project, from_dir, is_public=public, namespace=namespace)
+            mc.create_project_and_push(project, from_dir, is_public=public)
             click.echo("Created project " + project + " and pushed content from directory " + from_dir)
     except ClientError as e:
         click.secho("Error: " + str(e), fg="red")
@@ -555,7 +544,21 @@ def clone(ctx, source_project_path, cloned_project_name, cloned_project_namespac
     if mc is None:
         return
     try:
-        mc.clone_project(source_project_path, cloned_project_name, cloned_project_namespace)
+        if cloned_project_namespace:
+            click.secho(
+                "The usage of `cloned_project_namespace` parameter in `mergin clone` is deprecated."
+                "Specify `cloned_project_name` as full name (<namespace>/<name>) instead.",
+                fg="yellow",
+            )
+        if cloned_project_namespace is None and "/" not in cloned_project_name:
+            click.secho(
+                "The use of only project name as `cloned_project_name` in `clone_project()` is deprecated."
+                "The `cloned_project_name` should be full name (<namespace>/<name>).",
+                fg="yellow",
+            )
+        if cloned_project_namespace and "/" not in cloned_project_name:
+            cloned_project_name = f"{cloned_project_namespace}/{cloned_project_name}"
+        mc.clone_project(source_project_path, cloned_project_name)
         click.echo("Done")
     except ClientError as e:
         click.secho("Error: " + str(e), fg="red")
