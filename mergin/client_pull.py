@@ -146,6 +146,8 @@ def download_project_async(mc, project_path, directory, project_version=None):
             project_info = latest_proj_info
 
     except ClientError as e:
+        mp.log.error("Error while querying info: " + str(e))
+        mp.log.info("--- download aborted")
         _cleanup_failed_download(directory, mp)
         raise e
 
@@ -198,6 +200,8 @@ def download_project_is_running(job):
     """
     for future in job.futures:
         if future.done() and future.exception() is not None:
+            job.mp.log.error("Error while downloading project: " + str(future.exception()))
+            job.mp.log.info("--- download aborted")
             job.failure_log_file = _cleanup_failed_download(job.directory, job.mp)
             raise future.exception()
         if future.running():
@@ -220,6 +224,8 @@ def download_project_finalize(job):
     # make sure any exceptions from threads are not lost
     for future in job.futures:
         if future.exception() is not None:
+            job.mp.log.error("Error while downloading project: " + str(future.exception()))
+            job.mp.log.info("--- download aborted")
             job.failure_log_file = _cleanup_failed_download(job.directory, job.mp)
             raise future.exception()
 
@@ -645,6 +651,8 @@ def download_file_finalize(job):
     """
     download_files_finalize(job)
 
+            job.mp.log.error("Error while downloading file: " + str(future.exception()))
+            job.mp.log.info("--- download aborted")
 
 def download_diffs_async(mc, project_directory, file_path, versions):
     """
