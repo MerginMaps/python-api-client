@@ -2245,6 +2245,9 @@ def test_download_failure(mc):
         download_project_finalize(job)
 
     assert job.failure_log_file is not None
+    with open(job.failure_log_file, "r", encoding="utf-8") as f:
+        content = f.read()
+        assert "Traceback" in content
 
     # active waiting
     remove_folders([download_dir])
@@ -2266,3 +2269,6 @@ def test_download_failure(mc):
             pass
 
     assert job.failure_log_file is not None
+    with open(job.failure_log_file, "r", encoding="utf-8") as f:
+        content = f.read()
+        assert "Traceback" in content

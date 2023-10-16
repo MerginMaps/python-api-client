@@ -16,6 +16,7 @@ import pprint
 import shutil
 import tempfile
 import typing
+import traceback
 
 import concurrent.futures
 
@@ -200,7 +201,7 @@ def download_project_is_running(job):
     """
     for future in job.futures:
         if future.done() and future.exception() is not None:
-            job.mp.log.error("Error while downloading project: " + str(future.exception()))
+            job.mp.log.error("Error while downloading project: " + "".join(traceback.format_exception(future.exception())))
             job.mp.log.info("--- download aborted")
             job.failure_log_file = _cleanup_failed_download(job.directory, job.mp)
             raise future.exception()
@@ -224,7 +225,7 @@ def download_project_finalize(job):
     # make sure any exceptions from threads are not lost
     for future in job.futures:
         if future.exception() is not None:
-            job.mp.log.error("Error while downloading project: " + str(future.exception()))
+            job.mp.log.error("Error while downloading project: " + "".join(traceback.format_exception(future.exception())))
             job.mp.log.info("--- download aborted")
             job.failure_log_file = _cleanup_failed_download(job.directory, job.mp)
             raise future.exception()
