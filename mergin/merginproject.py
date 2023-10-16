@@ -168,12 +168,15 @@ class MerginProject:
             self._read_metadata()
 
         # "id" or "project_id" may not exist in projects downloaded with old client version
-        if "id" not in self._metadata and "project_id" not in self._metadata:
-            raise ClientError(
-                "The project directory has been created with an old version of the Mergin Maps client. Please delete the project directory and re-download the project."
-            )
-
-        return self._metadata["project_id"] if "/" in self._metadata["name"] else self._metadata["id"]
+        if self.is_old_metadata:
+            if "project_id" not in self._metadata:
+                raise ClientError(
+                    "The project directory has been created with an old version of the Mergin Maps client. "
+                    "Please delete the project directory and re-download the project."
+                )
+            return self._metadata["project_id"]
+        else:
+            return self._metadata["id"]
 
     def workspace_id(self) -> int:
         """Returns ID of the workspace where the project belongs"""
