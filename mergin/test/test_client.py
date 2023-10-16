@@ -2011,20 +2011,30 @@ def test_project_metadata(mc):
     project_dir = os.path.join(TMP_DIR, test_project)
 
     cleanup(mc, project, [project_dir])
+
     # prepare local project
     shutil.copytree(TEST_DATA_DIR, project_dir)
 
-    # create remote project
-    mc.create_project_and_push(test_project, directory=project_dir)
-
     # copy metadata in old format
+    os.makedirs(os.path.join(project_dir, ".mergin"), exist_ok=True)
     project_metadata = os.path.join(project_dir, ".mergin", "mergin.json")
-    old_metadata = os.path.join(project_dir, "old_metadata.json")
-    shutil.copyfile(old_metadata, project_metadata)
+    metadata_file = os.path.join(project_dir, "old_metadata.json")
+    shutil.copyfile(metadata_file, project_metadata)
 
     # verify we have correct metadata
     mp = MerginProject(project_dir)
     assert mp.project_full_name() == f"{API_USER}/{test_project}"
     assert mp.project_name() == test_project
     assert mp.workspace_name() == API_USER
-    assert mp.version() == "v1"
+    assert mp.version() == "v0"
+
+    # copy metadata in new format
+    metadata_file = os.path.join(project_dir, "new_metadata.json")
+    shutil.copyfile(metadata_file, project_metadata)
+
+    # verify we have correct metadata
+    mp = MerginProject(project_dir)
+    assert mp.project_full_name() == f"{API_USER}/{test_project}"
+    assert mp.project_name() == test_project
+    assert mp.workspace_name() == API_USER
+    assert mp.version() == "v0"
