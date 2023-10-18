@@ -1097,4 +1097,18 @@ class MerginClient:
         # removed files are redownloaded
         for file in push_changes["removed"]:
             if all_files or file["path"] in files_to_reset:
-                self.download_file(directory, file["path"], mp.fpath(file["path"]), version=current_version)
+
+    def download_files(self, project_dir, file_paths, version=None):
+        """
+        Download project files at specified version. Get the latest if no version specified.
+
+        :param project_dir: project local directory
+        :type project_dir: String
+        :param file_path: List of relative paths of files to download in the project directory
+        :type file_path: List[String]
+        :param version: optional version tag for downloaded file
+        :type version: String
+        """
+        job = download_files_async(self, project_dir, file_paths, version=version)
+        pull_project_wait(job)
+        download_files_finalize(job)
