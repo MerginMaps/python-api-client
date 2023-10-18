@@ -200,23 +200,12 @@ def create(ctx, project, public, from_dir):
     mc = ctx.obj["client"]
     if mc is None:
         return
-    if "/" in project:
-        try:
-            namespace, project = project.split("/")
-            assert namespace, "No namespace given"
-            assert project, "No project name given"
-        except (ValueError, AssertionError) as e:
-            click.secho(f"Incorrect namespace/project format: {e}", fg="red")
-            return
-    else:
-        # namespace not specified, use current user namespace
-        namespace = mc.username()
     try:
         if from_dir is None:
-            mc.create_project(project, is_public=public, namespace=namespace)
+            mc.create_project(project, is_public=public)
             click.echo("Created project " + project)
         else:
-            mc.create_project_and_push(project, from_dir, is_public=public, namespace=namespace)
+            mc.create_project_and_push(project, from_dir, is_public=public)
             click.echo("Created project " + project + " and pushed content from directory " + from_dir)
     except ClientError as e:
         click.secho("Error: " + str(e), fg="red")
@@ -226,18 +215,10 @@ def create(ctx, project, public, from_dir):
 
 
 @cli.command()
-@click.option(
-    "--flag",
-    help="What kind of projects (e.g. 'created' for just my projects,"
-    "'shared' for projects shared with me. No flag means returns all public projects.",
-)
+@click.argument("namespace")
 @click.option(
     "--name",
     help="Filter projects with name like name",
-)
-@click.option(
-    "--namespace",
-    help="Filter projects with namespace like namespace",
 )
 @click.option(
     "--order_params",
@@ -248,17 +229,14 @@ def create(ctx, project, public, from_dir):
     "Available attrs: namespace, name, created, updated, disk_usage, creator",
 )
 @click.pass_context
-def list_projects(ctx, flag, name, namespace, order_params):
+def list_projects(ctx, name, namespace, order_params):
     """List projects on the server."""
-    filter_str = "(filter flag={})".format(flag) if flag is not None else "(all public)"
-
-    click.echo("List of projects {}:".format(filter_str))
 
     mc = ctx.obj["client"]
     if mc is None:
         return
 
-    projects_list = mc.projects_list(flag=flag, name=name, namespace=namespace, order_params=order_params)
+    projects_list = mc.projects_list(name=name, namespace=namespace, order_params=order_params)
 
     click.echo("Fetched {} projects .".format(len(projects_list)))
     for project in projects_list:
@@ -555,7 +533,21 @@ def clone(ctx, source_project_path, cloned_project_name, cloned_project_namespac
     if mc is None:
         return
     try:
-        mc.clone_project(source_project_path, cloned_project_name, cloned_project_namespace)
+        if cloned_project_namespace:
+            click.secho(
+                "The usage of `cloned_project_namespace` parameter in `mergin clone` is deprecated."
+                "Specify `cloned_project_name` as full name (<namespace>/<name>) instead.",
+                fg="yellow",
+            )
+        if cloned_project_namespace is None and "/" not in cloned_project_name:
+            click.secho(
+                "The use of only project name as `cloned_project_name` in `clone_project()` is deprecated."
+                "The `cloned_project_name` should be full name (<namespace>/<name>).",
+                fg="yellow",
+            )
+        if cloned_project_namespace and "/" not in cloned_project_name:
+            cloned_project_name = f"{cloned_project_namespace}/{cloned_project_name}"
+        mc.clone_project(source_project_path, cloned_project_name)
         click.echo("Done")
     except ClientError as e:
         click.secho("Error: " + str(e), fg="red")

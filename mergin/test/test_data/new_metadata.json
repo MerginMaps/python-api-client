@@ -1,0 +1,43 @@
+{
+  "access": {
+    "owners": [
+      2
+    ],
+    "ownersnames": [
+      "test_plugin"
+    ],
+    "public": false,
+    "readers": [
+      2
+    ],
+    "readersnames": [
+      "test_plugin"
+    ],
+    "writers": [
+      2
+    ],
+    "writersnames": [
+      "test_plugin"
+    ]
+  },
+  "created": "2023-10-16T09:17:27Z",
+  "creator": 2,
+  "disk_usage": 0,
+  "files": [],
+  "id": "a6f9d38c-e30d-49f2-bfc5-76495afdbf27",
+  "name": "test_project_metadata",
+  "namespace": "test_plugin",
+  "permissions": {
+    "delete": true,
+    "update": true,
+    "upload": true
+  },
+  "removed_at": null,
+  "removed_by": null,
+  "role": "owner",
+  "tags": [],
+  "updated": "2023-10-16T09:17:27.345127",
+  "uploads": [],
+  "version": "v0",
+  "workspace_id": 18
+}

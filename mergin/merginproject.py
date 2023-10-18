@@ -58,6 +58,7 @@ class MerginProject:
 
         # metadata from JSON are lazy loaded
         self._metadata = None
+        self.is_old_metadata = False
 
         self.setup_logging(directory)
 
@@ -139,7 +140,10 @@ class MerginProject:
         """Returns fully qualified project name: <workspace>/<name>"""
         if self._metadata is None:
             self._read_metadata()
-        return self._metadata["name"]
+        if self.is_old_metadata:
+            return self._metadata["name"]
+        else:
+            return f"{self._metadata['namespace']}/{self._metadata['name']}"
 
     def project_name(self) -> str:
         """Returns only project name, without its workspace name"""
@@ -154,10 +158,25 @@ class MerginProject:
         return full_name[:slash_index]
 
     def project_id(self) -> str:
-        """Returns ID of the project (UUID using 8-4-4-4-12 formatting without braces)"""
+        """Returns ID of the project (UUID using 8-4-4-4-12 formatting without braces)
+
+        Raises ClientError if project id is not present in the project metadata. This should
+        only happen with projects downloaded with old client, before February 2023,
+        see https://github.com/MerginMaps/mergin-py-client/pull/154
+        """
         if self._metadata is None:
             self._read_metadata()
-        return self._metadata["project_id"]
+
+        # "id" or "project_id" may not exist in projects downloaded with old client version
+        if self.is_old_metadata:
+            if "project_id" not in self._metadata:
+                raise ClientError(
+                    "The project directory has been created with an old version of the Mergin Maps client. "
+                    "Please delete the project directory and re-download the project."
+                )
+            return self._metadata["project_id"]
+        else:
+            return self._metadata["id"]
 
     def workspace_id(self) -> int:
         """Returns ID of the workspace where the project belongs"""
@@ -195,6 +214,8 @@ class MerginProject:
             raise InvalidProject("Project metadata has not been created yet")
         with open(self.fpath_meta("mergin.json"), "r") as file:
             self._metadata = json.load(file)
+
+        self.is_old_metadata = "/" in self._metadata["name"]
 
     def update_metadata(self, data: dict):
         """Writes project metadata and updates cached metadata."""
