@@ -22,6 +22,8 @@ from .client_pull import (
     download_file_finalize,
     download_project_async,
     download_file_async,
+    download_files_async,
+    download_files_finalize,
     download_diffs_async,
     download_project_finalize,
     download_project_wait,
@@ -1081,6 +1083,8 @@ class MerginClient:
 
         push_changes = mp.get_push_changes()
 
+        files_download = []
+
         # remove all added files
         for file in push_changes["added"]:
             if all_files or file["path"] in files_to_reset:
@@ -1092,11 +1096,14 @@ class MerginClient:
                 if mp.is_versioned_file(file["path"]):
                     mp.geodiff.make_copy_sqlite(mp.fpath_meta(file["path"]), mp.fpath(file["path"]))
                 else:
-                    self.download_file(directory, file["path"], mp.fpath(file["path"]), version=current_version)
+                    files_download.append(file["path"])
 
         # removed files are redownloaded
         for file in push_changes["removed"]:
             if all_files or file["path"] in files_to_reset:
+                files_download.append(file["path"])
+
+        self.download_files(directory, files_download, version=current_version)
 
     def download_files(self, project_dir, file_paths, version=None):
         """
