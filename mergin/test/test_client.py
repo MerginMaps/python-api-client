@@ -2191,6 +2191,20 @@ def test_download_files(mc: MerginClient):
         expected = os.path.join(TEST_DATA_DIR, expected_content[ver - 2])  # GeoPackage with expected content
         assert check_gpkg_same_content(mp, mp.fpath(f_updated), expected)
 
+    # download two files from v1 and check their content
+    file_2 = "test.txt"
+    downloaded_file_2 = os.path.join(download_dir, file_2)
+
+    mc.download_files(project_dir, [f_updated, file_2], [downloaded_file, downloaded_file_2], version="v1")
+    assert check_gpkg_same_content(mp, downloaded_file, os.path.join(TEST_DATA_DIR, f_updated))
+
+    with open(os.path.join(TEST_DATA_DIR, file_2), mode="r", encoding="utf-8") as file:
+        content_exp = file.read()
+
+    with open(os.path.join(download_dir, file_2), mode="r", encoding="utf-8") as file:
+        content = file.read()
+    assert content_exp == content
+
     # make sure there will be exception raised if a file doesn't exist in the version
     with pytest.raises(ClientError, match=f"No \\[{f_updated}\\] exists at version v5"):
         mc.download_files(project_dir, [f_updated], version="v5")
