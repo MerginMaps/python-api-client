@@ -2156,3 +2156,44 @@ def test_project_metadata(mc):
     assert mp.project_name() == test_project
     assert mp.workspace_name() == API_USER
     assert mp.version() == "v0"
+
+
+def test_download_files(mc: MerginClient):
+    """Test downloading files at specified versions."""
+    test_project = "test_download_files"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    f_updated = "base.gpkg"
+    download_dir = os.path.join(TMP_DIR, "test-download-files-tmp")
+
+    cleanup(mc, project, [project_dir, download_dir])
+
+    mp = create_versioned_project(mc, test_project, project_dir, f_updated)
+
+    project_info = mc.project_info(project)
+    assert project_info["version"] == "v5"
+    assert project_info["id"] == mp.project_id()
+
+    # Versioned file should have the following content at versions 2-4
+    expected_content = ("inserted_1_A.gpkg", "inserted_1_A_mod.gpkg", "inserted_1_B.gpkg")
+
+    downloaded_file = os.path.join(download_dir, f_updated)
+
+    # if output_paths is specified look at that location
+    for ver in range(2, 5):
+        mc.download_files(project_dir, [f_updated], [downloaded_file], version=f"v{ver}")
+        expected = os.path.join(TEST_DATA_DIR, expected_content[ver - 2])  # GeoPackage with expected content
+        assert check_gpkg_same_content(mp, downloaded_file, expected)
+
+    # if output_paths is not specified look in the mergin project folder
+    for ver in range(2, 5):
+        mc.download_files(project_dir, [f_updated], version=f"v{ver}")
+        expected = os.path.join(TEST_DATA_DIR, expected_content[ver - 2])  # GeoPackage with expected content
+        assert check_gpkg_same_content(mp, mp.fpath(f_updated), expected)
+
+    # make sure there will be exception raised if a file doesn't exist in the version
+    with pytest.raises(ClientError, match=f"No \\[{f_updated}\\] exists at version v5"):
+        mc.download_files(project_dir, [f_updated], version="v5")
+
+    with pytest.raises(ClientError, match=f"No \\[non_existing\\.file\\] exists at version v3"):
+        mc.download_files(project_dir, [f_updated, "non_existing.file"], version="v3")
