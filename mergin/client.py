@@ -1171,7 +1171,9 @@ class MerginClient:
 
         self.download_files(directory, files_download, version=current_version)
 
-    def download_files(self, project_dir, file_paths, version=None):
+    def download_files(
+        self, project_dir: str, file_paths: typing.List[str], output_paths: typing.List[str] = None, version: str = None
+    ):
         """
         Download project files at specified version. Get the latest if no version specified.
 
@@ -1182,6 +1184,6 @@ class MerginClient:
         :param version: optional version tag for downloaded file
         :type version: String
         """
-        job = download_files_async(self, project_dir, file_paths, version=version)
+        job = download_files_async(self, project_dir, file_paths, output_paths, version=version)
         pull_project_wait(job)
         download_files_finalize(job)
