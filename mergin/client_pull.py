@@ -807,7 +807,9 @@ def download_diffs_finalize(job):
     return diffs
 
 
-def download_files_async(mc, project_dir: str, file_paths: typing.List[str], version: str):
+def download_files_async(
+    mc, project_dir: str, file_paths: typing.List[str], output_paths: typing.List[str], version: str
+):
     """
     Starts background download project files at specified version.
     Returns handle to the pending download.
