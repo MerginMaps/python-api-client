@@ -1021,8 +1021,8 @@ def test_download_file(mc):
         assert check_gpkg_same_content(mp, f_downloaded, expected)
 
     # make sure there will be exception raised if a file doesn't exist in the version
-    with pytest.raises(ClientError, match=f"No {f_updated} exists at version v5"):
-        mc.download_file(project_dir, f_updated, f_downloaded, version=f"v5")
+    with pytest.raises(ClientError, match=f"No \\[{f_updated}\\] exists at version v5"):
+        mc.download_file(project_dir, f_updated, f_downloaded, version="v5")
 
 
 def test_download_diffs(mc):
