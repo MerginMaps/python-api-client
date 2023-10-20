@@ -622,53 +622,7 @@ def download_file_async(mc, project_dir, file_path, output_file, version):
     Starts background download project file at specified version.
     Returns handle to the pending download.
     """
-    mp = MerginProject(project_dir)
-    project_path = mp.project_full_name()
-    ver_info = f"at version {version}" if version is not None else "at latest version"
-    mp.log.info(f"Getting {file_path} {ver_info}")
-    latest_proj_info = mc.project_info(project_path)
-    if version:
-        project_info = mc.project_info(project_path, version=version)
-    else:
-        project_info = latest_proj_info
-    mp.log.info(f"Got project info. version {project_info['version']}")
-
-    # set temporary directory for download
-    temp_dir = tempfile.mkdtemp(prefix="mergin-py-client-")
-
-    download_list = []
-    update_tasks = []
-    total_size = 0
-    # None can not be used to indicate latest version of the file, so
-    # it is necessary to pass actual version.
-    if version is None:
-        version = latest_proj_info["version"]
-    for file in project_info["files"]:
-        if file["path"] == file_path:
-            file["version"] = version
-            items = _download_items(file, temp_dir)
-            is_latest_version = version == latest_proj_info["version"]
-            task = UpdateTask(file["path"], items, output_file, latest_version=is_latest_version)
-            download_list.extend(task.download_queue_items)
-            for item in task.download_queue_items:
-                total_size += item.size
-            update_tasks.append(task)
-            break
-    if not download_list:
-        warn = f"No {file_path} exists at version {version}"
-        mp.log.warning(warn)
-        shutil.rmtree(temp_dir)
-        raise ClientError(warn)
-
-    mp.log.info(f"will download file {file_path} in {len(download_list)} chunks, total size {total_size}")
-    job = DownloadJob(project_path, total_size, version, update_tasks, download_list, temp_dir, mp, project_info)
-    job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
-    job.futures = []
-    for item in download_list:
-        future = job.executor.submit(_do_download, item, mc, mp, project_path, job)
-        job.futures.append(future)
-
-    return job
+    return download_files_async(mc, project_dir, [file_path], [output_file], version)
 
 
 def download_file_finalize(job):
