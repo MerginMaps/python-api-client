@@ -828,6 +828,17 @@ def download_files_async(
     # set temporary directory for download
     temp_dir = tempfile.mkdtemp(prefix="mergin-py-client-")
 
+    if output_paths is None:
+        output_paths = []
+        for file in file_paths:
+            output_paths.append(mp.fpath(file))
+
+    if len(output_paths) != len(file_paths):
+        warn = "Output file paths are not of the same length as file paths. Cannot store required files."
+        mp.log.warning(warn)
+        shutil.rmtree(temp_dir)
+        raise ClientError(warn)
+
     download_list = []
     update_tasks = []
     total_size = 0
@@ -837,10 +848,11 @@ def download_files_async(
         version = latest_proj_info["version"]
     for file in project_info["files"]:
         if file["path"] in file_paths:
+            index = file_paths.index(file["path"])
             file["version"] = version
             items = _download_items(file, temp_dir)
             is_latest_version = version == latest_proj_info["version"]
-            task = UpdateTask(file["path"], items, mp.fpath(file["path"]), latest_version=is_latest_version)
+            task = UpdateTask(file["path"], items, output_paths[index], latest_version=is_latest_version)
             download_list.extend(task.download_queue_items)
             for item in task.download_queue_items:
                 total_size += item.size
@@ -855,7 +867,7 @@ def download_files_async(
         else:
             files_to_download.append(file)
 
-    if not download_list:
+    if not download_list or missing_files:
         warn = f"No [{', '.join(missing_files)}] exists at version {version}"
         mp.log.warning(warn)
         shutil.rmtree(temp_dir)
