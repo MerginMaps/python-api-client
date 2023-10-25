@@ -1181,6 +1181,8 @@ class MerginClient:
         :type project_dir: String
         :param file_path: List of relative paths of files to download in the project directory
         :type file_path: List[String]
+        :param output_paths: List of paths for files to download to. Should be same length of as file_path. Default is `None` which means that files are downloaded into MerginProject at project_dir.
+        :type output_paths: List[String]
         :param version: optional version tag for downloaded file
         :type version: String
         """
