@@ -2019,6 +2019,9 @@ def test_reset_local_changes(mc: MerginClient):
     # test push changes with diffs:
     mp = MerginProject(project_dir)
 
+    # test with no changes, should pass by doing nothing
+    mc.reset_local_changes(project_dir)
+
     f_updated = "base.gpkg"
     shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
     shutil.copy(mp.fpath("test.txt"), mp.fpath("new_test.txt"))

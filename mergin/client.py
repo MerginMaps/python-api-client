@@ -1169,7 +1169,8 @@ class MerginClient:
             if all_files or file["path"] in files_to_reset:
                 files_download.append(file["path"])
 
-        self.download_files(directory, files_download, version=current_version)
+        if files_download:
+            self.download_files(directory, files_download, version=current_version)
 
     def download_files(
         self, project_dir: str, file_paths: typing.List[str], output_paths: typing.List[str] = None, version: str = None
