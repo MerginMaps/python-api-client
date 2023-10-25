@@ -629,24 +629,7 @@ def download_file_finalize(job):
     """
     To be called when download_file_async is finished
     """
-    job.executor.shutdown(wait=True)
-
-    # make sure any exceptions from threads are not lost
-    for future in job.futures:
-        if future.exception() is not None:
-            raise future.exception()
-
-    job.mp.log.info("--- download finished")
-
-    temp_dir = None
-    for task in job.update_tasks:
-        task.apply(job.directory, job.mp)
-        if task.download_queue_items:
-            temp_dir = os.path.dirname(task.download_queue_items[0].download_file_path)
-
-    # Remove temporary download directory
-    if temp_dir is not None:
-        shutil.rmtree(temp_dir)
+    download_files_finalize(job)
 
 
 def download_diffs_async(mc, project_directory, file_path, versions):
