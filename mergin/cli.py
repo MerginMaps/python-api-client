@@ -636,6 +636,21 @@ def rename_project(ctx, project_path: str, new_project_name: str):
         _print_unhandled_exception()
 
 
+@cli.command()
+@click.pass_context
+def reset_local_changes(ctx):
+    """Rename project in Mergin Maps repository."""
+    directory = os.getcwd()
+    mc: MerginClient = ctx.obj["client"]
+    if mc is None:
+        return
+    try:
+        mc.reset_local_changes(directory)
+    except InvalidProject as e:
+        click.secho("Invalid project directory ({})".format(str(e)), fg="red")
+    except ClientError as e:
+        click.secho("Error: " + str(e), fg="red")
+
 
 if __name__ == "__main__":
     cli()
