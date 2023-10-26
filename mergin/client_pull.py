@@ -15,6 +15,7 @@ import os
 import pprint
 import shutil
 import tempfile
+import typing
 
 import concurrent.futures
 
@@ -621,77 +622,14 @@ def download_file_async(mc, project_dir, file_path, output_file, version):
     Starts background download project file at specified version.
     Returns handle to the pending download.
     """
-    mp = MerginProject(project_dir)
-    project_path = mp.project_full_name()
-    ver_info = f"at version {version}" if version is not None else "at latest version"
-    mp.log.info(f"Getting {file_path} {ver_info}")
-    latest_proj_info = mc.project_info(project_path)
-    if version:
-        project_info = mc.project_info(project_path, version=version)
-    else:
-        project_info = latest_proj_info
-    mp.log.info(f"Got project info. version {project_info['version']}")
-
-    # set temporary directory for download
-    temp_dir = tempfile.mkdtemp(prefix="mergin-py-client-")
-
-    download_list = []
-    update_tasks = []
-    total_size = 0
-    # None can not be used to indicate latest version of the file, so
-    # it is necessary to pass actual version.
-    if version is None:
-        version = latest_proj_info["version"]
-    for file in project_info["files"]:
-        if file["path"] == file_path:
-            file["version"] = version
-            items = _download_items(file, temp_dir)
-            is_latest_version = version == latest_proj_info["version"]
-            task = UpdateTask(file["path"], items, output_file, latest_version=is_latest_version)
-            download_list.extend(task.download_queue_items)
-            for item in task.download_queue_items:
-                total_size += item.size
-            update_tasks.append(task)
-            break
-    if not download_list:
-        warn = f"No {file_path} exists at version {version}"
-        mp.log.warning(warn)
-        shutil.rmtree(temp_dir)
-        raise ClientError(warn)
-
-    mp.log.info(f"will download file {file_path} in {len(download_list)} chunks, total size {total_size}")
-    job = DownloadJob(project_path, total_size, version, update_tasks, download_list, temp_dir, mp, project_info)
-    job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
-    job.futures = []
-    for item in download_list:
-        future = job.executor.submit(_do_download, item, mc, mp, project_path, job)
-        job.futures.append(future)
-
-    return job
+    return download_files_async(mc, project_dir, [file_path], [output_file], version)
 
 
 def download_file_finalize(job):
     """
     To be called when download_file_async is finished
     """
-    job.executor.shutdown(wait=True)
-
-    # make sure any exceptions from threads are not lost
-    for future in job.futures:
-        if future.exception() is not None:
-            raise future.exception()
-
-    job.mp.log.info("--- download finished")
-
-    temp_dir = None
-    for task in job.update_tasks:
-        task.apply(job.directory, job.mp)
-        if task.download_queue_items:
-            temp_dir = os.path.dirname(task.download_queue_items[0].download_file_path)
-
-    # Remove temporary download directory
-    if temp_dir is not None:
-        shutil.rmtree(temp_dir)
+    download_files_finalize(job)
 
 
 def download_diffs_async(mc, project_directory, file_path, versions):
@@ -804,3 +742,103 @@ def download_diffs_finalize(job):
 
     job.mp.log.info("--- diffs pull finished")
     return diffs
+
+
+def download_files_async(
+    mc, project_dir: str, file_paths: typing.List[str], output_paths: typing.List[str], version: str
+):
+    """
+    Starts background download project files at specified version.
+    Returns handle to the pending download.
+    """
+    mp = MerginProject(project_dir)
+    project_path = mp.project_full_name()
+    ver_info = f"at version {version}" if version is not None else "at latest version"
+    mp.log.info(f"Getting [{', '.join(file_paths)}] {ver_info}")
+    latest_proj_info = mc.project_info(project_path)
+    if version:
+        project_info = mc.project_info(project_path, version=version)
+    else:
+        project_info = latest_proj_info
+    mp.log.info(f"Got project info. version {project_info['version']}")
+
+    # set temporary directory for download
+    temp_dir = tempfile.mkdtemp(prefix="mergin-py-client-")
+
+    if output_paths is None:
+        output_paths = []
+        for file in file_paths:
+            output_paths.append(mp.fpath(file))
+
+    if len(output_paths) != len(file_paths):
+        warn = "Output file paths are not of the same length as file paths. Cannot store required files."
+        mp.log.warning(warn)
+        shutil.rmtree(temp_dir)
+        raise ClientError(warn)
+
+    download_list = []
+    update_tasks = []
+    total_size = 0
+    # None can not be used to indicate latest version of the file, so
+    # it is necessary to pass actual version.
+    if version is None:
+        version = latest_proj_info["version"]
+    for file in project_info["files"]:
+        if file["path"] in file_paths:
+            index = file_paths.index(file["path"])
+            file["version"] = version
+            items = _download_items(file, temp_dir)
+            is_latest_version = version == latest_proj_info["version"]
+            task = UpdateTask(file["path"], items, output_paths[index], latest_version=is_latest_version)
+            download_list.extend(task.download_queue_items)
+            for item in task.download_queue_items:
+                total_size += item.size
+            update_tasks.append(task)
+
+    missing_files = []
+    files_to_download = []
+    project_file_paths = [file["path"] for file in project_info["files"]]
+    for file in file_paths:
+        if file not in project_file_paths:
+            missing_files.append(file)
+        else:
+            files_to_download.append(file)
+
+    if not download_list or missing_files:
+        warn = f"No [{', '.join(missing_files)}] exists at version {version}"
+        mp.log.warning(warn)
+        shutil.rmtree(temp_dir)
+        raise ClientError(warn)
+
+    mp.log.info(
+        f"will download files [{', '.join(files_to_download)}] in {len(download_list)} chunks, total size {total_size}"
+    )
+    job = DownloadJob(project_path, total_size, version, update_tasks, download_list, temp_dir, mp, project_info)
+    job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+    job.futures = []
+    for item in download_list:
+        future = job.executor.submit(_do_download, item, mc, mp, project_path, job)
+        job.futures.append(future)
+
+    return job
+
+
+def download_files_finalize(job):
+    """
+    To be called when download_file_async is finished
+    """
+    job.executor.shutdown(wait=True)
+
+    # make sure any exceptions from threads are not lost
+    for future in job.futures:
+        if future.exception() is not None:
+            raise future.exception()
+
+    job.mp.log.info("--- download finished")
+
+    for task in job.update_tasks:
+        task.apply(job.directory, job.mp)
+
+    # Remove temporary download directory
+    if job.directory is not None and os.path.exists(job.directory):
+        shutil.rmtree(job.directory)
