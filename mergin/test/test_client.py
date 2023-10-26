@@ -2038,3 +2038,51 @@ def test_project_metadata(mc):
     assert mp.project_name() == test_project
     assert mp.workspace_name() == API_USER
     assert mp.version() == "v0"
+
+
+def test_project_rename(mc: MerginClient):
+    """Check project can be renamed"""
+
+    test_project = "test_project_rename"
+    test_project_renamed = "test_project_renamed"
+    project = API_USER + "/" + test_project
+    project_renamed = API_USER + "/" + test_project_renamed
+
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
+
+    cleanup(mc, project, [project_dir])
+    cleanup(mc, project_renamed, [])
+
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project_and_push(project, project_dir)
+
+    # renamed project does not exist
+    with pytest.raises(ClientError, match="The requested URL was not found on the server"):
+        info = mc.project_info(project_renamed)
+
+    # rename
+    mc.rename_project(project, test_project_renamed)
+
+    # validate project info
+    project_info = mc.project_info(project_renamed)
+    assert project_info["version"] == "v1"
+    assert project_info["name"] == test_project_renamed
+    assert project_info["namespace"] == API_USER
+
+    # recreate project
+    cleanup(mc, project, [project_dir])
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project_and_push(project, project_dir)
+
+    # rename to existing name - created previously
+    mc.project_info(project_renamed)
+    with pytest.raises(ClientError, match="Entered project name is invalid"):
+        mc.rename_project(project, project_renamed)
+
+    # cannot rename project that does not exist
+    with pytest.raises(ClientError, match="The requested URL was not found on the server."):
+        mc.rename_project(API_USER + "/" + "non_existing_project", API_USER + "/" + "new_project")
+
+    # cannot rename with full project name
+    with pytest.raises(ClientError, match="Entered project name is invalid"):
+        mc.rename_project(project, "workspace" + "/" + test_project_renamed)
