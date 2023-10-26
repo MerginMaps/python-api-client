@@ -1021,8 +1021,8 @@ def test_download_file(mc):
         assert check_gpkg_same_content(mp, f_downloaded, expected)
 
     # make sure there will be exception raised if a file doesn't exist in the version
-    with pytest.raises(ClientError, match=f"No {f_updated} exists at version v5"):
-        mc.download_file(project_dir, f_updated, f_downloaded, version=f"v5")
+    with pytest.raises(ClientError, match=f"No \\[{f_updated}\\] exists at version v5"):
+        mc.download_file(project_dir, f_updated, f_downloaded, version="v5")
 
 
 def test_download_diffs(mc):
@@ -2005,6 +2005,127 @@ def test_clean_diff_files(mc):
     assert diff_files == []
 
 
+def test_reset_local_changes(mc: MerginClient):
+    test_project = f"test_reset_local_changes"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
+    project_dir_2 = os.path.join(TMP_DIR, test_project + "_v2")  # primary project dir for updates
+
+    cleanup(mc, project, [project_dir])
+    # create remote project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
+
+    # test push changes with diffs:
+    mp = MerginProject(project_dir)
+
+    # test with no changes, should pass by doing nothing
+    mc.reset_local_changes(project_dir)
+
+    f_updated = "base.gpkg"
+    shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
+    shutil.copy(mp.fpath("test.txt"), mp.fpath("new_test.txt"))
+    shutil.copy(mp.fpath("test.txt"), mp.fpath("new_dir/new_test.txt"))
+    os.remove(mp.fpath("test.txt"))
+    os.remove(mp.fpath("test_dir/test2.txt"))
+    with open(mp.fpath("test3.txt"), mode="a", encoding="utf-8") as file:
+        file.write(" Add some text.")
+
+    # push changes prior to reset
+    mp = MerginProject(project_dir)
+    push_changes = mp.get_push_changes()
+
+    assert len(push_changes["added"]) == 2
+    assert len(push_changes["removed"]) == 2
+    assert len(push_changes["updated"]) == 2
+
+    # reset all files back
+    mc.reset_local_changes(project_dir)
+
+    # push changes after the reset
+    mp = MerginProject(project_dir)
+    push_changes = mp.get_push_changes()
+
+    assert len(push_changes["added"]) == 0
+    assert len(push_changes["removed"]) == 0
+    assert len(push_changes["updated"]) == 0
+
+    cleanup(mc, project, [project_dir])
+    # create remote project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
+
+    # test push changes with diffs:
+    mp = MerginProject(project_dir)
+
+    shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
+    shutil.copy(mp.fpath("test.txt"), mp.fpath("new_test.txt"))
+    shutil.copy(mp.fpath("test.txt"), mp.fpath("new_dir/new_test.txt"))
+    os.remove(mp.fpath("test.txt"))
+    os.remove(mp.fpath("test_dir/test2.txt"))
+
+    # push changes prior to reset
+    mp = MerginProject(project_dir)
+    push_changes = mp.get_push_changes()
+
+    assert len(push_changes["added"]) == 2
+    assert len(push_changes["removed"]) == 2
+    assert len(push_changes["updated"]) == 1
+
+    # reset local changes only to certain files, one added and one removed
+    mc.reset_local_changes(project_dir, files_to_reset=["new_test.txt", "test_dir/test2.txt"])
+
+    # push changes after the reset
+    mp = MerginProject(project_dir)
+    push_changes = mp.get_push_changes()
+
+    assert len(push_changes["added"]) == 1
+    assert len(push_changes["removed"]) == 1
+    assert len(push_changes["updated"]) == 1
+
+    cleanup(mc, project, [project_dir, project_dir_2])
+    # create remote project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project_and_push(test_project, project_dir)
+
+    # test push changes with diffs:
+    mp = MerginProject(project_dir)
+
+    # make changes creating two another versions
+    shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
+    mc.push_project(project_dir)
+    shutil.copy(mp.fpath("test.txt"), mp.fpath("new_test.txt"))
+    shutil.copy(mp.fpath("test.txt"), mp.fpath("new_dir/new_test.txt"))
+    mc.push_project(project_dir)
+    os.remove(mp.fpath("test.txt"))
+    os.remove(mp.fpath("test_dir/test2.txt"))
+
+    # download version 2 and create MerginProject for it
+    mc.download_project(project, project_dir_2, version="v2")
+    mp = MerginProject(project_dir_2)
+
+    # make some changes
+    shutil.copy(mp.fpath("test.txt"), mp.fpath("new_test.txt"))
+    shutil.copy(mp.fpath("test.txt"), mp.fpath("new_dir/new_test.txt"))
+    os.remove(mp.fpath("test.txt"))
+    os.remove(mp.fpath("test_dir/test2.txt"))
+
+    # check changes
+    push_changes = mp.get_push_changes()
+    assert len(push_changes["added"]) == 2
+    assert len(push_changes["removed"]) == 2
+    assert len(push_changes["updated"]) == 0
+
+    # reset back to original version we had - v2
+    mc.reset_local_changes(project_dir_2)
+
+    # push changes after the reset - should be none
+    push_changes = mp.get_push_changes()
+    assert len(push_changes["added"]) == 0
+    assert len(push_changes["removed"]) == 0
+    assert len(push_changes["updated"]) == 0
+
+
 def test_project_metadata(mc):
     test_project = "test_project_metadata"
     project = API_USER + "/" + test_project
@@ -2086,3 +2207,58 @@ def test_project_rename(mc: MerginClient):
     # cannot rename with full project name
     with pytest.raises(ClientError, match="Project's new name should be without workspace specification"):
         mc.rename_project(project, "workspace" + "/" + test_project_renamed)
+
+
+def test_download_files(mc: MerginClient):
+    """Test downloading files at specified versions."""
+    test_project = "test_download_files"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    f_updated = "base.gpkg"
+    download_dir = os.path.join(TMP_DIR, "test-download-files-tmp")
+
+    cleanup(mc, project, [project_dir, download_dir])
+
+    mp = create_versioned_project(mc, test_project, project_dir, f_updated)
+
+    project_info = mc.project_info(project)
+    assert project_info["version"] == "v5"
+    assert project_info["id"] == mp.project_id()
+
+    # Versioned file should have the following content at versions 2-4
+    expected_content = ("inserted_1_A.gpkg", "inserted_1_A_mod.gpkg", "inserted_1_B.gpkg")
+
+    downloaded_file = os.path.join(download_dir, f_updated)
+
+    # if output_paths is specified look at that location
+    for ver in range(2, 5):
+        mc.download_files(project_dir, [f_updated], [downloaded_file], version=f"v{ver}")
+        expected = os.path.join(TEST_DATA_DIR, expected_content[ver - 2])  # GeoPackage with expected content
+        assert check_gpkg_same_content(mp, downloaded_file, expected)
+
+    # if output_paths is not specified look in the mergin project folder
+    for ver in range(2, 5):
+        mc.download_files(project_dir, [f_updated], version=f"v{ver}")
+        expected = os.path.join(TEST_DATA_DIR, expected_content[ver - 2])  # GeoPackage with expected content
+        assert check_gpkg_same_content(mp, mp.fpath(f_updated), expected)
+
+    # download two files from v1 and check their content
+    file_2 = "test.txt"
+    downloaded_file_2 = os.path.join(download_dir, file_2)
+
+    mc.download_files(project_dir, [f_updated, file_2], [downloaded_file, downloaded_file_2], version="v1")
+    assert check_gpkg_same_content(mp, downloaded_file, os.path.join(TEST_DATA_DIR, f_updated))
+
+    with open(os.path.join(TEST_DATA_DIR, file_2), mode="r", encoding="utf-8") as file:
+        content_exp = file.read()
+
+    with open(os.path.join(download_dir, file_2), mode="r", encoding="utf-8") as file:
+        content = file.read()
+    assert content_exp == content
+
+    # make sure there will be exception raised if a file doesn't exist in the version
+    with pytest.raises(ClientError, match=f"No \\[{f_updated}\\] exists at version v5"):
+        mc.download_files(project_dir, [f_updated], version="v5")
+
+    with pytest.raises(ClientError, match=f"No \\[non_existing\\.file\\] exists at version v3"):
+        mc.download_files(project_dir, [f_updated, "non_existing.file"], version="v3")

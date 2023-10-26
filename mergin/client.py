@@ -14,6 +14,7 @@ import dateutil.parser
 import ssl
 from enum import Enum, auto
 import re
+import typing
 import warnings
 
 from .common import ClientError, LoginError, InvalidProject
@@ -22,6 +23,8 @@ from .client_pull import (
     download_file_finalize,
     download_project_async,
     download_file_async,
+    download_files_async,
+    download_files_finalize,
     download_diffs_async,
     download_project_finalize,
     download_project_wait,
@@ -1157,3 +1160,63 @@ class MerginClient:
             url, data=json.dumps(data).encode("utf-8"), headers=json_headers, method="PATCH"
         )
         self._do_request(request)
+
+    def reset_local_changes(self, directory: str, files_to_reset: typing.List[str] = None) -> None:
+        """
+        Reset local changes to either all files or only listed files.
+        Added files are removed, removed files are brought back and updates are discarded.
+
+        :param directory: Project's directory
+        :type directory: String
+        :param files_to_reset List of files to reset, relative paths of file
+        :type files_to_reset: List of strings, default None
+        """
+        all_files = files_to_reset is None
+
+        mp = MerginProject(directory)
+
+        current_version = mp.version()
+
+        push_changes = mp.get_push_changes()
+
+        files_download = []
+
+        # remove all added files
+        for file in push_changes["added"]:
+            if all_files or file["path"] in files_to_reset:
+                os.remove(mp.fpath(file["path"]))
+
+        # update files get override with previous version
+        for file in push_changes["updated"]:
+            if all_files or file["path"] in files_to_reset:
+                if mp.is_versioned_file(file["path"]):
+                    mp.geodiff.make_copy_sqlite(mp.fpath_meta(file["path"]), mp.fpath(file["path"]))
+                else:
+                    files_download.append(file["path"])
+
+        # removed files are redownloaded
+        for file in push_changes["removed"]:
+            if all_files or file["path"] in files_to_reset:
+                files_download.append(file["path"])
+
+        if files_download:
+            self.download_files(directory, files_download, version=current_version)
+
+    def download_files(
+        self, project_dir: str, file_paths: typing.List[str], output_paths: typing.List[str] = None, version: str = None
+    ):
+        """
+        Download project files at specified version. Get the latest if no version specified.
+
+        :param project_dir: project local directory
+        :type project_dir: String
+        :param file_path: List of relative paths of files to download in the project directory
+        :type file_path: List[String]
+        :param output_paths: List of paths for files to download to. Should be same length of as file_path. Default is `None` which means that files are downloaded into MerginProject at project_dir.
+        :type output_paths: List[String]
+        :param version: optional version tag for downloaded file
+        :type version: String
+        """
+        job = download_files_async(self, project_dir, file_paths, output_paths, version=version)
+        pull_project_wait(job)
+        download_files_finalize(job)
