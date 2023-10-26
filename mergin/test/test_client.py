@@ -2076,13 +2076,13 @@ def test_project_rename(mc: MerginClient):
 
     # rename to existing name - created previously
     mc.project_info(project_renamed)
-    with pytest.raises(ClientError, match="Entered project name is invalid"):
-        mc.rename_project(project, project_renamed)
+    with pytest.raises(ClientError, match="Name already exist within workspace"):
+        mc.rename_project(project, test_project_renamed)
 
     # cannot rename project that does not exist
     with pytest.raises(ClientError, match="The requested URL was not found on the server."):
-        mc.rename_project(API_USER + "/" + "non_existing_project", API_USER + "/" + "new_project")
+        mc.rename_project(API_USER + "/" + "non_existing_project", "new_project")
 
     # cannot rename with full project name
-    with pytest.raises(ClientError, match="Entered project name is invalid"):
+    with pytest.raises(ClientError, match="Project's new name should be without workspace specification"):
         mc.rename_project(project, "workspace" + "/" + test_project_renamed)
