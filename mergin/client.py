@@ -1128,19 +1128,24 @@ class MerginClient:
         info = self.project_info(project_path)
         return info["permissions"]["upload"]
 
-    def rename_project(self, project_path, new_project_name):
+    def rename_project(self, project_path: str, new_project_name: str) -> None:
         """
         Rename project on server.
 
         :param project_path: Project's full name (<namespace>/<name>)
         :type project_path: String
-        :param new_project_name: Project's name (<name>)
+        :param new_project_name: Project's new name (<name>)
         :type new_project_name: String
         """
         # TODO: this version check should be replaced by checking against the list
         # of endpoints that server publishes in /config (once implemented)
         if not is_version_acceptable(self.server_version(), "2023.5.4"):
             raise NotImplementedError("This needs server at version 2023.5.4 or later")
+
+        if "/" in new_project_name:
+            raise ClientError(
+                "Project's new name should be without workspace specification (<name>). Project can only be renamed within its current workspace."
+            )
 
         project_info = self.project_info(project_path)
         project_id = project_info["id"]
