@@ -650,6 +650,8 @@ def reset_local_changes(ctx):
         click.secho("Invalid project directory ({})".format(str(e)), fg="red")
     except ClientError as e:
         click.secho("Error: " + str(e), fg="red")
+    except Exception as e:
+        _print_unhandled_exception()
 
 
 if __name__ == "__main__":
