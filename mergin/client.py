@@ -1127,3 +1127,28 @@ class MerginClient:
         """
         info = self.project_info(project_path)
         return info["permissions"]["upload"]
+
+    def rename_project(self, project_path, new_project_name):
+        """
+        Rename project on server.
+
+        :param project_path: Project's full name (<namespace>/<name>)
+        :type project_path: String
+        :param new_project_name: Project's name (<name>)
+        :type new_project_name: String
+        """
+        # TODO: this version check should be replaced by checking against the list
+        # of endpoints that server publishes in /config (once implemented)
+        if not is_version_acceptable(self.server_version(), "2023.5.4"):
+            raise NotImplementedError("This needs server at version 2023.5.4 or later")
+
+        project_info = self.project_info(project_path)
+        project_id = project_info["id"]
+        path = "/v2/projects/" + project_id
+        url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
+        json_headers = {"Content-Type": "application/json"}
+        data = {"name": new_project_name}
+        request = urllib.request.Request(
+            url, data=json.dumps(data).encode("utf-8"), headers=json_headers, method="PATCH"
+        )
+        self._do_request(request)
