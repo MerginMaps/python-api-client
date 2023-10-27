@@ -606,7 +606,7 @@ def resolve_unfinished_pull(ctx):
 @click.argument("project_path")
 @click.argument("new_project_name")
 @click.pass_context
-def rename_project(ctx, project_path: str, new_project_name: str):
+def rename(ctx, project_path: str, new_project_name: str):
     """Rename project in Mergin Maps repository."""
     mc = ctx.obj["client"]
     if mc is None:
