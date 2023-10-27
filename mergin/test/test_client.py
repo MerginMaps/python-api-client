@@ -2189,6 +2189,8 @@ def test_project_rename(mc: MerginClient):
     assert project_info["version"] == "v1"
     assert project_info["name"] == test_project_renamed
     assert project_info["namespace"] == API_USER
+    with pytest.raises(ClientError, match="The requested URL was not found on the server"):
+        mc.project_info(project)
 
     # recreate project
     cleanup(mc, project, [project_dir])
