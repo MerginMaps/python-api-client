@@ -639,7 +639,7 @@ def rename(ctx, project_path: str, new_project_name: str):
 @cli.command()
 @click.pass_context
 def reset(ctx):
-    """Reset local changes Mergin Maps repository."""
+    """Reset local changes in project."""
     directory = os.getcwd()
     mc: MerginClient = ctx.obj["client"]
     if mc is None:
