@@ -146,11 +146,9 @@ def download_project_async(mc, project_path, directory, project_version=None):
         else:
             project_info = latest_proj_info
 
-    except ClientError as e:
-        mp.log.error("Error while querying info: " + str(e))
-        mp.log.info("--- download aborted")
+    except ClientError:
         _cleanup_failed_download(directory, mp)
-        raise e
+        raise
 
     version = project_info["version"] if project_info["version"] else "v0"
 
@@ -656,8 +654,6 @@ def download_file_finalize(job):
     """
     download_files_finalize(job)
 
-            job.mp.log.error("Error while downloading file: " + str(future.exception()))
-            job.mp.log.info("--- download aborted")
 
 def download_diffs_async(mc, project_directory, file_path, versions):
     """

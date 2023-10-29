@@ -2253,20 +2253,11 @@ def test_download_failure(mc):
     remove_folders([download_dir])
     job = download_project_async(mc, project, download_dir)
     os.makedirs(os.path.join(download_dir, "base.gpkg.0"))
-    is_running = True
-    while is_running:
-        time.sleep(1)
-        try:
-            is_running = download_project_is_running(job)
-        except Exception:
-            download_project_cancel(job)
-            break
+    with pytest.raises(IsADirectoryError):
+        while True:
+            assert download_project_is_running(job)
 
-    if not is_running:
-        try:
-            download_project_finalize(job)
-        except Exception:
-            pass
+    download_project_cancel(job)  # to clean up things
 
     assert job.failure_log_file is not None
     with open(job.failure_log_file, "r", encoding="utf-8") as f:
