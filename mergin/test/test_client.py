@@ -9,10 +9,18 @@ import pytest
 import pytz
 import sqlite3
 import glob
+import time
 
 from .. import InvalidProject
 from ..client import MerginClient, ClientError, MerginProject, LoginError, decode_token_data, TokenError, ServerType
 from ..client_push import push_project_async, push_project_cancel
+from ..client_pull import (
+    download_project_async,
+    download_project_wait,
+    download_project_finalize,
+    download_project_is_running,
+    download_project_cancel,
+)
 from ..utils import (
     generate_checksum,
     get_versions_with_file_changes,
@@ -2214,3 +2222,44 @@ def test_download_files(mc: MerginClient):
 
     with pytest.raises(ClientError, match=f"No \\[non_existing\\.file\\] exists at version v3"):
         mc.download_files(project_dir, [f_updated, "non_existing.file"], version="v3")
+
+
+def test_download_failure(mc):
+    test_project = "test_download_failure"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    download_dir = os.path.join(TMP_DIR, "download", test_project)
+
+    cleanup(mc, project, [project_dir, download_dir])
+    # prepare local project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+
+    # create remote project
+    mc.create_project_and_push(test_project, directory=project_dir)
+
+    # download project async
+    with pytest.raises(IsADirectoryError):
+        job = download_project_async(mc, project, download_dir)
+        os.makedirs(os.path.join(download_dir, "base.gpkg.0"))
+        download_project_wait(job)
+        download_project_finalize(job)
+
+    assert job.failure_log_file is not None
+    with open(job.failure_log_file, "r", encoding="utf-8") as f:
+        content = f.read()
+        assert "Traceback" in content
+
+    # active waiting
+    remove_folders([download_dir])
+    job = download_project_async(mc, project, download_dir)
+    os.makedirs(os.path.join(download_dir, "base.gpkg.0"))
+    with pytest.raises(IsADirectoryError):
+        while True:
+            assert download_project_is_running(job)
+
+    download_project_cancel(job)  # to clean up things
+
+    assert job.failure_log_file is not None
+    with open(job.failure_log_file, "r", encoding="utf-8") as f:
+        content = f.read()
+        assert "Traceback" in content
