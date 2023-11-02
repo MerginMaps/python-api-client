@@ -602,5 +602,57 @@ def resolve_unfinished_pull(ctx):
         _print_unhandled_exception()
 
 
+@cli.command()
+@click.argument("project_path")
+@click.argument("new_project_name")
+@click.pass_context
+def rename(ctx, project_path: str, new_project_name: str):
+    """Rename project in Mergin Maps repository."""
+    mc = ctx.obj["client"]
+    if mc is None:
+        return
+
+    if "/" not in project_path:
+        click.secho(f"Specify `project_path` as full name (<namespace>/<name>) instead.", fg="red")
+        return
+
+    if "/" in new_project_name:
+        old_workspace, old_project_name = project_path.split("/")
+        new_workspace, new_project_name = new_project_name.split("/")
+
+        if old_workspace != new_workspace:
+            click.secho(
+                "`new_project_name` should not contain namespace, project can only be rename within their namespace.\nTo move project to another workspace use web dashboard.",
+                fg="red",
+            )
+            return
+
+    try:
+        mc.rename_project(project_path, new_project_name)
+        click.echo("Project renamed")
+    except ClientError as e:
+        click.secho("Error: " + str(e), fg="red")
+    except Exception as e:
+        _print_unhandled_exception()
+
+
+@cli.command()
+@click.pass_context
+def reset(ctx):
+    """Reset local changes in project."""
+    directory = os.getcwd()
+    mc: MerginClient = ctx.obj["client"]
+    if mc is None:
+        return
+    try:
+        mc.reset_local_changes(directory)
+    except InvalidProject as e:
+        click.secho("Invalid project directory ({})".format(str(e)), fg="red")
+    except ClientError as e:
+        click.secho("Error: " + str(e), fg="red")
+    except Exception as e:
+        _print_unhandled_exception()
+
+
 if __name__ == "__main__":
     cli()

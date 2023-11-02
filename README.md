@@ -75,6 +75,8 @@ Commands:
   pull                 Fetch changes from Mergin Maps repository
   push                 Upload local changes into Mergin Maps repository
   remove               Remove project from server.
+  rename               Rename project in Mergin Maps repository.
+  reset                Reset local changes in project.
   share                Fetch permissions to project
   share-add            Add permissions to [users] to project
   share-remove         Remove [users] permissions from project
