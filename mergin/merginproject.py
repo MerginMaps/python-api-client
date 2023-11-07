@@ -182,7 +182,16 @@ class MerginProject:
         """Returns ID of the workspace where the project belongs"""
         # unfortunately we currently do not have information about workspace ID
         # in project's metadata...
-        raise NotImplementedError
+        if self._metadata is None:
+            self._read_metadata()
+
+        # "workspace_id" does not exist in projects downloaded with old client version
+        if self.is_old_metadata:
+            raise ClientError(
+                "The project directory has been created with an old version of the Mergin Maps client. "
+                "Please delete the project directory and re-download the project."
+            )
+        return self._metadata["workspace_id"]
 
     def version(self) -> str:
         """Returns project version (e.g. "v123")"""
