@@ -1,9 +1,9 @@
 [![PyPI version](https://badge.fury.io/py/mergin-client.svg)](https://badge.fury.io/py/mergin-client)
-[![Build and upload to PyPI](https://github.com/MerginMaps/mergin-py-client/actions/workflows/python_packages.yml/badge.svg)](https://github.com/MerginMaps/mergin-py-client/actions/workflows/python_packages.yml)
+[![Build and upload to PyPI](https://github.com/MerginMaps/python-api-client/actions/workflows/python_packages.yml/badge.svg)](https://github.com/MerginMaps/python-api-client/actions/workflows/python_packages.yml)
 
-[![Code Style](https://github.com/MerginMaps/mergin-py-client/actions/workflows/code_style.yml/badge.svg)](https://github.com/MerginMaps/mergin-py-client/actions/workflows/code_style.yml)
-[![Auto Tests/Package](https://github.com/MerginMaps/mergin-py-client/workflows/Auto%20Tests/badge.svg)](https://github.com/MerginMaps/mergin-py-client/actions?query=workflow%3A%22Auto+Tests%22)
-[![Coverage Status](https://img.shields.io/coveralls/MerginMaps/mergin-py-client.svg)](https://coveralls.io/github/MerginMaps/mergin-py-client)
+[![Code Style](https://github.com/MerginMaps/python-api-client/actions/workflows/code_style.yml/badge.svg)](https://github.com/MerginMaps/python-api-client/actions/workflows/code_style.yml)
+[![Auto Tests/Package](https://github.com/MerginMaps/python-api-client/workflows/Auto%20Tests/badge.svg)](https://github.com/MerginMaps/python-api-client/actions?query=workflow%3A%22Auto+Tests%22)
+[![Coverage Status](https://img.shields.io/coveralls/MerginMaps/python-api-client.svg)](https://coveralls.io/github/MerginMaps/python-api-client)
 
 # Mergin Maps Python Client
 
@@ -17,7 +17,7 @@ To install the module:
     pip3 install mergin-client
 ```
 
-Note: Check also [Mergin Maps Cpp Client](https://github.com/MerginMaps/mergin-cpp-client)
+Note: Check also [Mergin Maps Cpp Client](https://github.com/MerginMaps/cpp-api-client)
 
 ## Using Python API
 
