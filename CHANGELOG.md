@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.0
+
+- Add `reset_local_changes()` API call and `reset` CLI command to make it possible to discard any changes in the local project directory (#107)
+- Add `rename_project()` API call and `rename` CLI command to rename a project in its workspace (#190)
+- Add `delete_project_now()` API call for immediate project removal (mainly meant for testing)
+- Project info can be also queried by project's ID in `MerginClient.project_info()` (#179)
+- Improve project metadata handling
+  - Add metadata getters in `MerginProject` class: `project_full_name()`, `project_name()`, `workspace_name()`, `project_id()`, `workspace_id()`, `files()`
+  - Add metadata setters in `MerginProject` class: `update_metadata()`, `write_metadata()` (should not be needed by module users)
+  - Deprecate `MerginProject.metadata` property, replaced by the methods above
+  - Store all information from server's project info to `.mergin/mergin.json` instead of just some bits. Keep backwards compatibility to read `mergin.json` if it uses old-style syntax, new pulls/pushes will write new-style syntax (#83, #151)
+- Fix awkward way of passing full project names to `create_project()`, `create_project_and_push()`, `clone_project()` and in CLI for `create` command (#180)
+- Fix CLI for `list-projects` command (#172)
+- Write unhandled Python errors from download/pull/push to the client log (#156)
+- Keep client log if download of a project fails for some reason (#155)
+
+
 ## 0.8.3
 
 - Clean up temporary files in .mergin folder (#47)
