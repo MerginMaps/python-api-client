@@ -199,9 +199,9 @@ def download_project_is_running(job):
     """
     for future in job.futures:
         if future.done() and future.exception() is not None:
-            job.mp.log.error(
-                "Error while downloading project: " + "".join(traceback.format_exception(future.exception()))
-            )
+            exc = future.exception()
+            traceback_lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
+            job.mp.log.error("Error while downloading project: " + "".join(traceback_lines))
             job.mp.log.info("--- download aborted")
             job.failure_log_file = _cleanup_failed_download(job.directory, job.mp)
             raise future.exception()
@@ -225,9 +225,9 @@ def download_project_finalize(job):
     # make sure any exceptions from threads are not lost
     for future in job.futures:
         if future.exception() is not None:
-            job.mp.log.error(
-                "Error while downloading project: " + "".join(traceback.format_exception(future.exception()))
-            )
+            exc = future.exception()
+            traceback_lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
+            job.mp.log.error("Error while downloading project: " + "".join(traceback_lines))
             job.mp.log.info("--- download aborted")
             job.failure_log_file = _cleanup_failed_download(job.directory, job.mp)
             raise future.exception()
