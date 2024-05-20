@@ -657,6 +657,7 @@ def test_set_read_write_access(mc):
     project_info = get_project_info(mc, API_USER, test_project)
     access = project_info["access"]
     access["writersnames"].append(API_USER2)
+    access["editorsnames"].append(API_USER2)
     access["readersnames"].append(API_USER2)
     mc.set_project_access(test_project_fullname, access)
 
@@ -664,7 +665,33 @@ def test_set_read_write_access(mc):
     project_info = get_project_info(mc, API_USER, test_project)
     access = project_info["access"]
     assert API_USER2 in access["writersnames"]
+    assert API_USER2 in access["editorsnames"]
     assert API_USER2 in access["readersnames"]
+
+def test_set_editor_access(mc):
+    test_project = "test_set_editor_access"
+    test_project_fullname = API_USER + "/" + test_project
+
+    # cleanups
+    project_dir = os.path.join(TMP_DIR, test_project, API_USER)
+    cleanup(mc, test_project_fullname, [project_dir])
+
+    # create new (empty) project on server
+    mc.create_project(test_project)
+
+    # Add writer access to another client
+    project_info = get_project_info(mc, API_USER, test_project)
+    access = project_info["access"]
+    access["editorsnames"].append(API_USER2)
+    access["readersnames"].append(API_USER2)
+    mc.set_project_access(test_project_fullname, access)
+
+    # check access
+    project_info = get_project_info(mc, API_USER, test_project)
+    access = project_info["access"]
+    assert API_USER2 in access["editorsnames"]
+    assert API_USER2 in access["readersnames"]
+    assert API_USER2 not in access["writersnames"]
 
 
 def test_available_storage_validation(mc):
@@ -1102,18 +1129,21 @@ def test_modify_project_permissions(mc):
     permissions = mc.project_user_permissions(project)
     assert permissions["owners"] == [API_USER]
     assert permissions["writers"] == [API_USER]
+    assert permissions["editors"] == [API_USER]
     assert permissions["readers"] == [API_USER]
 
     mc.add_user_permissions_to_project(project, [API_USER2], "writer")
     permissions = mc.project_user_permissions(project)
     assert set(permissions["owners"]) == {API_USER}
     assert set(permissions["writers"]) == {API_USER, API_USER2}
+    assert set(permissions["editors"]) == {API_USER, API_USER2}
     assert set(permissions["readers"]) == {API_USER, API_USER2}
 
     mc.remove_user_permissions_from_project(project, [API_USER2])
     permissions = mc.project_user_permissions(project)
     assert permissions["owners"] == [API_USER]
     assert permissions["writers"] == [API_USER]
+    assert permissions["editors"] == [API_USER]
     assert permissions["readers"] == [API_USER]
 
 
@@ -1839,7 +1869,7 @@ def test_report(mc):
         create_report(mc, directory, since, to, report_file)
 
 
-def test_project_versions_list(mc, mc2):
+def test_user_permissions(mc, mc2):
     """
     Test retrieving user permissions
     """

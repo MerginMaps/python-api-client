@@ -320,8 +320,11 @@ def share(ctx, project):
     for username in access_list.get("writers"):
         if username not in access_list.get("owners"):
             click.echo("{:20}\t{:20}".format(username, "writer"))
-    for username in access_list.get("readers"):
+    for username in access_list.get("editors"):
         if username not in access_list.get("writers"):
+            click.echo("{:20}\t{:20}".format(username, "editor"))
+    for username in access_list.get("readers"):
+        if username not in access_list.get("editors"):
             click.echo("{:20}\t{:20}".format(username, "reader"))
 
 

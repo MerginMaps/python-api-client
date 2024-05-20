@@ -761,8 +761,11 @@ class MerginClient:
         """
         Updates access for given project.
         :param project_path: project full name (<namespace>/<name>)
-        :param access: dict <readersnames, writersnames, ownersnames> -> list of str username we want to give access to
+        :param access: dict <readersnames, editorsnames, writersnames, ownersnames> -> list of str username we want to give access to
         """
+        if not is_version_acceptable(self.server_version(), "2024.4"):
+            raise NotImplementedError("This needs server at version 2024.4.0 or later")
+        
         if not self._user_info:
             raise Exception("Authentication required")
 
@@ -784,7 +787,7 @@ class MerginClient:
         :param usernames: list of usernames to be granted specified permission level
         :param permission_level: string (reader, writer, owner)
         """
-        if permission_level not in ["owner", "reader", "writer"]:
+        if permission_level not in ["owner", "reader", "writer", "editor"]:
             raise ClientError("Unsupported permission level")
 
         project_info = self.project_info(project_path)
@@ -792,9 +795,11 @@ class MerginClient:
         for name in usernames:
             if permission_level == "owner":
                 access.get("ownersnames").append(name)
-            if permission_level == "writer" or permission_level == "owner":
+            if permission_level in ("writer", "owner"):
                 access.get("writersnames").append(name)
-            if permission_level == "writer" or permission_level == "owner" or permission_level == "reader":
+            if permission_level in ("writer", "owner", "editor"):
+                access.get("editorsnames").append(name)
+            if permission_level in ("writer", "owner", "editor", "reader"):
                 access.get("readersnames").append(name)
         self.set_project_access(project_path, access)
 
@@ -811,6 +816,8 @@ class MerginClient:
                 access.get("ownersnames").remove(name)
             if name in access.get("writersnames"):
                 access.get("writersnames").remove(name)
+            if name in access.get("editorsnames"):
+                access.get("editorsnames").remove(name)
             if name in access.get("readersnames"):
                 access.get("readersnames").remove(name)
         self.set_project_access(project_path, access)
@@ -821,14 +828,16 @@ class MerginClient:
         :param project_path: project full name (<namespace>/<name>)
         :return dict("owners": list(usernames),
                      "writers": list(usernames),
+                     "editors": list(usernames),
                      "readers": list(usernames))
         """
         project_info = self.project_info(project_path)
         access = project_info.get("access")
         result = {}
-        result["owners"] = access.get("ownersnames")
-        result["writers"] = access.get("writersnames")
-        result["readers"] = access.get("readersnames")
+        result["owners"] = access.get("ownersnames", [])
+        result["writers"] = access.get("writersnames", [])
+        result["editors"] = access.get("editorsnames", [])
+        result["readers"] = access.get("readersnames", [])
         return result
 
     def push_project(self, directory):
