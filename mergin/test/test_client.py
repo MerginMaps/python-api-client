@@ -90,7 +90,7 @@ def sudo_works():
     return sudo_res.returncode != 0
 
 
-def server_has_editor_support(access):
+def server_has_editor_support(mc, access):
     """
     Checks if the server has editor support based on the provided access information.
     
@@ -670,7 +670,7 @@ def test_set_read_write_access(mc):
     access = project_info["access"]
     access["writersnames"].append(API_USER2)
     access["readersnames"].append(API_USER2)
-    editor_support = server_has_editor_support(access)
+    editor_support = server_has_editor_support(mc, access)
     if editor_support:
         access["editorsnames"].append(API_USER2)
     mc.set_project_access(test_project_fullname, access)
@@ -696,10 +696,11 @@ def test_set_editor_access(mc):
     project_info = get_project_info(mc, API_USER, test_project)
     access = project_info["access"]
     # Stop test if server does not support editor access
-    if not server_has_editor_support(access):
+    if not server_has_editor_support(mc, access):
         return
     
     access["readersnames"].append(API_USER2)
+    access["editorsnames"].append(API_USER2)
     mc.set_project_access(test_project_fullname, access)
     # check access
     project_info = get_project_info(mc, API_USER, test_project)
@@ -1145,7 +1146,7 @@ def test_modify_project_permissions(mc):
     assert permissions["owners"] == [API_USER]
     assert permissions["writers"] == [API_USER]
     assert permissions["readers"] == [API_USER]
-    editor_support = server_has_editor_support(permissions)
+    editor_support = server_has_editor_support(mc, permissions)
     if editor_support:
         assert permissions["editors"] == [API_USER]
 
@@ -1154,7 +1155,7 @@ def test_modify_project_permissions(mc):
     assert set(permissions["owners"]) == {API_USER}
     assert set(permissions["writers"]) == {API_USER, API_USER2}
     assert set(permissions["readers"]) == {API_USER, API_USER2}
-    editor_support = server_has_editor_support(permissions)
+    editor_support = server_has_editor_support(mc, permissions)
     if editor_support:
         assert set(permissions["editors"]) == {API_USER, API_USER2}
 
@@ -1164,7 +1165,7 @@ def test_modify_project_permissions(mc):
     assert permissions["writers"] == [API_USER]
     assert permissions["readers"] == [API_USER]
 
-    editor_support = server_has_editor_support(permissions)
+    editor_support = server_has_editor_support(mc, permissions)
     if editor_support:
         assert permissions["editors"] == [API_USER]
 
