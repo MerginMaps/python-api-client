@@ -315,16 +315,21 @@ def share(ctx, project):
         return
     access_list = mc.project_user_permissions(project)
 
-    for username in access_list.get("owners"):
+    owners = access_list.get("owners", [])
+    writers = access_list.get("writers", [])
+    editors = access_list.get("editors", [])
+    readers = access_list.get("readers", [])
+
+    for username in owners:
         click.echo("{:20}\t{:20}".format(username, "owner"))
-    for username in access_list.get("writers"):
-        if username not in access_list.get("owners"):
+    for username in writers:
+        if username not in owners:
             click.echo("{:20}\t{:20}".format(username, "writer"))
-    for username in access_list.get("editors"):
-        if username not in access_list.get("writers"):
+    for username in editors:
+        if username not in writers:
             click.echo("{:20}\t{:20}".format(username, "editor"))
-    for username in access_list.get("readers"):
-        if username not in access_list.get("editors"):
+    for username in readers:
+        if username not in editors:
             click.echo("{:20}\t{:20}".format(username, "reader"))
 
 
