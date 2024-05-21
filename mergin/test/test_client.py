@@ -97,9 +97,7 @@ def server_has_editor_support(mc, access):
     Returns:
         bool: True if the server has editor support, False otherwise.
     """
-    return "editorsnames" in access and is_version_acceptable(
-        mc.server_version(), "2024.4"
-    )
+    return "editorsnames" in access and is_version_acceptable(mc.server_version(), "2024.4")
 
 def test_login(mc):
     token = mc._auth_session["token"]
@@ -682,6 +680,7 @@ def test_set_read_write_access(mc):
     if editor_support:
         assert API_USER2 in access["editorsnames"]
 
+
 def test_set_editor_access(mc):
     test_project = "test_set_editor_access"
     test_project_fullname = API_USER + "/" + test_project
@@ -698,7 +697,8 @@ def test_set_editor_access(mc):
     # Stop test if server does not support editor access
     if not server_has_editor_support(mc, access):
         return
-    
+
+
     access["readersnames"].append(API_USER2)
     access["editorsnames"].append(API_USER2)
     mc.set_project_access(test_project_fullname, access)
