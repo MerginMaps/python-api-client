@@ -763,9 +763,7 @@ class MerginClient:
         :param project_path: project full name (<namespace>/<name>)
         :param access: dict <readersnames, editorsnames, writersnames, ownersnames> -> list of str username we want to give access to (editorsnames are only supported on servers at version 2024.4.0 or later)
         """
-        if "editorsnames" in access and not is_version_acceptable(
-            self.server_version(), "2024.4"
-        ):
+        if "editorsnames" in access and not is_version_acceptable(self.server_version(), "2024.4"):
             raise NotImplementedError("Editors are only supported on servers at version 2024.4.0 or later")
 
         if not self._user_info:
@@ -792,8 +790,7 @@ class MerginClient:
         Editor permission_level is only supported on servers at version 2024.4.0 or later.
         """
         if permission_level not in ["owner", "reader", "writer", "editor"] or (
-            permission_level == "editor"
-            and not is_version_acceptable(self.server_version(), "2024.4")
+            permission_level == "editor" and not is_version_acceptable(self.server_version(), "2024.4")
         ):
             raise ClientError("Unsupported permission level")
 
@@ -841,7 +838,7 @@ class MerginClient:
         project_info = self.project_info(project_path)
         access = project_info.get("access")
         result = {}
-        if ("editorsnames" in access):
+        if "editorsnames" in access:
             result["editors"] = access.get("editorsnames", [])
 
         result["owners"] = access.get("ownersnames", [])
