@@ -97,7 +97,7 @@ def server_has_editor_support(access):
     Returns:
         bool: True if the server has editor support, False otherwise.
     """
-    return "editorsnames" in access and not is_version_acceptable(
+    return "editorsnames" in access and is_version_acceptable(
         mc.server_version(), "2024.4"
     )
 
