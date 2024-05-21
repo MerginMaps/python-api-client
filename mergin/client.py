@@ -819,13 +819,13 @@ class MerginClient:
         project_info = self.project_info(project_path)
         access = project_info.get("access")
         for name in usernames:
-            if name in access.get("ownersnames"):
+            if name in access.get("ownersnames", []):
                 access.get("ownersnames").remove(name)
-            if name in access.get("writersnames"):
+            if name in access.get("writersnames", []):
                 access.get("writersnames").remove(name)
-            if name in access.get("editorsnames"):
+            if name in access.get("editorsnames", []):
                 access.get("editorsnames").remove(name)
-            if name in access.get("readersnames"):
+            if name in access.get("readersnames", []):
                 access.get("readersnames").remove(name)
         self.set_project_access(project_path, access)
 
