@@ -24,6 +24,7 @@ from ..client_pull import (
 from ..utils import (
     generate_checksum,
     get_versions_with_file_changes,
+    is_version_acceptable,
     unique_path_name,
     conflicted_copy_file_name,
     edit_conflict_file_name,
@@ -88,6 +89,17 @@ def sudo_works():
     sudo_res = subprocess.run(["sudo", "echo", "test"])
     return sudo_res.returncode != 0
 
+
+def server_has_editor_support(access):
+    """
+    Checks if the server has editor support based on the provided access information.
+    
+    Returns:
+        bool: True if the server has editor support, False otherwise.
+    """
+    return "editorsnames" in access and not is_version_acceptable(
+        mc.server_version(), "2024.4"
+    )
 
 def test_login(mc):
     token = mc._auth_session["token"]
@@ -657,16 +669,18 @@ def test_set_read_write_access(mc):
     project_info = get_project_info(mc, API_USER, test_project)
     access = project_info["access"]
     access["writersnames"].append(API_USER2)
-    access["editorsnames"].append(API_USER2)
     access["readersnames"].append(API_USER2)
+    editor_support = server_has_editor_support(access)
+    if editor_support:
+        access["editorsnames"].append(API_USER2)
     mc.set_project_access(test_project_fullname, access)
 
-    # check access
     project_info = get_project_info(mc, API_USER, test_project)
     access = project_info["access"]
     assert API_USER2 in access["writersnames"]
-    assert API_USER2 in access["editorsnames"]
     assert API_USER2 in access["readersnames"]
+    if editor_support:
+        assert API_USER2 in access["editorsnames"]
 
 def test_set_editor_access(mc):
     test_project = "test_set_editor_access"
@@ -679,13 +693,14 @@ def test_set_editor_access(mc):
     # create new (empty) project on server
     mc.create_project(test_project)
 
-    # Add writer access to another client
     project_info = get_project_info(mc, API_USER, test_project)
     access = project_info["access"]
-    access["editorsnames"].append(API_USER2)
+    # Stop test if server does not support editor access
+    if not server_has_editor_support(access):
+        return
+    
     access["readersnames"].append(API_USER2)
     mc.set_project_access(test_project_fullname, access)
-
     # check access
     project_info = get_project_info(mc, API_USER, test_project)
     access = project_info["access"]
@@ -1129,22 +1144,29 @@ def test_modify_project_permissions(mc):
     permissions = mc.project_user_permissions(project)
     assert permissions["owners"] == [API_USER]
     assert permissions["writers"] == [API_USER]
-    assert permissions["editors"] == [API_USER]
     assert permissions["readers"] == [API_USER]
+    editor_support = server_has_editor_support(permissions)
+    if editor_support:
+        assert permissions["editors"] == [API_USER]
 
     mc.add_user_permissions_to_project(project, [API_USER2], "writer")
     permissions = mc.project_user_permissions(project)
     assert set(permissions["owners"]) == {API_USER}
     assert set(permissions["writers"]) == {API_USER, API_USER2}
-    assert set(permissions["editors"]) == {API_USER, API_USER2}
     assert set(permissions["readers"]) == {API_USER, API_USER2}
+    editor_support = server_has_editor_support(permissions)
+    if editor_support:
+        assert set(permissions["editors"]) == {API_USER, API_USER2}
 
     mc.remove_user_permissions_from_project(project, [API_USER2])
     permissions = mc.project_user_permissions(project)
     assert permissions["owners"] == [API_USER]
     assert permissions["writers"] == [API_USER]
-    assert permissions["editors"] == [API_USER]
     assert permissions["readers"] == [API_USER]
+
+    editor_support = server_has_editor_support(permissions)
+    if editor_support:
+        assert permissions["editors"] == [API_USER]
 
 
 def _use_wal(db_file):
