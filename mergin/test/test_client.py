@@ -48,9 +48,7 @@ API_USER2 = os.environ.get("TEST_API_USERNAME2")
 USER_PWD2 = os.environ.get("TEST_API_PASSWORD2")
 TMP_DIR = tempfile.gettempdir()
 TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "test_data")
-CHANGED_SCHEMA_DIR = os.path.join(
-    os.path.dirname(os.path.realpath(__file__)), "modified_schema"
-)
+CHANGED_SCHEMA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "modified_schema")
 
 
 @pytest.fixture(scope="function")
@@ -68,12 +66,7 @@ def mc2():
 
 
 def create_client(user, pwd):
-    assert (
-        SERVER_URL
-        and SERVER_URL.rstrip("/") != "https://app.merginmaps.com"
-        and user
-        and pwd
-    )
+    assert SERVER_URL and SERVER_URL.rstrip("/") != "https://app.merginmaps.com" and user and pwd
     return MerginClient(SERVER_URL, login=user, password=pwd)
 
 
@@ -112,9 +105,7 @@ def server_has_editor_support(mc, access):
     Returns:
         bool: True if the server has editor support, False otherwise.
     """
-    return "editorsnames" in access and is_version_acceptable(
-        mc.server_version(), "2024.4"
-    )
+    return "editorsnames" in access and is_version_acceptable(mc.server_version(), "2024.4")
 
 
 def test_login(mc):
@@ -122,9 +113,7 @@ def test_login(mc):
     assert MerginClient(mc.url, auth_token=token)
 
     invalid_token = "Completely invalid token...."
-    with pytest.raises(
-        TokenError, match=f"Token doesn't start with 'Bearer .': {invalid_token}"
-    ):
+    with pytest.raises(TokenError, match=f"Token doesn't start with 'Bearer .': {invalid_token}"):
         decode_token_data(invalid_token)
 
     invalid_token = "Bearer .jas646kgfa"
@@ -145,9 +134,7 @@ def test_create_delete_project(mc: MerginClient):
     # create new (empty) project on server
     mc.create_project(test_project)
     projects = mc.projects_list(flag="created")
-    assert any(
-        p for p in projects if p["name"] == test_project and p["namespace"] == API_USER
-    )
+    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
 
     # try again
     with pytest.raises(ClientError, match=f"already exists"):
@@ -156,53 +143,37 @@ def test_create_delete_project(mc: MerginClient):
     # remove project
     mc.delete_project_now(API_USER + "/" + test_project)
     projects = mc.projects_list(flag="created")
-    assert not any(
-        p for p in projects if p["name"] == test_project and p["namespace"] == API_USER
-    )
+    assert not any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
 
     # try again, nothing to delete
     with pytest.raises(ClientError):
         mc.delete_project_now(API_USER + "/" + test_project)
 
     # test that using namespace triggers deprecate warning, but creates project correctly
-    with pytest.deprecated_call(
-        match=r"The usage of `namespace` parameter in `create_project\(\)` is deprecated."
-    ):
+    with pytest.deprecated_call(match=r"The usage of `namespace` parameter in `create_project\(\)` is deprecated."):
         mc.create_project(test_project, namespace=API_USER)
     projects = mc.projects_list(flag="created")
-    assert any(
-        p for p in projects if p["name"] == test_project and p["namespace"] == API_USER
-    )
+    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
     mc.delete_project_now(project)
 
     # test that using only project name triggers deprecate warning, but creates project correctly
-    with pytest.deprecated_call(
-        match=r"The use of only project name in `create_project\(\)` is deprecated"
-    ):
+    with pytest.deprecated_call(match=r"The use of only project name in `create_project\(\)` is deprecated"):
         mc.create_project(test_project)
     projects = mc.projects_list(flag="created")
-    assert any(
-        p for p in projects if p["name"] == test_project and p["namespace"] == API_USER
-    )
+    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
     mc.delete_project_now(project)
 
     # test that even if project is specified with full name and namespace is specified a warning is raised, but still create project correctly
-    with pytest.warns(
-        UserWarning, match="Parameter `namespace` specified with full project name"
-    ):
+    with pytest.warns(UserWarning, match="Parameter `namespace` specified with full project name"):
         mc.create_project(project, namespace=API_USER)
     projects = mc.projects_list(flag="created")
-    assert any(
-        p for p in projects if p["name"] == test_project and p["namespace"] == API_USER
-    )
+    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
     mc.delete_project_now(project)
 
     # test that create project with full name works
     mc.create_project(project)
     projects = mc.projects_list(flag="created")
-    assert any(
-        p for p in projects if p["name"] == test_project and p["namespace"] == API_USER
-    )
+    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
     mc.delete_project_now(project)
 
 
@@ -317,20 +288,14 @@ def test_push_pull_changes(mc):
     assert not next((f for f in project_info["files"] if f["path"] == f_renamed), None)
     assert next((f for f in project_info["files"] if f["path"] == "renamed.txt"), None)
     assert next((f for f in project_info["files"] if f["path"] == f_added), None)
-    f_remote_checksum = next(
-        (f["checksum"] for f in project_info["files"] if f["path"] == f_updated), None
-    )
+    f_remote_checksum = next((f["checksum"] for f in project_info["files"] if f["path"] == f_updated), None)
     assert generate_checksum(os.path.join(project_dir, f_updated)) == f_remote_checksum
     assert project_info["id"] == mp.project_id()
     assert len(project_info["files"]) == len(mp.inspect_files())
     project_versions = mc.project_versions(project)
     assert len(project_versions) == 2
     f_change = next(
-        (
-            f
-            for f in project_versions[-1]["changes"]["updated"]
-            if f["path"] == f_updated
-        ),
+        (f for f in project_versions[-1]["changes"]["updated"] if f["path"] == f_updated),
         None,
     )
     assert "origin_checksum" not in f_change  # internal client info
@@ -357,20 +322,12 @@ def test_push_pull_changes(mc):
     assert not os.path.exists(os.path.join(project_dir_2, f_removed))
     assert not os.path.exists(os.path.join(project_dir_2, f_renamed))
     assert os.path.exists(os.path.join(project_dir_2, "renamed.txt"))
-    assert os.path.exists(
-        os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 1))
-    )
+    assert os.path.exists(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 1)))
     assert (
-        generate_checksum(
-            os.path.join(
-                project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 1)
-            )
-        )
+        generate_checksum(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 1)))
         == f_conflict_checksum
     )
-    assert (
-        generate_checksum(os.path.join(project_dir_2, f_updated)) == f_remote_checksum
-    )
+    assert generate_checksum(os.path.join(project_dir_2, f_updated)) == f_remote_checksum
 
 
 def test_cancel_push(mc):
@@ -380,9 +337,7 @@ def test_cancel_push(mc):
     """
     test_project = "test_cancel_push"
     project = API_USER + "/" + test_project
-    project_dir = os.path.join(
-        TMP_DIR, test_project + "_3"
-    )  # primary project dir for updates
+    project_dir = os.path.join(TMP_DIR, test_project + "_3")  # primary project dir for updates
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_4")
     cleanup(mc, project, [project_dir, project_dir_2])
     # create remote project
@@ -428,33 +383,23 @@ def test_ignore_files(mc):
     cleanup(mc, project, [project_dir])
     # create remote project
     shutil.copytree(TEST_DATA_DIR, project_dir)
-    shutil.copy(
-        os.path.join(project_dir, "test.qgs"), os.path.join(project_dir, "test.qgs~")
-    )
+    shutil.copy(os.path.join(project_dir, "test.qgs"), os.path.join(project_dir, "test.qgs~"))
     mc.create_project_and_push(project, project_dir)
     project_info = mc.project_info(project)
-    assert not next(
-        (f for f in project_info["files"] if f["path"] == "test.qgs~"), None
-    )
+    assert not next((f for f in project_info["files"] if f["path"] == "test.qgs~"), None)
 
     with open(os.path.join(project_dir, ".directory"), "w") as f:
         f.write("test")
     mc.push_project(project_dir)
-    assert not next(
-        (f for f in project_info["files"] if f["path"] == ".directory"), None
-    )
+    assert not next((f for f in project_info["files"] if f["path"] == ".directory"), None)
 
 
 def test_sync_diff(mc):
     test_project = f"test_sync_diff"
     project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
-    project_dir_2 = os.path.join(
-        TMP_DIR, test_project + "_2"
-    )  # concurrent project dir with no changes
-    project_dir_3 = os.path.join(
-        TMP_DIR, test_project + "_3"
-    )  # concurrent project dir with local changes
+    project_dir_2 = os.path.join(TMP_DIR, test_project + "_2")  # concurrent project dir with no changes
+    project_dir_3 = os.path.join(TMP_DIR, test_project + "_3")  # concurrent project dir with local changes
 
     cleanup(mc, project, [project_dir, project_dir_2, project_dir_3])
     # create remote project
@@ -469,14 +414,10 @@ def test_sync_diff(mc):
     mp = MerginProject(project_dir)
     f_updated = "base.gpkg"
     # step 1) base.gpkg updated to inserted_1_A (inserted A feature)
-    shutil.move(
-        mp.fpath(f_updated), mp.fpath_meta(f_updated)
-    )  # make local copy for changeset calculation
+    shutil.move(mp.fpath(f_updated), mp.fpath_meta(f_updated))  # make local copy for changeset calculation
     shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
     mc.push_project(project_dir)
-    mp.geodiff.create_changeset(
-        mp.fpath(f_updated), mp.fpath_meta(f_updated), mp.fpath_meta("push_diff")
-    )
+    mp.geodiff.create_changeset(mp.fpath(f_updated), mp.fpath_meta(f_updated), mp.fpath_meta("push_diff"))
     assert not mp.geodiff.has_changes(mp.fpath_meta("push_diff"))
     # step 2) base.gpkg updated to inserted_1_A_mod (modified 2 features)
     shutil.move(mp.fpath(f_updated), mp.fpath_meta(f_updated))
@@ -502,9 +443,7 @@ def test_sync_diff(mc):
     # pull project in different directory
     mp2 = MerginProject(project_dir_2)
     mc.pull_project(project_dir_2)
-    mp2.geodiff.create_changeset(
-        mp.fpath(f_updated), mp2.fpath(f_updated), mp2.fpath_meta("diff")
-    )
+    mp2.geodiff.create_changeset(mp.fpath(f_updated), mp2.fpath(f_updated), mp2.fpath_meta("diff"))
     assert not mp2.geodiff.has_changes(mp2.fpath_meta("diff"))
 
     # introduce conflict local change (inserted B feature to base)
@@ -517,19 +456,13 @@ def test_sync_diff(mc):
     # push new changes from project_3 and pull in original project
     mc.push_project(project_dir_3)
     mc.pull_project(project_dir)
-    mp3.geodiff.create_changeset(
-        mp.fpath(f_updated), mp3.fpath(f_updated), mp.fpath_meta("diff")
-    )
+    mp3.geodiff.create_changeset(mp.fpath(f_updated), mp3.fpath(f_updated), mp.fpath_meta("diff"))
     assert not mp3.geodiff.has_changes(mp.fpath_meta("diff"))
 
 
 def test_list_of_push_changes(mc):
     PUSH_CHANGES_SUMMARY = {
-        "base.gpkg": {
-            "geodiff_summary": [
-                {"table": "simple", "insert": 1, "update": 0, "delete": 0}
-            ]
-        }
+        "base.gpkg": {"geodiff_summary": [{"table": "simple", "insert": 1, "update": 0, "delete": 0}]}
     }
 
     test_project = "test_list_of_push_changes"
@@ -544,9 +477,7 @@ def test_list_of_push_changes(mc):
     mp = MerginProject(project_dir)
 
     shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
-    mc._auth_session["expire"] = datetime.now().replace(tzinfo=pytz.utc) - timedelta(
-        days=1
-    )
+    mc._auth_session["expire"] = datetime.now().replace(tzinfo=pytz.utc) - timedelta(days=1)
     pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
     assert push_changes_summary == PUSH_CHANGES_SUMMARY
 
@@ -561,9 +492,7 @@ def test_token_renewal(mc):
     shutil.copytree(TEST_DATA_DIR, project_dir)
     mc.create_project_and_push(project, project_dir)
 
-    mc._auth_session["expire"] = datetime.now().replace(tzinfo=pytz.utc) - timedelta(
-        days=1
-    )
+    mc._auth_session["expire"] = datetime.now().replace(tzinfo=pytz.utc) - timedelta(days=1)
     pull_changes, push_changes, _ = mc.project_status(project_dir)
     to_expire = mc._auth_session["expire"] - datetime.now().replace(tzinfo=pytz.utc)
     assert to_expire.total_seconds() > (9 * 3600)
@@ -588,9 +517,7 @@ def test_force_gpkg_update(mc):
     shutil.move(
         mp.fpath(f_updated), mp.fpath_meta(f_updated)
     )  # make local copy for changeset calculation (which will fail)
-    shutil.copy(
-        os.path.join(CHANGED_SCHEMA_DIR, "modified_schema.gpkg"), mp.fpath(f_updated)
-    )
+    shutil.copy(os.path.join(CHANGED_SCHEMA_DIR, "modified_schema.gpkg"), mp.fpath(f_updated))
     shutil.copy(
         os.path.join(CHANGED_SCHEMA_DIR, "modified_schema.gpkg-wal"),
         mp.fpath(f_updated + "-wal"),
@@ -631,11 +558,7 @@ def test_new_project_sync(mc):
     # make sure everything is up-to-date
     mp = MerginProject(project_dir)
     local_changes = mp.get_push_changes()
-    assert (
-        not local_changes["added"]
-        and not local_changes["removed"]
-        and not local_changes["updated"]
-    )
+    assert not local_changes["added"] and not local_changes["removed"] and not local_changes["updated"]
 
 
 def test_missing_basefile_pull(mc):
@@ -647,9 +570,7 @@ def test_missing_basefile_pull(mc):
     project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_2")  # concurrent project dir
-    test_data_dir = os.path.join(
-        os.path.dirname(os.path.realpath(__file__)), test_project
-    )
+    test_data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), test_project)
 
     cleanup(mc, project, [project_dir, project_dir_2])
     # create remote project
@@ -686,9 +607,7 @@ def test_empty_file_in_subdir(mc):
     project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_2")  # concurrent project dir
-    test_data_dir = os.path.join(
-        os.path.dirname(os.path.realpath(__file__)), test_project
-    )
+    test_data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), test_project)
 
     cleanup(mc, project, [project_dir, project_dir_2])
     # create remote project
@@ -723,9 +642,7 @@ def test_clone_project(mc: MerginClient):
     # create new (empty) project on server
     mc.create_project(test_project)
     projects = mc.projects_list(flag="created")
-    assert any(
-        p for p in projects if p["name"] == test_project and p["namespace"] == API_USER
-    )
+    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
 
     cloned_project_name = test_project + "_cloned"
     test_cloned_project_fullname = API_USER + "/" + cloned_project_name
@@ -735,52 +652,30 @@ def test_clone_project(mc: MerginClient):
     cleanup(mc, API_USER + "/" + cloned_project_name, [cloned_project_dir])
 
     # clone specifying cloned_project_namespace, does clone but raises deprecation warning
-    with pytest.deprecated_call(
-        match=r"The usage of `cloned_project_namespace` parameter in `clone_project\(\)`"
-    ):
+    with pytest.deprecated_call(match=r"The usage of `cloned_project_namespace` parameter in `clone_project\(\)`"):
         mc.clone_project(test_project_fullname, cloned_project_name, API_USER)
     projects = mc.projects_list(flag="created")
-    assert any(
-        p
-        for p in projects
-        if p["name"] == cloned_project_name and p["namespace"] == API_USER
-    )
+    assert any(p for p in projects if p["name"] == cloned_project_name and p["namespace"] == API_USER)
     cleanup(mc, API_USER + "/" + cloned_project_name, [cloned_project_dir])
 
     # clone without specifying cloned_project_namespace relies on workspace with user name, does clone but raises deprecation warning
-    with pytest.deprecated_call(
-        match=r"The use of only project name as `cloned_project_name` in `clone_project\(\)`"
-    ):
+    with pytest.deprecated_call(match=r"The use of only project name as `cloned_project_name` in `clone_project\(\)`"):
         mc.clone_project(test_project_fullname, cloned_project_name)
     projects = mc.projects_list(flag="created")
-    assert any(
-        p
-        for p in projects
-        if p["name"] == cloned_project_name and p["namespace"] == API_USER
-    )
+    assert any(p for p in projects if p["name"] == cloned_project_name and p["namespace"] == API_USER)
     cleanup(mc, API_USER + "/" + cloned_project_name, [cloned_project_dir])
 
     # clone project with full cloned project name with specification of `cloned_project_namespace` raises warning
-    with pytest.warns(
-        match=r"Parameter `cloned_project_namespace` specified with full cloned project name"
-    ):
+    with pytest.warns(match=r"Parameter `cloned_project_namespace` specified with full cloned project name"):
         mc.clone_project(test_project_fullname, test_cloned_project_fullname, API_USER)
     projects = mc.projects_list(flag="created")
-    assert any(
-        p
-        for p in projects
-        if p["name"] == cloned_project_name and p["namespace"] == API_USER
-    )
+    assert any(p for p in projects if p["name"] == cloned_project_name and p["namespace"] == API_USER)
     cleanup(mc, API_USER + "/" + cloned_project_name, [cloned_project_dir])
 
     # clone project using project full name
     mc.clone_project(test_project_fullname, test_cloned_project_fullname)
     projects = mc.projects_list(flag="created")
-    assert any(
-        p
-        for p in projects
-        if p["name"] == cloned_project_name and p["namespace"] == API_USER
-    )
+    assert any(p for p in projects if p["name"] == cloned_project_name and p["namespace"] == API_USER)
     cleanup(mc, API_USER + "/" + cloned_project_name, [cloned_project_dir])
 
 
@@ -962,9 +857,7 @@ def get_project_info(mc, namespace, project_name):
     :return: dict with project info
     """
     projects = mc.projects_list(flag="created")
-    test_project_list = [
-        p for p in projects if p["name"] == project_name and p["namespace"] == namespace
-    ]
+    test_project_list = [p for p in projects if p["name"] == project_name and p["namespace"] == namespace]
     assert len(test_project_list) == 1
     return test_project_list[0]
 
@@ -1027,9 +920,7 @@ def test_download_versions(mc):
 
     mc.download_project(project, project_dir_v2, "v2")
     assert os.path.exists(os.path.join(project_dir_v2, f_added))
-    assert os.path.exists(
-        os.path.join(project_dir_v1, "base.gpkg")
-    )  # added in v1 but still present in v2
+    assert os.path.exists(os.path.join(project_dir_v1, "base.gpkg"))  # added in v1 but still present in v2
 
     # try to download not-existing version
     with pytest.raises(ClientError):
@@ -1082,13 +973,9 @@ def test_missing_local_file_pull(mc):
     test_project = "test_dir"
     file_to_remove = "test2.txt"
     project = API_USER + "/" + test_project
-    project_dir = os.path.join(
-        TMP_DIR, test_project + "_5"
-    )  # primary project dir for updates
+    project_dir = os.path.join(TMP_DIR, test_project + "_5")  # primary project dir for updates
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_6")  # concurrent project dir
-    test_data_dir = os.path.join(
-        os.path.dirname(os.path.realpath(__file__)), "test_data", test_project
-    )
+    test_data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "test_data", test_project)
 
     cleanup(mc, project, [project_dir, project_dir_2])
     # create remote project
@@ -1130,9 +1017,7 @@ def test_server_compatibility(mc):
     assert mc.is_server_compatible()
 
 
-def create_versioned_project(
-    mc, project_name, project_dir, updated_file, remove=True, overwrite=False
-):
+def create_versioned_project(mc, project_name, project_dir, updated_file, remove=True, overwrite=False):
     project = API_USER + "/" + project_name
     cleanup(mc, project, [project_dir])
 
@@ -1178,9 +1063,7 @@ def test_get_versions_with_file_changes(mc):
     project_dir = os.path.join(TMP_DIR, test_project)
     f_updated = "base.gpkg"
 
-    mp = create_versioned_project(
-        mc, test_project, project_dir, f_updated, remove=False
-    )
+    mp = create_versioned_project(mc, test_project, project_dir, f_updated, remove=False)
 
     project_info = mc.project_info(project)
     assert project_info["version"] == "v4"
@@ -1242,9 +1125,7 @@ def test_download_file(mc):
     f_downloaded = os.path.join(project_dir, f_updated)
     for ver in range(2, 5):
         mc.download_file(project_dir, f_updated, f_downloaded, version=f"v{ver}")
-        expected = os.path.join(
-            TEST_DATA_DIR, expected_content[ver - 2]
-        )  # GeoPackage with expected content
+        expected = os.path.join(TEST_DATA_DIR, expected_content[ver - 2])  # GeoPackage with expected content
         assert check_gpkg_same_content(mp, f_downloaded, expected)
 
     # make sure there will be exception raised if a file doesn't exist in the version
@@ -1257,15 +1138,11 @@ def test_download_diffs(mc):
     test_project = "test_download_diffs"
     project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)
-    download_dir = os.path.join(
-        project_dir, "diffs"
-    )  # project for downloading files at various versions
+    download_dir = os.path.join(project_dir, "diffs")  # project for downloading files at various versions
     f_updated = "base.gpkg"
     diff_file = os.path.join(download_dir, f_updated + ".diff")
 
-    mp = create_versioned_project(
-        mc, test_project, project_dir, f_updated, remove=False
-    )
+    mp = create_versioned_project(mc, test_project, project_dir, f_updated, remove=False)
 
     project_info = mc.project_info(project)
     assert project_info["version"] == "v4"
@@ -1372,15 +1249,11 @@ def _create_spatial_table(db_file):
     """Creates a spatial table called 'test' in sqlite database. Useful to simulate change of database schema."""
     con = sqlite3.connect(db_file)
     cursor = con.cursor()
-    cursor.execute(
-        "CREATE TABLE geo_test (fid SERIAL, geometry POINT NOT NULL, txt TEXT);"
-    )
+    cursor.execute("CREATE TABLE geo_test (fid SERIAL, geometry POINT NOT NULL, txt TEXT);")
     cursor.execute(
         "INSERT INTO gpkg_contents VALUES ('geo_test', 'features','description','geo_test','2019-06-18T14:52:50.928Z',-1.08892,0.0424077,-0.363885,0.562244,4326);"
     )
-    cursor.execute(
-        "INSERT INTO gpkg_geometry_columns VALUES ('geo_test','geometry','POINT',4326, 0, 0 )"
-    )
+    cursor.execute("INSERT INTO gpkg_geometry_columns VALUES ('geo_test','geometry','POINT',4326, 0, 0 )")
     cursor.execute("COMMIT;")
 
 
@@ -1474,9 +1347,7 @@ def test_push_gpkg_schema_change(mc):
 
     mp.log.info(" // create changeset")
 
-    mp.geodiff.create_changeset(
-        mp.fpath("test.gpkg"), mp.fpath_meta("test.gpkg"), mp.fpath_meta("diff-0")
-    )
+    mp.geodiff.create_changeset(mp.fpath("test.gpkg"), mp.fpath_meta("test.gpkg"), mp.fpath_meta("diff-0"))
 
     mp.log.info(" // use wal")
 
@@ -1501,9 +1372,7 @@ def test_push_gpkg_schema_change(mc):
     # why already here there is wal recovery - it could be because of two sqlite libs linked in one executable
     # INDEED THAT WAS THE PROBLEM, now running geodiff 1.0 with shared sqlite lib seems to work fine.
     with pytest.raises(pygeodiff.geodifflib.GeoDiffLibError):
-        mp.geodiff.create_changeset(
-            mp.fpath("test.gpkg"), mp.fpath_meta("test.gpkg"), mp.fpath_meta("diff-1")
-        )
+        mp.geodiff.create_changeset(mp.fpath("test.gpkg"), mp.fpath_meta("test.gpkg"), mp.fpath_meta("diff-1"))
 
     _check_test_table(test_gpkg)
     with pytest.raises(sqlite3.OperationalError):
@@ -1550,9 +1419,7 @@ def test_rebase_local_schema_change(mc, extra_connection):
 
     os.makedirs(project_dir)
     shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), test_gpkg)
-    _use_wal(
-        test_gpkg
-    )  # make sure we use WAL, that's the more common and more difficult scenario
+    _use_wal(test_gpkg)  # make sure we use WAL, that's the more common and more difficult scenario
     mc.create_project_and_push(project, project_dir)
 
     if extra_connection:
@@ -1564,9 +1431,7 @@ def test_rebase_local_schema_change(mc, extra_connection):
     # Download project to the concurrent dir + add a feature + push a new version
     mc.download_project(project, project_dir_2)  # download project to concurrent dir
     mp_2 = MerginProject(project_dir_2)
-    shutil.copy(
-        os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"), mp_2.fpath("test.gpkg")
-    )
+    shutil.copy(os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"), mp_2.fpath("test.gpkg"))
     mc.push_project(project_dir_2)
 
     # Change schema in the primary project dir
@@ -1620,9 +1485,7 @@ def test_rebase_remote_schema_change(mc, extra_connection):
 
     os.makedirs(project_dir)
     shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), test_gpkg)
-    _use_wal(
-        test_gpkg
-    )  # make sure we use WAL, that's the more common and more difficult scenario
+    _use_wal(test_gpkg)  # make sure we use WAL, that's the more common and more difficult scenario
     mc.create_project_and_push(project, project_dir)
 
     # Download project to the concurrent dir + change DB schema + push a new version
@@ -1687,9 +1550,7 @@ def test_rebase_success(mc, extra_connection):
 
     os.makedirs(project_dir)
     shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), test_gpkg)
-    _use_wal(
-        test_gpkg
-    )  # make sure we use WAL, that's the more common and more difficult scenario
+    _use_wal(test_gpkg)  # make sure we use WAL, that's the more common and more difficult scenario
     mc.create_project_and_push(project, project_dir)
 
     # Download project to the concurrent dir + add a row + push a new version
@@ -1910,16 +1771,12 @@ def test_unfinished_pull(mc):
     test_gpkg_2 = os.path.join(project_dir_2, "test.gpkg")
     test_gpkg_basefile = os.path.join(project_dir, ".mergin", "test.gpkg")
     test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, API_USER, 2)
-    test_gpkg_unfinished_pull = os.path.join(
-        project_dir, ".mergin", "unfinished_pull", "test.gpkg"
-    )
+    test_gpkg_unfinished_pull = os.path.join(project_dir, ".mergin", "unfinished_pull", "test.gpkg")
     cleanup(mc, project, [project_dir, project_dir_2])
 
     os.makedirs(project_dir)
     shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), test_gpkg)
-    _use_wal(
-        test_gpkg
-    )  # make sure we use WAL, that's the more common and more difficult scenario
+    _use_wal(test_gpkg)  # make sure we use WAL, that's the more common and more difficult scenario
     mc.create_project_and_push(project, project_dir)
 
     # Download project to the concurrent dir + change DB schema + push a new version
@@ -2002,16 +1859,12 @@ def test_unfinished_pull_push(mc):
     test_gpkg_2 = os.path.join(project_dir_2, "test.gpkg")
     test_gpkg_basefile = os.path.join(project_dir, ".mergin", "test.gpkg")
     test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, API_USER, 2)
-    test_gpkg_unfinished_pull = os.path.join(
-        project_dir, ".mergin", "unfinished_pull", "test.gpkg"
-    )
+    test_gpkg_unfinished_pull = os.path.join(project_dir, ".mergin", "unfinished_pull", "test.gpkg")
     cleanup(mc, project, [project_dir, project_dir_2])
 
     os.makedirs(project_dir)
     shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), test_gpkg)
-    _use_wal(
-        test_gpkg
-    )  # make sure we use WAL, that's the more common and more difficult scenario
+    _use_wal(test_gpkg)  # make sure we use WAL, that's the more common and more difficult scenario
     mc.create_project_and_push(project, project_dir)
 
     # Download project to the concurrent dir + change DB schema + push a new version
@@ -2126,9 +1979,7 @@ def test_report(mc):
     project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)
     f_updated = "base.gpkg"
-    mp = create_versioned_project(
-        mc, test_project, project_dir, f_updated, remove=False, overwrite=True
-    )
+    mp = create_versioned_project(mc, test_project, project_dir, f_updated, remove=False, overwrite=True)
 
     # create report for between versions 2 and 4
     directory = mp.dir
@@ -2343,15 +2194,11 @@ def test_clean_diff_files(mc):
     mp = MerginProject(project_dir)
     f_updated = "base.gpkg"
     # step 1) base.gpkg updated to inserted_1_A (inserted A feature)
-    shutil.move(
-        mp.fpath(f_updated), mp.fpath_meta(f_updated)
-    )  # make local copy for changeset calculation
+    shutil.move(mp.fpath(f_updated), mp.fpath_meta(f_updated))  # make local copy for changeset calculation
     shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
     mc.push_project(project_dir)
 
-    diff_files = glob.glob(
-        "*-diff-*", root_dir=os.path.split(mp.fpath_meta("inserted_1_A.gpkg"))[0]
-    )
+    diff_files = glob.glob("*-diff-*", root_dir=os.path.split(mp.fpath_meta("inserted_1_A.gpkg"))[0])
 
     assert diff_files == []
 
@@ -2360,9 +2207,7 @@ def test_reset_local_changes(mc: MerginClient):
     test_project = f"test_reset_local_changes"
     project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
-    project_dir_2 = os.path.join(
-        TMP_DIR, test_project + "_v2"
-    )  # primary project dir for updates
+    project_dir_2 = os.path.join(TMP_DIR, test_project + "_v2")  # primary project dir for updates
 
     cleanup(mc, project, [project_dir])
     # create remote project
@@ -2426,9 +2271,7 @@ def test_reset_local_changes(mc: MerginClient):
     assert len(push_changes["updated"]) == 1
 
     # reset local changes only to certain files, one added and one removed
-    mc.reset_local_changes(
-        project_dir, files_to_reset=["new_test.txt", "test_dir/test2.txt"]
-    )
+    mc.reset_local_changes(project_dir, files_to_reset=["new_test.txt", "test_dir/test2.txt"])
 
     # push changes after the reset
     mp = MerginProject(project_dir)
@@ -2533,9 +2376,7 @@ def test_project_rename(mc: MerginClient):
     mc.create_project_and_push(project, project_dir)
 
     # renamed project does not exist
-    with pytest.raises(
-        ClientError, match="The requested URL was not found on the server"
-    ):
+    with pytest.raises(ClientError, match="The requested URL was not found on the server"):
         info = mc.project_info(project_renamed)
 
     # rename
@@ -2546,9 +2387,7 @@ def test_project_rename(mc: MerginClient):
     assert project_info["version"] == "v1"
     assert project_info["name"] == test_project_renamed
     assert project_info["namespace"] == API_USER
-    with pytest.raises(
-        ClientError, match="The requested URL was not found on the server"
-    ):
+    with pytest.raises(ClientError, match="The requested URL was not found on the server"):
         mc.project_info(project)
 
     # recreate project
@@ -2562,9 +2401,7 @@ def test_project_rename(mc: MerginClient):
         mc.rename_project(project, test_project_renamed)
 
     # cannot rename project that does not exist
-    with pytest.raises(
-        ClientError, match="The requested URL was not found on the server."
-    ):
+    with pytest.raises(ClientError, match="The requested URL was not found on the server."):
         mc.rename_project(API_USER + "/" + "non_existing_project", "new_project")
 
     # cannot rename with full project name
@@ -2602,20 +2439,14 @@ def test_download_files(mc: MerginClient):
 
     # if output_paths is specified look at that location
     for ver in range(2, 5):
-        mc.download_files(
-            project_dir, [f_updated], [downloaded_file], version=f"v{ver}"
-        )
-        expected = os.path.join(
-            TEST_DATA_DIR, expected_content[ver - 2]
-        )  # GeoPackage with expected content
+        mc.download_files(project_dir, [f_updated], [downloaded_file], version=f"v{ver}")
+        expected = os.path.join(TEST_DATA_DIR, expected_content[ver - 2])  # GeoPackage with expected content
         assert check_gpkg_same_content(mp, downloaded_file, expected)
 
     # if output_paths is not specified look in the mergin project folder
     for ver in range(2, 5):
         mc.download_files(project_dir, [f_updated], version=f"v{ver}")
-        expected = os.path.join(
-            TEST_DATA_DIR, expected_content[ver - 2]
-        )  # GeoPackage with expected content
+        expected = os.path.join(TEST_DATA_DIR, expected_content[ver - 2])  # GeoPackage with expected content
         assert check_gpkg_same_content(mp, mp.fpath(f_updated), expected)
 
     # download two files from v1 and check their content
@@ -2628,9 +2459,7 @@ def test_download_files(mc: MerginClient):
         [downloaded_file, downloaded_file_2],
         version="v1",
     )
-    assert check_gpkg_same_content(
-        mp, downloaded_file, os.path.join(TEST_DATA_DIR, f_updated)
-    )
+    assert check_gpkg_same_content(mp, downloaded_file, os.path.join(TEST_DATA_DIR, f_updated))
 
     with open(os.path.join(TEST_DATA_DIR, file_2), mode="r", encoding="utf-8") as file:
         content_exp = file.read()
@@ -2643,9 +2472,7 @@ def test_download_files(mc: MerginClient):
     with pytest.raises(ClientError, match=f"No \\[{f_updated}\\] exists at version v5"):
         mc.download_files(project_dir, [f_updated], version="v5")
 
-    with pytest.raises(
-        ClientError, match=f"No \\[non_existing\\.file\\] exists at version v3"
-    ):
+    with pytest.raises(ClientError, match=f"No \\[non_existing\\.file\\] exists at version v3"):
         mc.download_files(project_dir, [f_updated, "non_existing.file"], version="v3")
 
 
