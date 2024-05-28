@@ -49,6 +49,7 @@ USER_PWD2 = os.environ.get("TEST_API_PASSWORD2")
 TMP_DIR = tempfile.gettempdir()
 TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "test_data")
 CHANGED_SCHEMA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "modified_schema")
+STORAGE_WORKSPACE = os.environ.get("TEST_STORAGE_WORKSPACE", "testpluginstorage")
 
 
 @pytest.fixture(scope="function")
@@ -65,14 +66,21 @@ def mc2():
     return client
 
 
+@pytest.fixture(scope="function")
+def mcStorage():
+    client = create_client(API_USER, USER_PWD)
+    create_workspace_for_client(client, STORAGE_WORKSPACE)
+    return client
+
+
 def create_client(user, pwd):
     assert SERVER_URL and SERVER_URL.rstrip("/") != "https://app.merginmaps.com" and user and pwd
     return MerginClient(SERVER_URL, login=user, password=pwd)
 
 
-def create_workspace_for_client(mc):
+def create_workspace_for_client(mc: MerginClient, workspace_name=None):
     try:
-        mc.create_workspace(mc.username())
+        mc.create_workspace(workspace_name or mc.username())
     except ClientError:
         return
 
@@ -736,33 +744,34 @@ def test_set_editor_access(mc):
     assert API_USER2 not in access["writersnames"]
 
 
-def test_available_storage_validation(mc):
+def test_available_storage_validation(mcStorage):
     """
     Testing of storage limit - applies to user pushing changes into own project (namespace matching username).
     This test also tests giving read and write access to another user. Additionally tests also uploading of big file.
     """
     test_project = "test_available_storage_validation"
-    test_project_fullname = API_USER + "/" + test_project
+    test_project_fullname = STORAGE_WORKSPACE + "/" + test_project
 
     # cleanups
     project_dir = os.path.join(TMP_DIR, test_project, API_USER)
-    cleanup(mc, test_project_fullname, [project_dir])
+    cleanup(mcStorage, test_project_fullname, [project_dir])
 
     # create new (empty) project on server
-    mc.create_project(test_project)
+    # if namespace is not provided, function is creating project with username
+    mcStorage.create_project(test_project_fullname)
 
     # download project
-    mc.download_project(test_project_fullname, project_dir)
+    mcStorage.download_project(test_project_fullname, project_dir)
 
     # get info about storage capacity
     storage_remaining = 0
 
-    if mc.server_type() == ServerType.OLD:
-        user_info = mc.user_info()
+    if mcStorage.server_type() == ServerType.OLD:
+        user_info = mcStorage.user_info()
         storage_remaining = user_info["storage"] - user_info["disk_usage"]
     else:
-        for workspace in mc.workspaces_list():
-            if workspace["name"] == API_USER:
+        for workspace in mcStorage.workspaces_list():
+            if workspace["name"] == STORAGE_WORKSPACE:
                 storage_remaining = workspace["storage"] - workspace["disk_usage"]
                 break
 
@@ -774,7 +783,7 @@ def test_available_storage_validation(mc):
     # try to upload
     got_right_err = False
     try:
-        mc.push_project(project_dir)
+        mcStorage.push_project(project_dir)
     except ClientError as e:
         # Expecting "You have reached a data limit" 400 server error msg.
         assert "You have reached a data limit" in str(e)
@@ -782,7 +791,7 @@ def test_available_storage_validation(mc):
     assert got_right_err
 
     # Expecting empty project
-    project_info = get_project_info(mc, API_USER, test_project)
+    project_info = get_project_info(mcStorage, API_USER, test_project)
     assert project_info["version"] == "v0"
     assert project_info["disk_usage"] == 0
 
