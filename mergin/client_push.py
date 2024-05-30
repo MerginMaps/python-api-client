@@ -18,6 +18,7 @@ import os
 
 from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
+from .editor import EditorHandler
 
 
 class UploadJob:
@@ -91,12 +92,12 @@ def push_project_async(mc, directory):
     mp.log.info(f"--- start push {project_path}")
 
     try:
-        server_info = mc.project_info(project_path)
+        project_info = mc.project_info(project_path)
     except ClientError as err:
         mp.log.error("Error getting project info: " + str(err))
         mp.log.info("--- push aborted")
         raise
-    server_version = server_info["version"] if server_info["version"] else "v0"
+    server_version = project_info["version"] if project_info["version"] else "v0"
 
     mp.log.info(f"got project info: local version {local_version} / server version {server_version}")
 
@@ -132,6 +133,9 @@ def push_project_async(mc, directory):
     for f in changes["added"]:
         if mp.is_versioned_file(f["path"]):
             mp.copy_versioned_file_for_upload(f, tmp_dir.name)
+    
+    editorHandler = EditorHandler(mc, project_info)
+    changes = editorHandler.filter_changes(changes)
 
     if not sum(len(v) for v in changes.values()):
         mp.log.info(f"--- push {project_path} - nothing to do")

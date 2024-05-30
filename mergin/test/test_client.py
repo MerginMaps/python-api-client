@@ -39,6 +39,7 @@ from ..utils import (
 )
 from ..merginproject import pygeodiff
 from ..report import create_report
+from ..editor import EditorHandler
 
 
 SERVER_URL = os.environ.get("TEST_MERGIN_URL")
@@ -113,7 +114,12 @@ def server_has_editor_support(mc, access):
     Returns:
         bool: True if the server has editor support, False otherwise.
     """
-    return "editorsnames" in access and is_version_acceptable(mc.server_version(), "2024.4")
+    return "editorsnames" in access and mc.has_editor_support()
+
+
+def test_client_instance(mc, mc2):
+    assert isinstance(mc, MerginClient)
+    assert isinstance(mc2, MerginClient)
 
 
 def test_login(mc):
@@ -1191,24 +1197,18 @@ def test_download_diffs(mc):
 
 def test_modify_project_permissions(mc):
     test_project = "test_project"
-    project = API_USER + "/" + test_project
+    test_project_fullname = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)
     download_dir = os.path.join(TMP_DIR, "download", test_project)
 
-    cleanup(mc, project, [project_dir, download_dir])
+    cleanup(mc, test_project_fullname, [project_dir, download_dir])
     # prepare local project
     shutil.copytree(TEST_DATA_DIR, project_dir)
 
     # create remote project
-    mc.create_project_and_push(project, directory=project_dir)
+    mc.create_project_and_push(test_project_fullname, directory=project_dir)
 
-    # check basic metadata about created project
-    project_info = mc.project_info(project)
-    assert project_info["version"] == "v1"
-    assert project_info["name"] == test_project
-    assert project_info["namespace"] == API_USER
-
-    permissions = mc.project_user_permissions(project)
+    permissions = mc.project_user_permissions(test_project_fullname)
     assert permissions["owners"] == [API_USER]
     assert permissions["writers"] == [API_USER]
     assert permissions["readers"] == [API_USER]
@@ -1216,8 +1216,8 @@ def test_modify_project_permissions(mc):
     if editor_support:
         assert permissions["editors"] == [API_USER]
 
-    mc.add_user_permissions_to_project(project, [API_USER2], "writer")
-    permissions = mc.project_user_permissions(project)
+    mc.add_user_permissions_to_project(test_project_fullname, [API_USER2], "writer")
+    permissions = mc.project_user_permissions(test_project_fullname)
     assert set(permissions["owners"]) == {API_USER}
     assert set(permissions["writers"]) == {API_USER, API_USER2}
     assert set(permissions["readers"]) == {API_USER, API_USER2}
@@ -1225,8 +1225,8 @@ def test_modify_project_permissions(mc):
     if editor_support:
         assert set(permissions["editors"]) == {API_USER, API_USER2}
 
-    mc.remove_user_permissions_from_project(project, [API_USER2])
-    permissions = mc.project_user_permissions(project)
+    mc.remove_user_permissions_from_project(test_project_fullname, [API_USER2])
+    permissions = mc.project_user_permissions(test_project_fullname)
     assert permissions["owners"] == [API_USER]
     assert permissions["writers"] == [API_USER]
     assert permissions["readers"] == [API_USER]
@@ -2524,3 +2524,117 @@ def test_download_failure(mc):
     with open(job.failure_log_file, "r", encoding="utf-8") as f:
         content = f.read()
         assert "Traceback" in content
+
+
+# TODO: consider to use separate test_editor.py file for tests that require editor
+def test_editor_handler(mc: MerginClient):
+    """Test editor handler class and push with editor"""
+
+    project_info = {"role": "editor"}
+    # intilize handler
+    editor_handler = EditorHandler(mc, project_info)
+    if not mc.has_editor_support():
+        assert editor_handler.is_enabled() is False
+        return
+
+    # mock that user is editor
+    project_info["role"] = editor_handler.ROLE_NAME
+    assert editor_handler.is_enabled() is True
+
+    # unit test for EditorHandler methods
+    qgs_changeset = {
+        "added": [{"path": "/folder/project.new.Qgz"}],
+        "updated": [{"path": "/folder/project.updated.Qgs"}],
+        "removed": [{"path": "/folder/project.removed.qgs"}],
+    }
+    qgs_changeset = editor_handler.filter_changes(qgs_changeset)
+    assert sum(len(v) for v in qgs_changeset.values()) == 0
+
+    mergin_config_changeset = {
+        "added": [{"path": "/.mergin/mergin-config.json"}],
+        "updated": [{"path": "/.mergin/mergin-config.json"}],
+        "removed": [{"path": "/.mergin/mergin-config.json"}],
+    }
+    mergin_config_changeset = editor_handler.filter_changes(mergin_config_changeset)
+    assert sum(len(v) for v in mergin_config_changeset.values()) == 0
+
+    gpkg_changeset = {
+        "added": [{"path": "/.mergin/data.gpkg"}],
+        "updated": [{"path": "/.mergin/conflict-data.gpkg"}, {"path": "/.mergin/data.gpkg", "diff": {}}],
+        "removed": [{"path": "/.mergin/data.gpkg"}],
+    }
+    gpkg_changeset = editor_handler.filter_changes(gpkg_changeset)
+    assert sum(len(v) for v in gpkg_changeset.values()) == 2
+    assert gpkg_changeset["added"][0]["path"] == "/.mergin/data.gpkg"
+    assert gpkg_changeset["updated"][0]["path"] == "/.mergin/data.gpkg"
+
+
+def test_editor_push(mc: MerginClient, mc2: MerginClient):
+    """Test push with editor"""
+    if not mc.has_editor_support():
+        return
+    test_project = "test_editor_push"
+    test_project_fullname = API_USER + "/" + test_project
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    cleanup(mc, project, [project_dir])
+
+    # create new (empty) project on server
+    # TODO: return project_info from create project, don't use project_full name for project info, instead returned id of project
+    mc.create_project(test_project)
+
+    mc.add_user_permissions_to_project(project, [API_USER2], "editor")
+    project_info = mc2.project_info(test_project_fullname)
+    editor_handler = EditorHandler(mc2, project_info)
+    assert project_info["role"] == editor_handler.ROLE_NAME
+    assert editor_handler.is_enabled() is True
+
+    # download empty project
+    mc2.download_project(test_project_fullname, project_dir)
+
+    # editor is starting to adding qgis files and "normal" file
+    qgs_file_name = "test.qgs"
+    txt_file_name = "test.txt"
+    gpkg_file_name = "base.gpkg"
+    files_to_push = [qgs_file_name, txt_file_name, gpkg_file_name]
+    for file in files_to_push:
+        shutil.copy(os.path.join(TEST_DATA_DIR, file), project_dir)
+    # it's possible to push allowed files if editor
+    mc2.push_project(project_dir)
+    project_info = mc2.project_info(test_project_fullname)
+    assert len(project_info.get("files")) == len(files_to_push) - 1  # ggs is not pushed
+    # find pushed files in server
+    assert any(file["path"] == qgs_file_name for file in project_info.get("files")) is False
+    assert any(file["path"] == txt_file_name for file in project_info.get("files")) is True
+    assert any(file["path"] == gpkg_file_name for file in project_info.get("files")) is True
+    pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
+    assert not sum(len(v) for v in pull_changes.values())
+    assert sum(len(v) for v in push_changes.values()) == 1  
+    # ggs is still waiting to push
+    assert any(file["path"] == qgs_file_name for file in push_changes.get("added")) is True
+
+    # editor is trying to psuh row to gpkg file -> it's possible
+    shutil.copy(
+        os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"),
+        os.path.join(project_dir, gpkg_file_name),
+    )
+    mc2.push_project(project_dir)
+    project_info = mc2.project_info(test_project_fullname)
+    pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
+    assert any(file["path"] == gpkg_file_name for file in project_info.get("files")) is True
+    assert any(file["path"] == gpkg_file_name for file in push_changes.get("updated")) is False
+
+    # editor is trying to insert tables to gpkg file
+    shutil.copy(
+        os.path.join(TEST_DATA_DIR, "two_tables.gpkg"),
+        os.path.join(project_dir, gpkg_file_name),
+    )
+    mc2.push_project(project_dir)
+    pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
+    assert not sum(len(v) for v in pull_changes.values())
+    # gpkg was filter by editor_handler in push_project, because new tables added
+    assert sum(len(v) for v in push_changes.values()) == 2 
+    # ggs and gpkg are still waiting to push
+    assert any(file["path"] == qgs_file_name for file in push_changes.get("added")) is True
+    assert any(file["path"] == gpkg_file_name for file in push_changes.get("updated")) is True
+
