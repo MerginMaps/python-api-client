@@ -763,7 +763,7 @@ class MerginClient:
         :param project_path: project full name (<namespace>/<name>)
         :param access: dict <readersnames, editorsnames, writersnames, ownersnames> -> list of str username we want to give access to (editorsnames are only supported on servers at version 2024.4.0 or later)
         """
-        if "editorsnames" in access and not is_version_acceptable(self.server_version(), "2024.4"):
+        if "editorsnames" in access and not self.has_editor_support():
             raise NotImplementedError("Editors are only supported on servers at version 2024.4.0 or later")
 
         if not self._user_info:
@@ -790,7 +790,7 @@ class MerginClient:
         Editor permission_level is only supported on servers at version 2024.4.0 or later.
         """
         if permission_level not in ["owner", "reader", "writer", "editor"] or (
-            permission_level == "editor" and not is_version_acceptable(self.server_version(), "2024.4")
+            permission_level == "editor" and not self.has_editor_support()
         ):
             raise ClientError("Unsupported permission level")
 
@@ -1235,3 +1235,9 @@ class MerginClient:
         job = download_files_async(self, project_dir, file_paths, output_paths, version=version)
         pull_project_wait(job)
         download_files_finalize(job)
+
+    def has_editor_support(self):
+        """
+        Returns whether the server version is acceptable for editor support.
+        """
+        return is_version_acceptable(self.server_version(), "2024.4.0")

@@ -255,3 +255,20 @@ def is_version_acceptable(version, min_version):
     major, minor = m.group(1), m.group(2)
 
     return major > min_major or (major == min_major and minor >= min_minor)
+
+def is_versioned_file(path: str) -> bool:
+    diff_extensions = [".gpkg", ".sqlite"]
+    f_extension = os.path.splitext(path)[1]
+    return f_extension.lower() in diff_extensions
+
+def is_qgis_file(path: str) -> bool:
+    """
+    Check if file is a QGIS project file.
+    """
+    f_extension = os.path.splitext(path)[1]
+    return f_extension.lower() in [".qgs", ".qgz"]
+
+def is_mergin_config(path: str) -> bool:
+    """Check if the given path is for file mergin-config.json"""
+    filename = os.path.basename(path).lower()
+    return filename == "mergin-config.json"
