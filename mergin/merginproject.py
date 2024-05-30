@@ -12,9 +12,8 @@ from dateutil.tz import tzlocal
 from .common import UPLOAD_CHUNK_SIZE, InvalidProject, ClientError
 from .utils import (
     generate_checksum,
-    move_file,
+    is_versioned_file,
     int_version,
-    find,
     do_sqlite_checkpoint,
     unique_path_name,
     conflicted_copy_file_name,
@@ -138,8 +137,7 @@ class MerginProject:
 
     def project_full_name(self) -> str:
         """Returns fully qualified project name: <workspace>/<name>"""
-        if self._metadata is None:
-            self._read_metadata()
+        self._read_metadata()
         if self.is_old_metadata:
             return self._metadata["name"]
         else:
@@ -164,8 +162,7 @@ class MerginProject:
         only happen with projects downloaded with old client, before February 2023,
         see https://github.com/MerginMaps/mergin-py-client/pull/154
         """
-        if self._metadata is None:
-            self._read_metadata()
+        self._read_metadata()
 
         # "id" or "project_id" may not exist in projects downloaded with old client version
         if self.is_old_metadata:
@@ -182,8 +179,7 @@ class MerginProject:
         """Returns ID of the workspace where the project belongs"""
         # unfortunately we currently do not have information about workspace ID
         # in project's metadata...
-        if self._metadata is None:
-            self._read_metadata()
+        self._read_metadata()
 
         # "workspace_id" does not exist in projects downloaded with old client version
         if self.is_old_metadata:
@@ -195,14 +191,12 @@ class MerginProject:
 
     def version(self) -> str:
         """Returns project version (e.g. "v123")"""
-        if self._metadata is None:
-            self._read_metadata()
+        self._read_metadata()
         return self._metadata["version"]
 
     def files(self) -> list:
         """Returns project's list of files (each file being a dictionary)"""
-        if self._metadata is None:
-            self._read_metadata()
+        self._read_metadata()
         return self._metadata["files"]
 
     @property
@@ -213,12 +207,13 @@ class MerginProject:
         from warnings import warn
 
         warn("MerginProject.metadata getter should not be used anymore", DeprecationWarning)
-        if self._metadata is None:
-            self._read_metadata()
+        self._read_metadata()
         return self._metadata
 
-    def _read_metadata(self):
+    def _read_metadata(self) -> None:
         """Loads the project's metadata from JSON"""
+        if self._metadata is not None:
+            return
         if not os.path.exists(self.fpath_meta("mergin.json")):
             raise InvalidProject("Project metadata has not been created yet")
         with open(self.fpath_meta("mergin.json"), "r") as file:
@@ -254,9 +249,7 @@ class MerginProject:
         :returns: if file is compatible with geodiff lib
         :rtype: bool
         """
-        diff_extensions = [".gpkg", ".sqlite"]
-        f_extension = os.path.splitext(file)[1]
-        return f_extension in diff_extensions
+        return is_versioned_file(file)
 
     def is_gpkg_open(self, path):
         """
