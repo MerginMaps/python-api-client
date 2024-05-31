@@ -18,7 +18,7 @@ import os
 
 from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
-from .editor import EditorHandler
+from .editor import filter_changes
 
 
 class UploadJob:
@@ -67,7 +67,11 @@ class UploadQueueItem:
             mp.log.debug(f"Uploading {self.file_path} part={self.chunk_index}")
 
             headers = {"Content-Type": "application/octet-stream"}
-            resp = mc.post("/v1/project/push/chunk/{}/{}".format(self.transaction_id, self.chunk_id), data, headers)
+            resp = mc.post(
+                "/v1/project/push/chunk/{}/{}".format(self.transaction_id, self.chunk_id),
+                data,
+                headers,
+            )
             resp_dict = json.load(resp)
             mp.log.debug(f"Upload finished: {self.file_path}")
             if not (resp_dict["size"] == len(data) and resp_dict["checksum"] == checksum.hexdigest()):
@@ -117,6 +121,7 @@ def push_project_async(mc, directory):
         )
 
     changes = mp.get_push_changes()
+    changes = filter_changes(mc, project_info, changes)
     mp.log.debug("push changes:\n" + pprint.pformat(changes))
 
     tmp_dir = tempfile.TemporaryDirectory(prefix="mergin-py-client-")
@@ -133,9 +138,6 @@ def push_project_async(mc, directory):
     for f in changes["added"]:
         if mp.is_versioned_file(f["path"]):
             mp.copy_versioned_file_for_upload(f, tmp_dir.name)
-    
-    editorHandler = EditorHandler(mc, project_info)
-    changes = editorHandler.filter_changes(changes)
 
     if not sum(len(v) for v in changes.values()):
         mp.log.info(f"--- push {project_path} - nothing to do")
@@ -147,7 +149,11 @@ def push_project_async(mc, directory):
     data = {"version": local_version, "changes": changes}
 
     try:
-        resp = mc.post(f"/v1/project/push/{project_path}", data, {"Content-Type": "application/json"})
+        resp = mc.post(
+            f"/v1/project/push/{project_path}",
+            data,
+            {"Content-Type": "application/json"},
+        )
     except ClientError as err:
         mp.log.error("Error starting transaction: " + str(err))
         mp.log.info("--- push aborted")

@@ -22,7 +22,7 @@ import concurrent.futures
 
 from .common import CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
-from .utils import save_to_file, get_versions_with_file_changes
+from .utils import save_to_file
 
 
 # status = download_project_async(...)
@@ -340,7 +340,7 @@ class PullJob:
         mp,
         project_info,
         basefiles_to_patch,
-        user_name,
+        mc,
     ):
         self.project_path = project_path
         self.pull_changes = (
@@ -358,7 +358,7 @@ class PullJob:
         self.basefiles_to_patch = (
             basefiles_to_patch  # list of tuples (relative path within project, list of diff files in temp dir to apply)
         )
-        self.user_name = user_name
+        self.mc = mc
 
     def dump(self):
         print("--- JOB ---", self.total_size, "bytes")
@@ -371,6 +371,10 @@ class PullJob:
         for item in self.download_queue_items:
             print("- {} {} {} {}".format(item.file_path, item.version, item.part_index, item.size))
         print("--- END ---")
+
+    def apply_changes(self):
+        """Apply changes to the project directory with MerginProject.apply_pull_changes"""
+        return self.mp.apply_pull_changes(self.pull_changes, self.temp_dir, self.project_info, self.mc)
 
 
 def pull_project_async(mc, directory):
@@ -494,7 +498,7 @@ def pull_project_async(mc, directory):
         mp,
         server_info,
         basefiles_to_patch,
-        mc.username(),
+        mc,
     )
 
     # start download
@@ -570,7 +574,7 @@ class FileToMerge:
             raise ClientError("Download of file {} failed. Please try it again.".format(self.dest_file))
 
 
-def pull_project_finalize(job):
+def pull_project_finalize(job: PullJob):
     """
     To be called when pull in the background is finished and we need to do the finalization (merge chunks etc.)
 
@@ -623,7 +627,7 @@ def pull_project_finalize(job):
             raise ClientError("Cannot patch basefile {}! Please try syncing again.".format(basefile))
 
     try:
-        conflicts = job.mp.apply_pull_changes(job.pull_changes, job.temp_dir, job.user_name)
+        conflicts = job.apply_changes()
     except Exception as e:
         job.mp.log.error("Failed to apply pull changes: " + str(e))
         job.mp.log.info("--- pull aborted")
@@ -721,7 +725,7 @@ def download_diffs_async(mc, project_directory, file_path, versions):
         mp,
         server_info,
         {},
-        mc.username(),
+        mc,
     )
 
     # start download
