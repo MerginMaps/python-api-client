@@ -9,7 +9,6 @@ import pytest
 import pytz
 import sqlite3
 import glob
-import time
 
 from .. import InvalidProject
 from ..client import (
@@ -39,7 +38,7 @@ from ..utils import (
 )
 from ..merginproject import pygeodiff
 from ..report import create_report
-from ..editor import EditorHandler
+from ..editor import EDITOR_ROLE_NAME, filter_changes, is_editor_enabled
 
 
 SERVER_URL = os.environ.get("TEST_MERGIN_URL")
@@ -2527,27 +2526,25 @@ def test_download_failure(mc):
 
 
 # TODO: consider to use separate test_editor.py file for tests that require editor
-def test_editor_handler(mc: MerginClient):
+def test_editor(mc: MerginClient):
     """Test editor handler class and push with editor"""
 
     project_info = {"role": "editor"}
-    # intilize handler
-    editor_handler = EditorHandler(mc, project_info)
     if not mc.has_editor_support():
-        assert editor_handler.is_enabled() is False
+        assert is_editor_enabled(mc, project_info) is False
         return
 
     # mock that user is editor
-    project_info["role"] = editor_handler.ROLE_NAME
-    assert editor_handler.is_enabled() is True
+    project_info["role"] = EDITOR_ROLE_NAME
+    assert is_editor_enabled(mc, project_info) is True
 
-    # unit test for EditorHandler methods
+    # unit test for editor methods
     qgs_changeset = {
         "added": [{"path": "/folder/project.new.Qgz"}],
         "updated": [{"path": "/folder/project.updated.Qgs"}],
         "removed": [{"path": "/folder/project.removed.qgs"}],
     }
-    qgs_changeset = editor_handler.filter_changes(qgs_changeset)
+    qgs_changeset = filter_changes(mc, project_info, qgs_changeset)
     assert sum(len(v) for v in qgs_changeset.values()) == 0
 
     mergin_config_changeset = {
@@ -2555,15 +2552,18 @@ def test_editor_handler(mc: MerginClient):
         "updated": [{"path": "/.mergin/mergin-config.json"}],
         "removed": [{"path": "/.mergin/mergin-config.json"}],
     }
-    mergin_config_changeset = editor_handler.filter_changes(mergin_config_changeset)
+    mergin_config_changeset = filter_changes(mc, project_info, mergin_config_changeset)
     assert sum(len(v) for v in mergin_config_changeset.values()) == 0
 
     gpkg_changeset = {
         "added": [{"path": "/.mergin/data.gpkg"}],
-        "updated": [{"path": "/.mergin/conflict-data.gpkg"}, {"path": "/.mergin/data.gpkg", "diff": {}}],
+        "updated": [
+            {"path": "/.mergin/conflict-data.gpkg"},
+            {"path": "/.mergin/data.gpkg", "diff": {}},
+        ],
         "removed": [{"path": "/.mergin/data.gpkg"}],
     }
-    gpkg_changeset = editor_handler.filter_changes(gpkg_changeset)
+    gpkg_changeset = filter_changes(mc, project_info, gpkg_changeset)
     assert sum(len(v) for v in gpkg_changeset.values()) == 2
     assert gpkg_changeset["added"][0]["path"] == "/.mergin/data.gpkg"
     assert gpkg_changeset["updated"][0]["path"] == "/.mergin/data.gpkg"
@@ -2577,18 +2577,13 @@ def test_editor_push(mc: MerginClient, mc2: MerginClient):
     test_project_fullname = API_USER + "/" + test_project
     project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)
-    cleanup(mc, project, [project_dir])
+    project_dir2 = os.path.join(TMP_DIR, test_project + "_2")
+    cleanup(mc, project, [project_dir, project_dir2])
 
     # create new (empty) project on server
     # TODO: return project_info from create project, don't use project_full name for project info, instead returned id of project
     mc.create_project(test_project)
-
     mc.add_user_permissions_to_project(project, [API_USER2], "editor")
-    project_info = mc2.project_info(test_project_fullname)
-    editor_handler = EditorHandler(mc2, project_info)
-    assert project_info["role"] == editor_handler.ROLE_NAME
-    assert editor_handler.is_enabled() is True
-
     # download empty project
     mc2.download_project(test_project_fullname, project_dir)
 
@@ -2609,7 +2604,7 @@ def test_editor_push(mc: MerginClient, mc2: MerginClient):
     assert any(file["path"] == gpkg_file_name for file in project_info.get("files")) is True
     pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
     assert not sum(len(v) for v in pull_changes.values())
-    assert sum(len(v) for v in push_changes.values()) == 1  
+    assert sum(len(v) for v in push_changes.values()) == 1
     # ggs is still waiting to push
     assert any(file["path"] == qgs_file_name for file in push_changes.get("added")) is True
 
@@ -2633,8 +2628,27 @@ def test_editor_push(mc: MerginClient, mc2: MerginClient):
     pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
     assert not sum(len(v) for v in pull_changes.values())
     # gpkg was filter by editor_handler in push_project, because new tables added
-    assert sum(len(v) for v in push_changes.values()) == 2 
+    assert sum(len(v) for v in push_changes.values()) == 2
     # ggs and gpkg are still waiting to push
     assert any(file["path"] == qgs_file_name for file in push_changes.get("added")) is True
     assert any(file["path"] == gpkg_file_name for file in push_changes.get("updated")) is True
+    # push as owner do cleanup local changes and preparation to conflicitng copy simulate
+    mc.push_project(project_dir)
 
+    # simulate conflicting copy of qgis file
+    # Push from dir2 changes to qgis file
+    mc.download_project(test_project_fullname, project_dir2)
+    with open(os.path.join(project_dir2, qgs_file_name), "a") as f:
+        f.write("C server version")
+    mc.push_project(project_dir2)
+    # editor is editing qgs file too in dir
+    with open(os.path.join(project_dir, qgs_file_name), "a") as f:
+        f.write("B local version")
+    mc2.pull_project(project_dir)
+    conflicted_file = None
+    for project_file in os.listdir(project_dir):
+        _, ext = os.path.splitext(project_file)
+        if ext == ".qgs~":
+            conflicted_file = project_file
+    # There is no conflicted qgs file
+    assert conflicted_file is None

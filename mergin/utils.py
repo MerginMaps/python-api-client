@@ -205,7 +205,7 @@ def conflicted_copy_file_name(path, user, version):
     # to avoid having several QGIS project files inside Mergin Maps project.
     # See https://github.com/lutraconsulting/qgis-mergin-plugin/issues/382
     # for more details
-    if ext.lower() in (".qgz", ".qgs"):
+    if is_qgis_file(path):
         ext += "~"
     return os.path.join(head, file_name) + f" (conflicted copy, {user} v{version}){ext}"
 
@@ -256,10 +256,12 @@ def is_version_acceptable(version, min_version):
 
     return major > min_major or (major == min_major and minor >= min_minor)
 
+
 def is_versioned_file(path: str) -> bool:
     diff_extensions = [".gpkg", ".sqlite"]
     f_extension = os.path.splitext(path)[1]
     return f_extension.lower() in diff_extensions
+
 
 def is_qgis_file(path: str) -> bool:
     """
@@ -267,6 +269,7 @@ def is_qgis_file(path: str) -> bool:
     """
     f_extension = os.path.splitext(path)[1]
     return f_extension.lower() in [".qgs", ".qgz"]
+
 
 def is_mergin_config(path: str) -> bool:
     """Check if the given path is for file mergin-config.json"""

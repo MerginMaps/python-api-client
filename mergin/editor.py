@@ -2,55 +2,93 @@ from itertools import filterfalse
 
 from .utils import is_mergin_config, is_qgis_file, is_versioned_file
 
+EDITOR_ROLE_NAME = "editor"
 
-class EditorHandler:
-    def __init__(self, mergin_client, project_info: dict):
-        """
-        Initializes the editor instance with the provided Mergin client and project information.
+"""
+Determines whether a given file change should be disallowed based on the file path.
 
-        Args:
-            mergin_client (MerginClient): The Mergin client instance.
-            project_info (dict): The project information dictionary.
-        """
-        self.mc = mergin_client
-        self.project_info = project_info
-        self.ROLE_NAME = "editor"
+Returns:
+    bool: True if the file change should be disallowed, False otherwise.
+"""
+_disallowed_added_changes = lambda change: is_qgis_file(change["path"]) or is_mergin_config(change["path"])
+"""
+Determines whether a given file change should be disallowed from being updated.
 
-    _disallowed_added_changes = lambda self, change: is_qgis_file(change["path"]) or is_mergin_config(change["path"])
-    _disallowed_updated_changes = (
-        lambda self, change: is_qgis_file(change["path"])
-        or is_mergin_config(change["path"])
-        or (is_versioned_file(change["path"]) and change.get("diff") is None)
-    )
-    _disallowed_removed_changes = (
-        lambda self, change: is_qgis_file(change["path"])
-        or is_mergin_config(change["path"])
-        or is_versioned_file(change["path"])
-    )
+The function checks the following conditions:
+- If the file path matches a QGIS file
+- If the file path matches a Mergin configuration file
+- If the file is versioned and the change does not have a diff
 
-    def is_enabled(self):
-        """
-        Returns True if the current user has editor access to the project, False otherwise.
+Returns:
+    bool: True if the change should be disallowed, False otherwise.
+"""
+_disallowed_updated_changes = (
+    lambda change: is_qgis_file(change["path"])
+    or is_mergin_config(change["path"])
+    or (is_versioned_file(change["path"]) and change.get("diff") is None)
+)
+"""
+Determines whether a given file change should be disallowed from being removed.
 
-        The method checks if the server supports editor access, and if the current user's project role matches the expected role name for editors.
-        """
-        server_support_editor = self.mc.has_editor_support()
-        project_role = self.project_info.get("role")
+The function checks if the file path of the change matches any of the following conditions:
+- The file is a QGIS file (e.g. .qgs, .qgz)
+- The file is a Mergin configuration file (mergin-config.json)
+- The file is a versioned file (.gpkg, .sqlite)
 
-        return server_support_editor and project_role == self.ROLE_NAME
+If any of these conditions are met, the change is considered disallowed from being removed.
+"""
+_disallowed_removed_changes = (
+    lambda change: is_qgis_file(change["path"]) or is_mergin_config(change["path"]) or is_versioned_file(change["path"])
+)
 
-    def _apply_editor_filters(self, changes: dict[str, list[dict]]) -> dict[str, list[dict]]:
-        added = changes.get("added", [])
-        updated = changes.get("updated", [])
-        removed = changes.get("removed", [])
 
-        # filter out files that are not in the editor's list of allowed files
-        changes["added"] = list(filterfalse(self._disallowed_added_changes, added))
-        changes["updated"] = list(filterfalse(self._disallowed_updated_changes, updated))
-        changes["removed"] = list(filterfalse(self._disallowed_removed_changes, removed))
+def is_editor_enabled(mc, project_info: dict) -> bool:
+    """
+    The function checks if the server supports editor access, and if the current user's project role matches the expected role name for editors.
+    """
+    server_support = mc.has_editor_support()
+    project_role = project_info.get("role")
+
+    return server_support and project_role == EDITOR_ROLE_NAME
+
+
+def _apply_editor_filters(changes: dict[str, list[dict]]) -> dict[str, list[dict]]:
+    """
+    Applies editor-specific filters to the changes dictionary, removing any changes to files that are not in the editor's list of allowed files.
+
+    Args:
+        changes (dict[str, list[dict]]): A dictionary containing the added, updated, and removed changes.
+
+    Returns:
+        dict[str, list[dict]]: The filtered changes dictionary.
+    """
+    added = changes.get("added", [])
+    updated = changes.get("updated", [])
+    removed = changes.get("removed", [])
+
+    # filter out files that are not in the editor's list of allowed files
+    changes["added"] = list(filterfalse(_disallowed_added_changes, added))
+    changes["updated"] = list(filterfalse(_disallowed_updated_changes, updated))
+    changes["removed"] = list(filterfalse(_disallowed_removed_changes, removed))
+    return changes
+
+
+def filter_changes(mc, project_info: dict, changes: dict[str, list[dict]]) -> dict[str, list[dict]]:
+    """
+    Filters the given changes dictionary based on the editor's enabled state.
+
+    If the editor is not enabled, the changes dictionary is returned as-is. Otherwise, the changes are passed through the `_apply_editor_filters` method to apply any configured filters.
+
+    Args:
+        changes (dict[str, list[dict]]): A dictionary mapping file paths to lists of change dictionaries.
+
+    Returns:
+        dict[str, list[dict]]: The filtered changes dictionary.
+    """
+    if not is_editor_enabled(mc, project_info):
         return changes
+    return _apply_editor_filters(changes)
 
-    def filter_changes(self, changes: dict[str, list[dict]]) -> dict[str, list[dict]]:
-        if not self.is_enabled():
-            return changes
-        return self._apply_editor_filters(changes)
+
+def prevent_conflicted_copy(path: str, mc, project_info: dict) -> bool:
+    return is_editor_enabled(mc, project_info) and any([is_qgis_file(path), is_mergin_config(path)])
