@@ -372,10 +372,6 @@ class PullJob:
             print("- {} {} {} {}".format(item.file_path, item.version, item.part_index, item.size))
         print("--- END ---")
 
-    def apply_changes(self):
-        """Apply changes to the project directory with MerginProject.apply_pull_changes"""
-        return self.mp.apply_pull_changes(self.pull_changes, self.temp_dir, self.project_info, self.mc)
-
 
 def pull_project_async(mc, directory):
     """
@@ -627,7 +623,7 @@ def pull_project_finalize(job: PullJob):
             raise ClientError("Cannot patch basefile {}! Please try syncing again.".format(basefile))
 
     try:
-        conflicts = job.apply_changes()
+        conflicts = job.mp.apply_pull_changes(job.pull_changes, job.temp_dir, job.project_info, job.mc)
     except Exception as e:
         job.mp.log.error("Failed to apply pull changes: " + str(e))
         job.mp.log.info("--- pull aborted")

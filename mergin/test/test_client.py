@@ -2632,7 +2632,7 @@ def test_editor_push(mc: MerginClient, mc2: MerginClient):
     # ggs and gpkg are still waiting to push
     assert any(file["path"] == qgs_file_name for file in push_changes.get("added")) is True
     assert any(file["path"] == gpkg_file_name for file in push_changes.get("updated")) is True
-    # push as owner do cleanup local changes and preparation to conflicitng copy simulate
+    # push as owner do cleanup local changes and preparation to conflicited copy simulate
     mc.push_project(project_dir)
 
     # simulate conflicting copy of qgis file

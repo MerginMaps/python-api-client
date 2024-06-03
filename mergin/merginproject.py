@@ -548,7 +548,7 @@ class MerginProject:
                         # We just apply the diff between our copy and server to both the local copy and its basefile
                         self.update_without_rebase(path, src, dest, basefile, temp_dir)
                 else:
-                    # creating conflicitn copy if both server and local changes are present on the files
+                    # creating conflicted copy if both server and local changes are present on the files
                     if (
                         path in modified_local_paths
                         and item["checksum"] != local_files_map[path]["checksum"]
