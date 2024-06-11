@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.1
+
+- Support for "editor" permission level for server >= 2024.4.0. Editors have more limited functionality than "writer" permission: they are not allowed to modify the QGIS project file or change structure of tables (#202, #207)
+- Better handling of unexpected errors during the initial download of a project (#201)
+- Fixes to CI (#205)
+
 ## 0.9.0
 
 - Add `reset_local_changes()` API call and `reset` CLI command to make it possible to discard any changes in the local project directory (#107)
