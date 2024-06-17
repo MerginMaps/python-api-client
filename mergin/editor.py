@@ -11,38 +11,7 @@ Determines whether a given file change should be disallowed based on the file pa
 Returns:
     bool: True if the file change should be disallowed, False otherwise.
 """
-disallowed_added_changes: Callable[[dict], bool] = lambda change: is_qgis_file(change["path"]) or is_mergin_config(
-    change["path"]
-)
-"""
-Determines whether a given file change should be disallowed from being updated.
-
-The function checks the following conditions:
-- If the file path matches a QGIS file
-- If the file path matches a Mergin configuration file
-- If the file is versioned and the change does not have a diff
-
-Returns:
-    bool: True if the change should be disallowed, False otherwise.
-"""
-_disallowed_updated_changes: Callable[[dict], bool] = (
-    lambda change: is_qgis_file(change["path"])
-    or is_mergin_config(change["path"])
-    or (is_versioned_file(change["path"]) and change.get("diff") is None)
-)
-"""
-Determines whether a given file change should be disallowed from being removed.
-
-The function checks if the file path of the change matches any of the following conditions:
-- The file is a QGIS file (e.g. .qgs, .qgz)
-- The file is a Mergin configuration file (mergin-config.json)
-- The file is a versioned file (.gpkg, .sqlite)
-
-If any of these conditions are met, the change is considered disallowed from being removed.
-"""
-_disallowed_removed_changes: Callable[[dict], bool] = (
-    lambda change: is_qgis_file(change["path"]) or is_mergin_config(change["path"]) or is_versioned_file(change["path"])
-)
+_disallowed_changes: Callable[[dict], bool] = lambda change: is_qgis_file(change["path"])
 
 
 def is_editor_enabled(mc, project_info: dict) -> bool:
@@ -65,14 +34,9 @@ def _apply_editor_filters(changes: dict[str, list[dict]]) -> dict[str, list[dict
     Returns:
         dict[str, list[dict]]: The filtered changes dictionary.
     """
-    added = changes.get("added", [])
     updated = changes.get("updated", [])
-    removed = changes.get("removed", [])
 
-    # filter out files that are not in the editor's list of allowed files
-    changes["added"] = list(filterfalse(disallowed_added_changes, added))
-    changes["updated"] = list(filterfalse(_disallowed_updated_changes, updated))
-    changes["removed"] = list(filterfalse(_disallowed_removed_changes, removed))
+    changes["updated"] = list(filterfalse(_disallowed_changes, updated))
     return changes
 
 
@@ -106,4 +70,4 @@ def prevent_conflicted_copy(path: str, mc, project_info: dict) -> bool:
     Returns:
         bool: True if the file path should be prevented from ceating conflicted copy, False otherwise.
     """
-    return is_editor_enabled(mc, project_info) and any([is_qgis_file(path), is_mergin_config(path)])
+    return is_editor_enabled(mc, project_info) and any([is_qgis_file(path)])

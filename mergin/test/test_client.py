@@ -2545,28 +2545,7 @@ def test_editor(mc: MerginClient):
         "removed": [{"path": "/folder/project.removed.qgs"}],
     }
     qgs_changeset = filter_changes(mc, project_info, qgs_changeset)
-    assert sum(len(v) for v in qgs_changeset.values()) == 0
-
-    mergin_config_changeset = {
-        "added": [{"path": "/.mergin/mergin-config.json"}],
-        "updated": [{"path": "/.mergin/mergin-config.json"}],
-        "removed": [{"path": "/.mergin/mergin-config.json"}],
-    }
-    mergin_config_changeset = filter_changes(mc, project_info, mergin_config_changeset)
-    assert sum(len(v) for v in mergin_config_changeset.values()) == 0
-
-    gpkg_changeset = {
-        "added": [{"path": "/.mergin/data.gpkg"}],
-        "updated": [
-            {"path": "/.mergin/conflict-data.gpkg"},
-            {"path": "/.mergin/data.gpkg", "diff": {}},
-        ],
-        "removed": [{"path": "/.mergin/data.gpkg"}],
-    }
-    gpkg_changeset = filter_changes(mc, project_info, gpkg_changeset)
-    assert sum(len(v) for v in gpkg_changeset.values()) == 2
-    assert gpkg_changeset["added"][0]["path"] == "/.mergin/data.gpkg"
-    assert gpkg_changeset["updated"][0]["path"] == "/.mergin/data.gpkg"
+    assert sum(len(v) for v in qgs_changeset.values()) == 2
 
 
 def test_editor_push(mc: MerginClient, mc2: MerginClient):
@@ -2591,24 +2570,21 @@ def test_editor_push(mc: MerginClient, mc2: MerginClient):
     qgs_file_name = "test.qgs"
     txt_file_name = "test.txt"
     gpkg_file_name = "base.gpkg"
-    files_to_push = [qgs_file_name, txt_file_name, gpkg_file_name]
+    files_to_push = [txt_file_name, gpkg_file_name]
     for file in files_to_push:
         shutil.copy(os.path.join(TEST_DATA_DIR, file), project_dir)
     # it's possible to push allowed files if editor
     mc2.push_project(project_dir)
     project_info = mc2.project_info(test_project_fullname)
-    assert len(project_info.get("files")) == len(files_to_push) - 1  # ggs is not pushed
+    assert len(project_info.get("files")) == len(files_to_push)  # ggs is not pushed
     # find pushed files in server
-    assert any(file["path"] == qgs_file_name for file in project_info.get("files")) is False
     assert any(file["path"] == txt_file_name for file in project_info.get("files")) is True
     assert any(file["path"] == gpkg_file_name for file in project_info.get("files")) is True
     pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
     assert not sum(len(v) for v in pull_changes.values())
-    assert sum(len(v) for v in push_changes.values()) == 1
-    # ggs is still waiting to push
-    assert any(file["path"] == qgs_file_name for file in push_changes.get("added")) is True
+    assert not sum(len(v) for v in push_changes.values())
 
-    # editor is trying to psuh row to gpkg file -> it's possible
+    # editor is trying to push row to gpkg file -> it's possible
     shutil.copy(
         os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"),
         os.path.join(project_dir, gpkg_file_name),
@@ -2619,19 +2595,20 @@ def test_editor_push(mc: MerginClient, mc2: MerginClient):
     assert any(file["path"] == gpkg_file_name for file in project_info.get("files")) is True
     assert any(file["path"] == gpkg_file_name for file in push_changes.get("updated")) is False
 
-    # editor is trying to insert tables to gpkg file
-    shutil.copy(
-        os.path.join(TEST_DATA_DIR, "two_tables.gpkg"),
-        os.path.join(project_dir, gpkg_file_name),
-    )
-    mc2.push_project(project_dir)
+    # add qgis file as editor
+    shutil.copy(os.path.join(TEST_DATA_DIR, qgs_file_name), project_dir)
+    with pytest.raises(ClientError, match=f"You do not have permissions for this project"):
+        mc2.push_project(project_dir)
+    mc.push_project(project_dir)
+
+    # editor is trying to update qgis file
+    with open(os.path.join(project_dir, qgs_file_name), "a") as f:
+        f.write("Editor is here!")
+    project_info = mc2.project_info(test_project_fullname)
     pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
-    assert not sum(len(v) for v in pull_changes.values())
-    # gpkg was filter by editor_handler in push_project, because new tables added
-    assert sum(len(v) for v in push_changes.values()) == 2
-    # ggs and gpkg are still waiting to push
-    assert any(file["path"] == qgs_file_name for file in push_changes.get("added")) is True
-    assert any(file["path"] == gpkg_file_name for file in push_changes.get("updated")) is True
+    # ggs is still waiting to push
+    assert any(file["path"] == qgs_file_name for file in push_changes.get("updated")) is True
+
     # push as owner do cleanup local changes and preparation to conflicited copy simulate
     mc.push_project(project_dir)
 
