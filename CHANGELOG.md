@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.2
+
+- Update rules when pushing with editor permission level (#208)
+
 ## 0.9.1
 
 - Support for "editor" permission level for server >= 2024.4.0. Editors have more limited functionality than "writer" permission: they are not allowed to modify the QGIS project file or change structure of tables (#202, #207)
