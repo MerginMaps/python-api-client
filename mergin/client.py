@@ -214,12 +214,14 @@ class MerginClient:
             else:
                 err_detail = e.read().decode("utf-8")
 
-            raise ClientError(detail=err_detail, 
-                              url=request.get_full_url(),
-                              server_code=server_code, 
-                              server_response= server_response,
-                              http_error=e.code,
-                              http_method=request.get_method())
+            raise ClientError(
+                detail=err_detail,
+                url=request.get_full_url(),
+                server_code=server_code,
+                server_response=server_response,
+                http_error=e.code,
+                http_method=request.get_method(),
+            )
         except urllib.error.URLError as e:
             # e.g. when DNS resolution fails (no internet connection?)
             raise ClientError("Error requesting " + request.full_url + ": " + str(e))
@@ -434,7 +436,6 @@ class MerginClient:
         except ClientError as e:
             e.extra = f"Workspace name: {workspace_name}"
             raise e
-
 
     def create_project(self, project_name, is_public=False, namespace=None):
         """

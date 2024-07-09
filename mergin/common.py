@@ -11,24 +11,31 @@ this_dir = os.path.dirname(os.path.realpath(__file__))
 
 
 class ClientError(Exception):
-    def __init__(self, detail, url=None, server_code=None, server_response=None, http_error=None,http_method=None):
-          self.detail = detail
-          self.url = url
-          self.http_error = http_error
-          self.http_method = http_method
+    def __init__(self, detail, url=None, server_code=None, server_response=None, http_error=None, http_method=None):
+        self.detail = detail
+        self.url = url
+        self.http_error = http_error
+        self.http_method = http_method
 
-          self.server_code = server_code
-          self.server_response = server_response
+        self.server_code = server_code
+        self.server_response = server_response
 
-          self.extra = None
+        self.extra = None
 
     def __str__(self):
-            return f"Detail: {self.detail}\n" \
-                    + f"HTTP Error: {self.http_error}\n" if self.http_error else None \
-                    + f"URL: {self.url}\n" if self.url else None \
-                    + f"Method: {self.http_method}\n" if self.http_method else None \
-                    + f"{self.extra}\n" if self.extra else None 
-                
+        return (
+            f"Detail: {self.detail}\n" + f"HTTP Error: {self.http_error}\n"
+            if self.http_error
+            else (
+                None + f"URL: {self.url}\n"
+                if self.url
+                else (
+                    None + f"Method: {self.http_method}\n"
+                    if self.http_method
+                    else None + f"{self.extra}\n" if self.extra else None
+                )
+            )
+        )
 
 
 class LoginError(Exception):
