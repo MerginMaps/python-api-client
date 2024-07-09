@@ -205,19 +205,21 @@ class MerginClient:
         try:
             return self.opener.open(request)
         except urllib.error.HTTPError as e:
-            if e.headers.get("Content-Type", "") == "application/problem+json":
-                info = json.load(e)
-                err_detail = info.get("detail")
+            server_code = None
+            server_response = None
+            if e.headers.get("Content-Type", "") == "application/json":
+                server_response = json.load(e)
+                err_detail = server_response.get("detail")
+                server_code = server_response.get("code")
             else:
                 err_detail = e.read().decode("utf-8")
 
-            error_msg = (
-                f"HTTP Error: {e.code} {e.reason}\n"
-                f"URL: {request.get_full_url()}\n"
-                f"Method: {request.get_method()}\n"
-                f"Detail: {err_detail}"
-            )
-            raise ClientError(error_msg)
+            raise ClientError(detail=err_detail, 
+                              url=request.get_full_url(),
+                              server_code=server_code, 
+                              server_response= server_response,
+                              http_error=e.code,
+                              http_method=request.get_method())
         except urllib.error.URLError as e:
             # e.g. when DNS resolution fails (no internet connection?)
             raise ClientError("Error requesting " + request.full_url + ": " + str(e))
@@ -429,9 +431,10 @@ class MerginClient:
 
         try:
             self.post("/v1/workspace", params, {"Content-Type": "application/json"})
-        except Exception as e:
-            detail = f"Workspace name: {workspace_name}"
-            raise ClientError(str(e), detail)
+        except ClientError as e:
+            e.extra = f"Workspace name: {workspace_name}"
+            raise e
+
 
     def create_project(self, project_name, is_public=False, namespace=None):
         """
@@ -478,9 +481,9 @@ class MerginClient:
             namespace = self.username()
         try:
             self.post(f"/v1/project/{namespace}", params, {"Content-Type": "application/json"})
-        except Exception as e:
-            detail = f"Namespace: {namespace}, project name: {project_name}"
-            raise ClientError(str(e), detail)
+        except ClientError as e:
+            e.extra = f"Namespace: {namespace}, project name: {project_name}"
+            raise e
 
     def create_project_and_push(self, project_name, directory, is_public=False, namespace=None):
         """
@@ -776,9 +779,9 @@ class MerginClient:
         try:
             request = urllib.request.Request(url, data=json.dumps(params).encode(), headers=json_headers, method="PUT")
             self._do_request(request)
-        except Exception as e:
-            detail = f"Project path: {project_path}"
-            raise ClientError(str(e), detail)
+        except ClientError as e:
+            e.extra = f"Project path: {project_path}"
+            raise e
 
     def add_user_permissions_to_project(self, project_path, usernames, permission_level):
         """
