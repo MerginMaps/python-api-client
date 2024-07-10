@@ -1,5 +1,5 @@
 import os
-
+from enum import Enum
 
 CHUNK_SIZE = 100 * 1024 * 1024
 
@@ -8,6 +8,11 @@ UPLOAD_CHUNK_SIZE = 10 * 1024 * 1024
 
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
+
+
+# Error code from the public API, add to the end of enum as we handle more eror
+class ErrorCode(Enum):
+    ProjectsLimitHit = "ProjectsLimitHit"
 
 
 class ClientError(Exception):
