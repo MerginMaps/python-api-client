@@ -28,19 +28,16 @@ class ClientError(Exception):
         self.extra = None
 
     def __str__(self):
-        return (
-            f"Detail: {self.detail}\n" + f"HTTP Error: {self.http_error}\n"
-            if self.http_error
-            else (
-                None + f"URL: {self.url}\n"
-                if self.url
-                else (
-                    None + f"Method: {self.http_method}\n"
-                    if self.http_method
-                    else None + f"{self.extra}\n" if self.extra else None
-                )
-            )
-        )
+        string_res = f"Detail: {self.detail}\n"
+        if self.http_error:
+            string_res += f"HTTP Error: {self.http_error}\n"
+        if self.url:
+            string_res += f"URL: {self.url}\n"
+        if self.http_method:
+            string_res += f"Method: {self.http_method}\n"
+        if self.extra:
+            string_res += f"{self.extra}\n"
+        return string_res
 
 
 class LoginError(Exception):
