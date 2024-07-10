@@ -211,6 +211,9 @@ class MerginClient:
                 server_response = json.load(e)
                 err_detail = server_response.get("detail")
                 server_code = server_response.get("code")
+            elif e.headers.get("Content-Type", "") == "application/problem+json":
+                server_response = json.load(e)
+                err_detail = server_response.get("detail")
             else:
                 err_detail = e.read().decode("utf-8")
 
