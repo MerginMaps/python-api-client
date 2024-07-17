@@ -13,6 +13,7 @@ this_dir = os.path.dirname(os.path.realpath(__file__))
 # Error code from the public API, add to the end of enum as we handle more eror
 class ErrorCode(Enum):
     ProjectsLimitHit = "ProjectsLimitHit"
+    StorageLimitHit = "StorageLimitHit"
 
 
 class ClientError(Exception):
