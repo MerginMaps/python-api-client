@@ -19,6 +19,7 @@ from ..client import (
     decode_token_data,
     TokenError,
     ServerType,
+    ErrorCode
 )
 from ..client_push import push_project_async, push_project_cancel
 from ..client_pull import (
@@ -2629,3 +2630,35 @@ def test_editor_push(mc: MerginClient, mc2: MerginClient):
             conflicted_file = project_file
     # There is no conflicted qgs file
     assert conflicted_file is None
+
+
+def test_error_push_already_named_project(mc: MerginClient):
+    test_project = "test_push_already_existing"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+
+    try: 
+        mc.create_project_and_push(test_project, project_dir)
+    except ClientError as e:
+        print(e)
+        assert e.detail == 'Project with the same name already exists'
+        assert e.http_error == 409
+        assert e.http_method == 'POST'
+        assert e.url == 'https://test.dev.merginmaps.com/v1/project/test_plugin'
+
+def test_error_projects_limit_hit(mcStorage: MerginClient):
+    test_project = "test_another_project_above_projects_limit"
+    test_project_fullname = STORAGE_WORKSPACE + "/" + test_project
+
+    project_dir = os.path.join(TMP_DIR, test_project, API_USER)
+
+    try:
+        mcStorage.create_project_and_push(test_project, project_dir)
+    except ClientError as e:
+        print("BLVAVBLA")
+        print(e)
+        assert e.server_code == ErrorCode.ProjectsLimitHit.value
+        assert e.detail == 'Project with the same name already exists'
+        assert e.http_error == 422
+        assert e.http_method == 'POST'
+        assert e.url == 'https://test.dev.merginmaps.com/v1/project/test_plugin'
