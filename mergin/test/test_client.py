@@ -2659,8 +2659,7 @@ def test_error_projects_limit_hit(mcStorage: MerginClient):
         assert e.server_code == ErrorCode.ProjectsLimitHit.value
         assert (
             e.detail
-            == "Maximum number of projects is reached. Please upgrade your subscription\
-            to create new projects (ProjectsLimitHit)"
+            == "Maximum number of projects is reached. Please upgrade your subscription to create new projects (ProjectsLimitHit)"
         )
         assert e.http_error == 422
         assert e.http_method == "POST"
