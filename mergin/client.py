@@ -205,17 +205,11 @@ class MerginClient:
         try:
             return self.opener.open(request)
         except urllib.error.HTTPError as e:
-            server_code = None
-            server_response = None
-            if e.headers.get("Content-Type", "") == "application/json":
-                server_response = json.load(e)
-                err_detail = server_response.get("detail")
-                server_code = server_response.get("code")
-            elif e.headers.get("Content-Type", "") == "application/problem+json":
-                server_response = json.load(e)
-                err_detail = server_response.get("detail")
-            else:
-                err_detail = e.read().decode("utf-8")
+            server_response = json.load(e)
+
+            # We first to try to get the value from the response otherwise we set a default value
+            err_detail = server_response.get("detail", e.read().decode("utf-8"))
+            server_code = server_response.get("code", None)
 
             raise ClientError(
                 detail=err_detail,
