@@ -2637,14 +2637,12 @@ def test_error_push_already_named_project(mc: MerginClient):
     project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)
 
-    try:
+    with pytest.raises(ClientError) as e:
         mc.create_project_and_push(test_project, project_dir)
-    except ClientError as e:
-        print(e)
-        assert e.detail == "Project with the same name already exists"
-        assert e.http_error == 409
-        assert e.http_method == "POST"
-        assert e.url == "https://test.dev.merginmaps.com/v1/project/test_plugin"
+    assert e.detail == "Project with the same name already exists"
+    assert e.http_error == 409
+    assert e.http_method == "POST"
+    assert e.url == f"{mc.url}v1/project/test_plugin"
 
 
 def test_error_projects_limit_hit(mcStorage: MerginClient):
@@ -2653,14 +2651,13 @@ def test_error_projects_limit_hit(mcStorage: MerginClient):
 
     project_dir = os.path.join(TMP_DIR, test_project, API_USER)
 
-    try:
+    with pytest.raises(ClientError) as e:
         mcStorage.create_project_and_push(test_project_fullname, project_dir)
-    except ClientError as e:
-        assert e.server_code == ErrorCode.ProjectsLimitHit.value
-        assert (
-            e.detail
-            == "Maximum number of projects is reached. Please upgrade your subscription to create new projects (ProjectsLimitHit)"
-        )
-        assert e.http_error == 422
-        assert e.http_method == "POST"
-        assert e.url == "https://test.dev.merginmaps.com/v1/project/testpluginstorage"
+    assert e.server_code == ErrorCode.ProjectsLimitHit.value
+    assert (
+        e.detail
+        == "Maximum number of projects is reached. Please upgrade your subscription to create new projects (ProjectsLimitHit)"
+    )
+    assert e.http_error == 422
+    assert e.http_method == "POST"
+    assert e.url == "https://test.dev.merginmaps.com/v1/project/testpluginstorage"
