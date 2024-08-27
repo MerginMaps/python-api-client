@@ -364,6 +364,24 @@ class MerginClient:
 
         return response
 
+    def workspace_usage(self, workspace_id):
+        """
+        This Requests information about a workspace usage from /workspace/{id}/usage endpoint,
+        if such exists in self.url server.
+
+        Returns response from server as JSON dict or None if endpoint is not found
+        """
+
+        try:
+            response = self.get(f"/v1/workspace/{workspace_id}/usage")
+        except ClientError as e:
+            self.log.debug(f"Unable to query for /workspace/{workspace_id}/usage endpoint")
+            return
+
+        response = json.loads(response.read())
+
+        return response
+    
     def server_type(self):
         """
         Returns the deployment type of the server
@@ -698,9 +716,9 @@ class MerginClient:
         If neither 'since' nor 'to' is specified it will return all versions.
 
         :param project_path: Project's full name (<namespace>/<name>)
-        :type project_path: String
+        :type project_path: String | Int
         :param since: Version to track project history from
-        :type since: String
+        :type since: String | Int
         :param to: Version to track project history to
         :type to: String
 
@@ -708,8 +726,20 @@ class MerginClient:
         """
         versions = []
         per_page = 100  # server limit
-        num_since = int_version(since) if since else 1
-        num_to = int_version(to) if to else None  # we may not know yet
+
+        if type(since) == str:
+            num_since = int_version(since)
+        elif since == None:
+            num_since == 1
+        else:
+            #keep the since parameter as is
+            num_since = since
+        if type(to) == str:
+            num_to = int_version(int)
+        else:
+            #keep the to parameter as is
+            num_to = to
+
         start_page = math.ceil(num_since / per_page)
         if not num_to:
             # let's get first page and count
@@ -720,6 +750,7 @@ class MerginClient:
             num_to = resp_json["count"]
             latest_version = int_version(versions[-1]["name"])
             if latest_version < num_to:
+                #add yield here
                 versions += self.project_versions(project_path, f"v{latest_version+1}", f"v{num_to}")
         else:
             end_page = math.ceil(num_to / per_page)
@@ -731,6 +762,31 @@ class MerginClient:
         # filter out versions not within range
         filtered_versions = list(filter(lambda v: (num_since <= int_version(v["name"]) <= num_to), versions))
         return filtered_versions
+    
+    def project_versions_count(self, project_path):
+
+        #TODO ask tomas if we should return the total count another
+
+        """
+        Get the total count of project's versions history.
+
+        :param project_path: Project's full name (<namespace>/<name>)
+        :type project_path: String
+        :param since: Version to track project history from
+        :type since: String
+        :param to: Version to track project history to
+        :type to: String
+
+        :rtype: Integer
+        """
+        start_page = 1 #we don't care which page to get the count 
+        per_page = 100  # server limit
+        params = {"page": start_page, "per_page": per_page, "descending": False}
+        resp = self.get("/v1/project/versions/paginated/{}".format(project_path), params)
+        resp_json = json.load(resp)
+
+        return resp_json["count"]
+
 
     def download_project(self, project_path, directory, version=None):
         """
