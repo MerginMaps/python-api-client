@@ -873,8 +873,6 @@ def get_project_info(mc, namespace, project_name):
     """
     projects = mc.projects_list(flag="created")
     test_project_list = [p for p in projects if p["name"] == project_name and p["namespace"] == namespace]
-    print(namespace)
-    print(test_project_list)
     assert len(test_project_list) == 1
     return test_project_list[0]
 
