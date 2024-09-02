@@ -734,6 +734,7 @@ class MerginClient:
         else:
             #keep the since parameter as is
             num_since = since
+            
         if type(to) == str:
             num_to = int_version(int)
         else:
