@@ -275,3 +275,22 @@ def is_mergin_config(path: str) -> bool:
     """Check if the given path is for file mergin-config.json"""
     filename = os.path.basename(path).lower()
     return filename == "mergin-config.json"
+
+
+def bytes_to_human_size(bytes: int):
+    """
+    Convert bytes to human readable size
+    example  :
+    bytes_to_human_size(5600000) -> "5.3 MB"
+    """
+    precision = 1
+    if bytes < 1e-5:
+        return "0.0 MB"
+    elif bytes < 1024.0 * 1024.0:
+        return f"{round( bytes / 1024.0, precision )} KB"
+    elif bytes < 1024.0 * 1024.0 * 1024.0:
+        return f"{round( bytes / 1024.0 / 1024.0, precision)} MB"
+    elif bytes < 1024.0 * 1024.0 * 1024.0 * 1024.0:
+        return f"{round( bytes / 1024.0 / 1024.0 / 1024.0, precision )} GB"
+    else:
+        return f"{round( bytes / 1024.0 / 1024.0 / 1024.0 / 1024.0, precision )} TB"

@@ -19,6 +19,7 @@ from ..client import (
     decode_token_data,
     TokenError,
     ServerType,
+    ErrorCode,
 )
 from ..client_push import push_project_async, push_project_cancel
 from ..client_pull import (
@@ -796,7 +797,7 @@ def test_available_storage_validation(mcStorage):
     assert got_right_err
 
     # Expecting empty project
-    project_info = get_project_info(mcStorage, API_USER, test_project)
+    project_info = get_project_info(mcStorage, STORAGE_WORKSPACE, test_project)
     assert project_info["version"] == "v0"
     assert project_info["disk_usage"] == 0
 
@@ -2629,3 +2630,34 @@ def test_editor_push(mc: MerginClient, mc2: MerginClient):
             conflicted_file = project_file
     # There is no conflicted qgs file
     assert conflicted_file is None
+
+
+def test_error_push_already_named_project(mc: MerginClient):
+    test_project = "test_push_already_existing"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+
+    with pytest.raises(ClientError) as e:
+        mc.create_project_and_push(test_project, project_dir)
+    assert e.value.detail == "Project with the same name already exists"
+    assert e.value.http_error == 409
+    assert e.value.http_method == "POST"
+    assert e.value.url == f"{mc.url}v1/project/test_plugin"
+
+
+def test_error_projects_limit_hit(mcStorage: MerginClient):
+    test_project = "test_another_project_above_projects_limit"
+    test_project_fullname = STORAGE_WORKSPACE + "/" + test_project
+
+    project_dir = os.path.join(TMP_DIR, test_project, API_USER)
+
+    with pytest.raises(ClientError) as e:
+        mcStorage.create_project_and_push(test_project_fullname, project_dir)
+    assert e.value.server_code == ErrorCode.ProjectsLimitHit.value
+    assert (
+        e.value.detail
+        == "Maximum number of projects is reached. Please upgrade your subscription to create new projects (ProjectsLimitHit)"
+    )
+    assert e.value.http_error == 422
+    assert e.value.http_method == "POST"
+    assert e.value.url == f"{mcStorage.url}v1/project/testpluginstorage"
