@@ -7,7 +7,7 @@ but the tool is not available, you may need to fix your PATH (e.g. add ~/.local/
 pip puts these tools).
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 import click
 import json
 import os
@@ -143,7 +143,7 @@ def _print_unhandled_exception():
 
 
 @click.group(
-    epilog=f"Copyright (C) 2019-2021 Lutra Consulting\n\n(mergin-py-client v{__version__} / pygeodiff v{GeoDiff().version()})"
+    epilog=f"Copyright (C) 2019-{date.today().year} Lutra Consulting\n\n(mergin-py-client v{__version__} / pygeodiff v{GeoDiff().version()})"
 )
 @click.option(
     "--url",
@@ -481,9 +481,9 @@ def show_version(ctx, version):
         return
     directory = os.getcwd()
     mp = MerginProject(directory)
-    project_path = mp.project_full_name()
+    project_id = mp.project_id()
     # TODO: handle exception when version not found
-    version_info_dict = mc.project_version_info(project_path, version)[0]
+    version_info_dict = mc.project_version_info(project_id, version)
     click.secho("Project: " + version_info_dict["namespace"] + "/" + version_info_dict["project_name"])
     click.secho("Version: " + version_info_dict["name"] + " by " + version_info_dict["author"])
     click.secho("Time:    " + version_info_dict["created"])
