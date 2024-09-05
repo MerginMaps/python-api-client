@@ -2342,11 +2342,11 @@ def test_project_metadata(mc):
     os.makedirs(os.path.join(project_dir, ".mergin"), exist_ok=True)
     metadata_file = os.path.join(project_dir, "old_metadata.json")
     # rewrite metadata nemespace to prevent failing tests with other user than test_plugin
-    with open(metadata_file, 'r') as f:
+    with open(metadata_file, "r") as f:
         metadata = json.load(f)
-    metadata['name'] = f"{API_USER}/{test_project}"
+    metadata["name"] = f"{API_USER}/{test_project}"
     project_metadata_file = os.path.join(project_dir, ".mergin", "mergin.json")
-    with open(project_metadata_file, 'w') as f:
+    with open(project_metadata_file, "w") as f:
         json.dump(metadata, f, indent=2)
 
     # verify we have correct metadata
@@ -2359,10 +2359,10 @@ def test_project_metadata(mc):
     # copy metadata in new format
     metadata_file = os.path.join(project_dir, "new_metadata.json")
     # rewrite metadata nemespace to prevent failing tests with other user than test_plugin
-    with open(metadata_file, 'r') as f:
+    with open(metadata_file, "r") as f:
         metadata = json.load(f)
-    metadata['namespace'] = API_USER
-    with open(project_metadata_file, 'w') as f:
+    metadata["namespace"] = API_USER
+    with open(project_metadata_file, "w") as f:
         json.dump(metadata, f, indent=2)
 
     # verify we have correct metadata
