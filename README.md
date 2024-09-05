@@ -140,7 +140,7 @@ If you plan to run `mergin` command multiple times and you wish to avoid logging
 you can use "login" command to get authorization token.
 It will ask for password and then output environment variable with auth token. The returned token
 is not permanent - it will expire after several hours.
-```
+```bash
 $ mergin --username john login
 Password: topsecret
 Login successful!
@@ -160,7 +160,7 @@ it is possible to run other commands without specifying username/password.
 ### Installing deps
 
 Python 3.7+ required. Create `mergin/deps` folder where [geodiff](https://github.com/MerginMaps/geodiff) lib is supposed to be and install dependencies:
-```
+```bash
     rm -r mergin/deps
     mkdir mergin/deps
     pip install python-dateutil pytz
@@ -168,7 +168,7 @@ Python 3.7+ required. Create `mergin/deps` folder where [geodiff](https://github
 ```
 
 For using mergin client with its dependencies packaged locally run:
-```
+```bash
     pip install wheel
     python3 setup.py sdist bdist_wheel
     mkdir -p mergin/deps
@@ -180,13 +180,15 @@ For using mergin client with its dependencies packaged locally run:
 ### Tests
 For running test do:
 
-```
+```bash
     cd mergin
     export TEST_MERGIN_URL=<url> # testing server
     export TEST_API_USERNAME=<username>
     export TEST_API_PASSWORD=<pwd>
     export TEST_API_USERNAME2=<username2>
     export TEST_API_PASSWORD2=<pwd2>
+    # workspace name with controlled available storage space (e.g. 20MB), default value: testpluginstorage
+    export TEST_STORAGE_WORKSPACE=<workspacename>
     pip install pytest pytest-cov coveralls
     pytest --cov-report html --cov=mergin mergin/test/
 ```

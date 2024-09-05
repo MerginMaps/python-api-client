@@ -9,12 +9,13 @@ import tempfile
 from datetime import datetime
 from dateutil.tz import tzlocal
 
+from .editor import prevent_conflicted_copy
+
 from .common import UPLOAD_CHUNK_SIZE, InvalidProject, ClientError
 from .utils import (
     generate_checksum,
-    move_file,
+    is_versioned_file,
     int_version,
-    find,
     do_sqlite_checkpoint,
     unique_path_name,
     conflicted_copy_file_name,
@@ -138,8 +139,7 @@ class MerginProject:
 
     def project_full_name(self) -> str:
         """Returns fully qualified project name: <workspace>/<name>"""
-        if self._metadata is None:
-            self._read_metadata()
+        self._read_metadata()
         if self.is_old_metadata:
             return self._metadata["name"]
         else:
@@ -164,8 +164,7 @@ class MerginProject:
         only happen with projects downloaded with old client, before February 2023,
         see https://github.com/MerginMaps/mergin-py-client/pull/154
         """
-        if self._metadata is None:
-            self._read_metadata()
+        self._read_metadata()
 
         # "id" or "project_id" may not exist in projects downloaded with old client version
         if self.is_old_metadata:
@@ -182,8 +181,7 @@ class MerginProject:
         """Returns ID of the workspace where the project belongs"""
         # unfortunately we currently do not have information about workspace ID
         # in project's metadata...
-        if self._metadata is None:
-            self._read_metadata()
+        self._read_metadata()
 
         # "workspace_id" does not exist in projects downloaded with old client version
         if self.is_old_metadata:
@@ -195,14 +193,12 @@ class MerginProject:
 
     def version(self) -> str:
         """Returns project version (e.g. "v123")"""
-        if self._metadata is None:
-            self._read_metadata()
+        self._read_metadata()
         return self._metadata["version"]
 
     def files(self) -> list:
         """Returns project's list of files (each file being a dictionary)"""
-        if self._metadata is None:
-            self._read_metadata()
+        self._read_metadata()
         return self._metadata["files"]
 
     @property
@@ -213,12 +209,13 @@ class MerginProject:
         from warnings import warn
 
         warn("MerginProject.metadata getter should not be used anymore", DeprecationWarning)
-        if self._metadata is None:
-            self._read_metadata()
+        self._read_metadata()
         return self._metadata
 
-    def _read_metadata(self):
+    def _read_metadata(self) -> None:
         """Loads the project's metadata from JSON"""
+        if self._metadata is not None:
+            return
         if not os.path.exists(self.fpath_meta("mergin.json")):
             raise InvalidProject("Project metadata has not been created yet")
         with open(self.fpath_meta("mergin.json"), "r") as file:
@@ -254,9 +251,7 @@ class MerginProject:
         :returns: if file is compatible with geodiff lib
         :rtype: bool
         """
-        diff_extensions = [".gpkg", ".sqlite"]
-        f_extension = os.path.splitext(file)[1]
-        return f_extension in diff_extensions
+        return is_versioned_file(file)
 
     def is_gpkg_open(self, path):
         """
@@ -504,7 +499,7 @@ class MerginProject:
                     pass
         return changes
 
-    def apply_pull_changes(self, changes, temp_dir, user_name):
+    def apply_pull_changes(self, changes, temp_dir, server_project, mc):
         """
         Apply changes pulled from server.
 
@@ -517,14 +512,18 @@ class MerginProject:
         :type changes: dict[str, list[dict]]
         :param temp_dir: directory with downloaded files from server
         :type temp_dir: str
-        :returns: files where conflicts were found
+        :param user_name: name of the user that is pulling the changes
+        :type user_name: str
+        :param server_project: project metadata from the server
+        :type server_project: dict
+        :param mc: mergin client
+        :type mc: mergin.client.MerginClient
+        :returns: list of files with conflicts
         :rtype: list[str]
         """
         conflicts = []
         local_changes = self.get_push_changes()
-        modified = {}
-        for f in local_changes["added"] + local_changes["updated"]:
-            modified.update({f["path"]: f})
+        modified_local_paths = [f["path"] for f in local_changes.get("added", []) + local_changes.get("updated", [])]
 
         local_files_map = {}
         for f in self.inspect_files():
@@ -540,8 +539,8 @@ class MerginProject:
                 # special care is needed for geodiff files
                 # 'src' here is server version of file and 'dest' is locally modified
                 if self.is_versioned_file(path) and k == "updated":
-                    if path in modified:
-                        conflict = self.update_with_rebase(path, src, dest, basefile, temp_dir, user_name)
+                    if path in modified_local_paths:
+                        conflict = self.update_with_rebase(path, src, dest, basefile, temp_dir, mc.username())
                         if conflict:
                             conflicts.append(conflict)
                     else:
@@ -549,9 +548,13 @@ class MerginProject:
                         # We just apply the diff between our copy and server to both the local copy and its basefile
                         self.update_without_rebase(path, src, dest, basefile, temp_dir)
                 else:
-                    # backup if needed
-                    if path in modified and item["checksum"] != local_files_map[path]["checksum"]:
-                        conflict = self.create_conflicted_copy(path, user_name)
+                    # creating conflicted copy if both server and local changes are present on the files
+                    if (
+                        path in modified_local_paths
+                        and item["checksum"] != local_files_map[path]["checksum"]
+                        and not prevent_conflicted_copy(path, mc, server_project)
+                    ):
+                        conflict = self.create_conflicted_copy(path, mc.username())
                         conflicts.append(conflict)
 
                     if k == "removed":

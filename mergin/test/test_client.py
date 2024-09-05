@@ -9,10 +9,18 @@ import pytest
 import pytz
 import sqlite3
 import glob
-import time
 
 from .. import InvalidProject
-from ..client import MerginClient, ClientError, MerginProject, LoginError, decode_token_data, TokenError, ServerType
+from ..client import (
+    MerginClient,
+    ClientError,
+    MerginProject,
+    LoginError,
+    decode_token_data,
+    TokenError,
+    ServerType,
+    ErrorCode,
+)
 from ..client_push import push_project_async, push_project_cancel
 from ..client_pull import (
     download_project_async,
@@ -24,12 +32,14 @@ from ..client_pull import (
 from ..utils import (
     generate_checksum,
     get_versions_with_file_changes,
+    is_version_acceptable,
     unique_path_name,
     conflicted_copy_file_name,
     edit_conflict_file_name,
 )
 from ..merginproject import pygeodiff
 from ..report import create_report
+from ..editor import EDITOR_ROLE_NAME, filter_changes, is_editor_enabled
 
 
 SERVER_URL = os.environ.get("TEST_MERGIN_URL")
@@ -40,6 +50,7 @@ USER_PWD2 = os.environ.get("TEST_API_PASSWORD2")
 TMP_DIR = tempfile.gettempdir()
 TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "test_data")
 CHANGED_SCHEMA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "modified_schema")
+STORAGE_WORKSPACE = os.environ.get("TEST_STORAGE_WORKSPACE", "testpluginstorage")
 
 
 @pytest.fixture(scope="function")
@@ -56,14 +67,21 @@ def mc2():
     return client
 
 
+@pytest.fixture(scope="function")
+def mcStorage():
+    client = create_client(API_USER, USER_PWD)
+    create_workspace_for_client(client, STORAGE_WORKSPACE)
+    return client
+
+
 def create_client(user, pwd):
     assert SERVER_URL and SERVER_URL.rstrip("/") != "https://app.merginmaps.com" and user and pwd
     return MerginClient(SERVER_URL, login=user, password=pwd)
 
 
-def create_workspace_for_client(mc):
+def create_workspace_for_client(mc: MerginClient, workspace_name=None):
     try:
-        mc.create_workspace(mc.username())
+        mc.create_workspace(workspace_name or mc.username())
     except ClientError:
         return
 
@@ -87,6 +105,21 @@ def remove_folders(dirs):
 def sudo_works():
     sudo_res = subprocess.run(["sudo", "echo", "test"])
     return sudo_res.returncode != 0
+
+
+def server_has_editor_support(mc, access):
+    """
+    Checks if the server has editor support based on the provided access information.
+
+    Returns:
+        bool: True if the server has editor support, False otherwise.
+    """
+    return "editorsnames" in access and mc.has_editor_support()
+
+
+def test_client_instance(mc, mc2):
+    assert isinstance(mc, MerginClient)
+    assert isinstance(mc2, MerginClient)
 
 
 def test_login(mc):
@@ -238,7 +271,10 @@ def test_push_pull_changes(mc):
     f_removed = "test.txt"
     os.remove(os.path.join(project_dir, f_removed))
     f_renamed = "test_dir/test2.txt"
-    shutil.move(os.path.normpath(os.path.join(project_dir, f_renamed)), os.path.join(project_dir, "renamed.txt"))
+    shutil.move(
+        os.path.normpath(os.path.join(project_dir, f_renamed)),
+        os.path.join(project_dir, "renamed.txt"),
+    )
     f_updated = "test3.txt"
     with open(os.path.join(project_dir, f_updated), "w") as f:
         f.write("Modified")
@@ -272,7 +308,10 @@ def test_push_pull_changes(mc):
     assert len(project_info["files"]) == len(mp.inspect_files())
     project_versions = mc.project_versions(project)
     assert len(project_versions) == 2
-    f_change = next((f for f in project_versions[-1]["changes"]["updated"] if f["path"] == f_updated), None)
+    f_change = next(
+        (f for f in project_versions[-1]["changes"]["updated"] if f["path"] == f_updated),
+        None,
+    )
     assert "origin_checksum" not in f_change  # internal client info
 
     # test parallel changes
@@ -493,7 +532,10 @@ def test_force_gpkg_update(mc):
         mp.fpath(f_updated), mp.fpath_meta(f_updated)
     )  # make local copy for changeset calculation (which will fail)
     shutil.copy(os.path.join(CHANGED_SCHEMA_DIR, "modified_schema.gpkg"), mp.fpath(f_updated))
-    shutil.copy(os.path.join(CHANGED_SCHEMA_DIR, "modified_schema.gpkg-wal"), mp.fpath(f_updated + "-wal"))
+    shutil.copy(
+        os.path.join(CHANGED_SCHEMA_DIR, "modified_schema.gpkg-wal"),
+        mp.fpath(f_updated + "-wal"),
+    )
     mc.push_project(project_dir)
     # by this point local file has been updated (changes committed from wal)
     updated_checksum = generate_checksum(mp.fpath(f_updated))
@@ -551,12 +593,18 @@ def test_missing_basefile_pull(mc):
 
     # update our gpkg in a different directory
     mc.download_project(project, project_dir_2)
-    shutil.copy(os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"), os.path.join(project_dir_2, "base.gpkg"))
+    shutil.copy(
+        os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"),
+        os.path.join(project_dir_2, "base.gpkg"),
+    )
     mc.pull_project(project_dir_2)
     mc.push_project(project_dir_2)
 
     # make some other local change
-    shutil.copy(os.path.join(TEST_DATA_DIR, "inserted_1_B.gpkg"), os.path.join(project_dir, "base.gpkg"))
+    shutil.copy(
+        os.path.join(TEST_DATA_DIR, "inserted_1_B.gpkg"),
+        os.path.join(project_dir, "base.gpkg"),
+    )
 
     # remove the basefile to simulate the issue
     os.remove(os.path.join(project_dir, ".mergin", "base.gpkg"))
@@ -586,7 +634,10 @@ def test_empty_file_in_subdir(mc):
 
     # add another empty file in a different subdir
     os.mkdir(os.path.join(project_dir, "subdir2"))
-    shutil.copy(os.path.join(project_dir, "subdir", "empty.txt"), os.path.join(project_dir, "subdir2", "empty2.txt"))
+    shutil.copy(
+        os.path.join(project_dir, "subdir", "empty.txt"),
+        os.path.join(project_dir, "subdir2", "empty2.txt"),
+    )
     mc.push_project(project_dir)
 
     # check that pull works fine
@@ -658,21 +709,21 @@ def test_set_read_write_access(mc):
     access = project_info["access"]
     access["writersnames"].append(API_USER2)
     access["readersnames"].append(API_USER2)
+    editor_support = server_has_editor_support(mc, access)
+    if editor_support:
+        access["editorsnames"].append(API_USER2)
     mc.set_project_access(test_project_fullname, access)
 
-    # check access
     project_info = get_project_info(mc, API_USER, test_project)
     access = project_info["access"]
     assert API_USER2 in access["writersnames"]
     assert API_USER2 in access["readersnames"]
+    if editor_support:
+        assert API_USER2 in access["editorsnames"]
 
 
-def test_available_storage_validation(mc):
-    """
-    Testing of storage limit - applies to user pushing changes into own project (namespace matching username).
-    This test also tests giving read and write access to another user. Additionally tests also uploading of big file.
-    """
-    test_project = "test_available_storage_validation"
+def test_set_editor_access(mc):
+    test_project = "test_set_editor_access"
     test_project_fullname = API_USER + "/" + test_project
 
     # cleanups
@@ -682,18 +733,51 @@ def test_available_storage_validation(mc):
     # create new (empty) project on server
     mc.create_project(test_project)
 
+    project_info = get_project_info(mc, API_USER, test_project)
+    access = project_info["access"]
+    # Stop test if server does not support editor access
+    if not server_has_editor_support(mc, access):
+        return
+
+    access["readersnames"].append(API_USER2)
+    access["editorsnames"].append(API_USER2)
+    mc.set_project_access(test_project_fullname, access)
+    # check access
+    project_info = get_project_info(mc, API_USER, test_project)
+    access = project_info["access"]
+    assert API_USER2 in access["editorsnames"]
+    assert API_USER2 in access["readersnames"]
+    assert API_USER2 not in access["writersnames"]
+
+
+def test_available_storage_validation(mcStorage):
+    """
+    Testing of storage limit - applies to user pushing changes into own project (namespace matching username).
+    This test also tests giving read and write access to another user. Additionally tests also uploading of big file.
+    """
+    test_project = "test_available_storage_validation"
+    test_project_fullname = STORAGE_WORKSPACE + "/" + test_project
+
+    # cleanups
+    project_dir = os.path.join(TMP_DIR, test_project, API_USER)
+    cleanup(mcStorage, test_project_fullname, [project_dir])
+
+    # create new (empty) project on server
+    # if namespace is not provided, function is creating project with username
+    mcStorage.create_project(test_project_fullname)
+
     # download project
-    mc.download_project(test_project_fullname, project_dir)
+    mcStorage.download_project(test_project_fullname, project_dir)
 
     # get info about storage capacity
     storage_remaining = 0
 
-    if mc.server_type() == ServerType.OLD:
-        user_info = mc.user_info()
+    if mcStorage.server_type() == ServerType.OLD:
+        user_info = mcStorage.user_info()
         storage_remaining = user_info["storage"] - user_info["disk_usage"]
     else:
-        for workspace in mc.workspaces_list():
-            if workspace["name"] == API_USER:
+        for workspace in mcStorage.workspaces_list():
+            if workspace["name"] == STORAGE_WORKSPACE:
                 storage_remaining = workspace["storage"] - workspace["disk_usage"]
                 break
 
@@ -705,7 +789,7 @@ def test_available_storage_validation(mc):
     # try to upload
     got_right_err = False
     try:
-        mc.push_project(project_dir)
+        mcStorage.push_project(project_dir)
     except ClientError as e:
         # Expecting "You have reached a data limit" 400 server error msg.
         assert "You have reached a data limit" in str(e)
@@ -713,7 +797,7 @@ def test_available_storage_validation(mc):
     assert got_right_err
 
     # Expecting empty project
-    project_info = get_project_info(mc, API_USER, test_project)
+    project_info = get_project_info(mcStorage, STORAGE_WORKSPACE, test_project)
     assert project_info["version"] == "v0"
     assert project_info["disk_usage"] == 0
 
@@ -805,7 +889,10 @@ def _generate_big_file(filepath, size):
 
 def test_get_projects_by_name(mc):
     """Test server 'bulk' endpoint for projects' info"""
-    test_projects = {"projectA": f"{API_USER}/projectA", "projectB": f"{API_USER}/projectB"}
+    test_projects = {
+        "projectA": f"{API_USER}/projectA",
+        "projectB": f"{API_USER}/projectB",
+    }
 
     for name, full_name in test_projects.items():
         cleanup(mc, full_name, [])
@@ -869,7 +956,11 @@ def test_paginated_project_list(mc):
     sorted_test_names = [n for n in sorted(test_projects.keys())]
 
     resp = mc.paginated_projects_list(
-        flag="created", name="test_paginated", page=1, per_page=10, order_params="name_asc"
+        flag="created",
+        name="test_paginated",
+        page=1,
+        per_page=10,
+        order_params="name_asc",
     )
     projects = resp["projects"]
     count = resp["count"]
@@ -879,7 +970,11 @@ def test_paginated_project_list(mc):
         assert project["name"] == sorted_test_names[i]
 
     resp = mc.paginated_projects_list(
-        flag="created", name="test_paginated", page=2, per_page=2, order_params="name_asc"
+        flag="created",
+        name="test_paginated",
+        page=2,
+        per_page=2,
+        order_params="name_asc",
     )
     projects = resp["projects"]
     assert len(projects) == 2
@@ -964,8 +1059,14 @@ def create_versioned_project(mc, project_name, project_dir, updated_file, remove
     # create version with forced overwrite (broken history)
     if overwrite:
         shutil.move(mp.fpath(updated_file), mp.fpath_meta(updated_file))
-        shutil.copy(os.path.join(CHANGED_SCHEMA_DIR, "modified_schema.gpkg"), mp.fpath(updated_file))
-        shutil.copy(os.path.join(CHANGED_SCHEMA_DIR, "modified_schema.gpkg-wal"), mp.fpath(updated_file + "-wal"))
+        shutil.copy(
+            os.path.join(CHANGED_SCHEMA_DIR, "modified_schema.gpkg"),
+            mp.fpath(updated_file),
+        )
+        shutil.copy(
+            os.path.join(CHANGED_SCHEMA_DIR, "modified_schema.gpkg-wal"),
+            mp.fpath(updated_file + "-wal"),
+        )
         mc.push_project(project_dir)
     return mp
 
@@ -986,13 +1087,23 @@ def test_get_versions_with_file_changes(mc):
 
     with pytest.raises(ClientError) as e:
         mod_versions = get_versions_with_file_changes(
-            mc, project, f_updated, version_from="v1", version_to="v5", file_history=file_history
+            mc,
+            project,
+            f_updated,
+            version_from="v1",
+            version_to="v5",
+            file_history=file_history,
         )
     assert "Wrong version parameters: 1-5" in str(e.value)
     assert "Available versions: [1, 2, 3, 4]" in str(e.value)
 
     mod_versions = get_versions_with_file_changes(
-        mc, project, f_updated, version_from="v2", version_to="v4", file_history=file_history
+        mc,
+        project,
+        f_updated,
+        version_from="v2",
+        version_to="v4",
+        file_history=file_history,
     )
     assert mod_versions == [f"v{i}" for i in range(2, 5)]
 
@@ -1019,7 +1130,11 @@ def test_download_file(mc):
     assert project_info["id"] == mp.project_id()
 
     # Versioned file should have the following content at versions 2-4
-    expected_content = ("inserted_1_A.gpkg", "inserted_1_A_mod.gpkg", "inserted_1_B.gpkg")
+    expected_content = (
+        "inserted_1_A.gpkg",
+        "inserted_1_A_mod.gpkg",
+        "inserted_1_B.gpkg",
+    )
 
     # Download the base file at versions 2-4 and check the changes
     f_downloaded = os.path.join(project_dir, f_updated)
@@ -1082,39 +1197,43 @@ def test_download_diffs(mc):
 
 def test_modify_project_permissions(mc):
     test_project = "test_project"
-    project = API_USER + "/" + test_project
+    test_project_fullname = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)
     download_dir = os.path.join(TMP_DIR, "download", test_project)
 
-    cleanup(mc, project, [project_dir, download_dir])
+    cleanup(mc, test_project_fullname, [project_dir, download_dir])
     # prepare local project
     shutil.copytree(TEST_DATA_DIR, project_dir)
 
     # create remote project
-    mc.create_project_and_push(project, directory=project_dir)
+    mc.create_project_and_push(test_project_fullname, directory=project_dir)
 
-    # check basic metadata about created project
-    project_info = mc.project_info(project)
-    assert project_info["version"] == "v1"
-    assert project_info["name"] == test_project
-    assert project_info["namespace"] == API_USER
-
-    permissions = mc.project_user_permissions(project)
+    permissions = mc.project_user_permissions(test_project_fullname)
     assert permissions["owners"] == [API_USER]
     assert permissions["writers"] == [API_USER]
     assert permissions["readers"] == [API_USER]
+    editor_support = server_has_editor_support(mc, permissions)
+    if editor_support:
+        assert permissions["editors"] == [API_USER]
 
-    mc.add_user_permissions_to_project(project, [API_USER2], "writer")
-    permissions = mc.project_user_permissions(project)
+    mc.add_user_permissions_to_project(test_project_fullname, [API_USER2], "writer")
+    permissions = mc.project_user_permissions(test_project_fullname)
     assert set(permissions["owners"]) == {API_USER}
     assert set(permissions["writers"]) == {API_USER, API_USER2}
     assert set(permissions["readers"]) == {API_USER, API_USER2}
+    editor_support = server_has_editor_support(mc, permissions)
+    if editor_support:
+        assert set(permissions["editors"]) == {API_USER, API_USER2}
 
-    mc.remove_user_permissions_from_project(project, [API_USER2])
-    permissions = mc.project_user_permissions(project)
+    mc.remove_user_permissions_from_project(test_project_fullname, [API_USER2])
+    permissions = mc.project_user_permissions(test_project_fullname)
     assert permissions["owners"] == [API_USER]
     assert permissions["writers"] == [API_USER]
     assert permissions["readers"] == [API_USER]
+
+    editor_support = server_has_editor_support(mc, permissions)
+    if editor_support:
+        assert permissions["editors"] == [API_USER]
 
 
 def _use_wal(db_file):
@@ -1194,7 +1313,11 @@ class AnotherSqliteConn:
 
     def __init__(self, filename):
         self.proc = subprocess.Popen(
-            ["python3", os.path.join(os.path.dirname(__file__), "sqlite_con.py"), filename],
+            [
+                "python3",
+                os.path.join(os.path.dirname(__file__), "sqlite_con.py"),
+                filename,
+            ],
             stdin=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -1477,18 +1600,48 @@ def test_conflict_file_names():
     """
 
     data = [
-        ("/home/test/geo.gpkg", "jack", 10, "/home/test/geo (conflicted copy, jack v10).gpkg"),
+        (
+            "/home/test/geo.gpkg",
+            "jack",
+            10,
+            "/home/test/geo (conflicted copy, jack v10).gpkg",
+        ),
         ("/home/test/g.pkg", "j", 0, "/home/test/g (conflicted copy, j v0).pkg"),
-        ("home/test/geo.gpkg", "jack", 10, "home/test/geo (conflicted copy, jack v10).gpkg"),
+        (
+            "home/test/geo.gpkg",
+            "jack",
+            10,
+            "home/test/geo (conflicted copy, jack v10).gpkg",
+        ),
         ("geo.gpkg", "jack", 10, "geo (conflicted copy, jack v10).gpkg"),
         ("/home/../geo.gpkg", "jack", 10, "/geo (conflicted copy, jack v10).gpkg"),
         ("/home/./geo.gpkg", "jack", 10, "/home/geo (conflicted copy, jack v10).gpkg"),
         ("/home/test/geo.gpkg", "", 10, "/home/test/geo (conflicted copy,  v10).gpkg"),
-        ("/home/test/geo.gpkg", "jack", -1, "/home/test/geo (conflicted copy, jack v-1).gpkg"),
-        ("/home/test/geo.tar.gz", "jack", 100, "/home/test/geo (conflicted copy, jack v100).tar.gz"),
+        (
+            "/home/test/geo.gpkg",
+            "jack",
+            -1,
+            "/home/test/geo (conflicted copy, jack v-1).gpkg",
+        ),
+        (
+            "/home/test/geo.tar.gz",
+            "jack",
+            100,
+            "/home/test/geo (conflicted copy, jack v100).tar.gz",
+        ),
         ("", "jack", 1, ""),
-        ("/home/test/survey.qgs", "jack", 10, "/home/test/survey (conflicted copy, jack v10).qgs~"),
-        ("/home/test/survey.QGZ", "jack", 10, "/home/test/survey (conflicted copy, jack v10).QGZ~"),
+        (
+            "/home/test/survey.qgs",
+            "jack",
+            10,
+            "/home/test/survey (conflicted copy, jack v10).qgs~",
+        ),
+        (
+            "/home/test/survey.QGZ",
+            "jack",
+            10,
+            "/home/test/survey (conflicted copy, jack v10).QGZ~",
+        ),
     ]
 
     for i in data:
@@ -1496,16 +1649,41 @@ def test_conflict_file_names():
         assert file_name == i[3]
 
     data = [
-        ("/home/test/geo.json", "jack", 10, "/home/test/geo (edit conflict, jack v10).json"),
+        (
+            "/home/test/geo.json",
+            "jack",
+            10,
+            "/home/test/geo (edit conflict, jack v10).json",
+        ),
         ("/home/test/g.jsn", "j", 0, "/home/test/g (edit conflict, j v0).json"),
-        ("home/test/geo.json", "jack", 10, "home/test/geo (edit conflict, jack v10).json"),
+        (
+            "home/test/geo.json",
+            "jack",
+            10,
+            "home/test/geo (edit conflict, jack v10).json",
+        ),
         ("geo.json", "jack", 10, "geo (edit conflict, jack v10).json"),
         ("/home/../geo.json", "jack", 10, "/geo (edit conflict, jack v10).json"),
         ("/home/./geo.json", "jack", 10, "/home/geo (edit conflict, jack v10).json"),
         ("/home/test/geo.json", "", 10, "/home/test/geo (edit conflict,  v10).json"),
-        ("/home/test/geo.json", "jack", -1, "/home/test/geo (edit conflict, jack v-1).json"),
-        ("/home/test/geo.gpkg", "jack", 10, "/home/test/geo (edit conflict, jack v10).json"),
-        ("/home/test/geo.tar.gz", "jack", 100, "/home/test/geo (edit conflict, jack v100).json"),
+        (
+            "/home/test/geo.json",
+            "jack",
+            -1,
+            "/home/test/geo (edit conflict, jack v-1).json",
+        ),
+        (
+            "/home/test/geo.gpkg",
+            "jack",
+            10,
+            "/home/test/geo (edit conflict, jack v10).json",
+        ),
+        (
+            "/home/test/geo.tar.gz",
+            "jack",
+            100,
+            "/home/test/geo (edit conflict, jack v100).json",
+        ),
         ("", "jack", 1, ""),
     ]
 
@@ -1539,8 +1717,18 @@ def test_unique_path_names():
     # - another (2).txt
     # - arch.tar.gz
     data = {
-        "folderA": {"files": ["fileA.txt", "fileA (1).txt", "fileB.txt"], "folderAB": {}, "folderAB (1)": {}},
-        "files": ["file.txt", "another.txt", "another (1).txt", "another (2).txt", "arch.tar.gz"],
+        "folderA": {
+            "files": ["fileA.txt", "fileA (1).txt", "fileB.txt"],
+            "folderAB": {},
+            "folderAB (1)": {},
+        },
+        "files": [
+            "file.txt",
+            "another.txt",
+            "another (1).txt",
+            "another (2).txt",
+            "arch.tar.gz",
+        ],
     }
     create_directory(project_dir, data)
 
@@ -1817,7 +2005,18 @@ def test_report(mc):
     with open(report_file, "r") as rf:
         content = rf.read()
         headers = ",".join(
-            ["file", "table", "author", "date", "time", "version", "operation", "length", "area", "count"]
+            [
+                "file",
+                "table",
+                "author",
+                "date",
+                "time",
+                "version",
+                "operation",
+                "length",
+                "area",
+                "count",
+            ]
         )
         assert headers in content
         assert "base.gpkg,simple,test_plugin" in content
@@ -1839,7 +2038,7 @@ def test_report(mc):
         create_report(mc, directory, since, to, report_file)
 
 
-def test_project_versions_list(mc, mc2):
+def test_user_permissions(mc, mc2):
     """
     Test retrieving user permissions
     """
@@ -2215,7 +2414,10 @@ def test_project_rename(mc: MerginClient):
         mc.rename_project(API_USER + "/" + "non_existing_project", "new_project")
 
     # cannot rename with full project name
-    with pytest.raises(ClientError, match="Project's new name should be without workspace specification"):
+    with pytest.raises(
+        ClientError,
+        match="Project's new name should be without workspace specification",
+    ):
         mc.rename_project(project, "workspace" + "/" + test_project_renamed)
 
 
@@ -2236,7 +2438,11 @@ def test_download_files(mc: MerginClient):
     assert project_info["id"] == mp.project_id()
 
     # Versioned file should have the following content at versions 2-4
-    expected_content = ("inserted_1_A.gpkg", "inserted_1_A_mod.gpkg", "inserted_1_B.gpkg")
+    expected_content = (
+        "inserted_1_A.gpkg",
+        "inserted_1_A_mod.gpkg",
+        "inserted_1_B.gpkg",
+    )
 
     downloaded_file = os.path.join(download_dir, f_updated)
 
@@ -2256,7 +2462,12 @@ def test_download_files(mc: MerginClient):
     file_2 = "test.txt"
     downloaded_file_2 = os.path.join(download_dir, file_2)
 
-    mc.download_files(project_dir, [f_updated, file_2], [downloaded_file, downloaded_file_2], version="v1")
+    mc.download_files(
+        project_dir,
+        [f_updated, file_2],
+        [downloaded_file, downloaded_file_2],
+        version="v1",
+    )
     assert check_gpkg_same_content(mp, downloaded_file, os.path.join(TEST_DATA_DIR, f_updated))
 
     with open(os.path.join(TEST_DATA_DIR, file_2), mode="r", encoding="utf-8") as file:
@@ -2313,3 +2524,140 @@ def test_download_failure(mc):
     with open(job.failure_log_file, "r", encoding="utf-8") as f:
         content = f.read()
         assert "Traceback" in content
+
+
+# TODO: consider to use separate test_editor.py file for tests that require editor
+def test_editor(mc: MerginClient):
+    """Test editor handler class and push with editor"""
+
+    project_info = {"role": "editor"}
+    if not mc.has_editor_support():
+        assert is_editor_enabled(mc, project_info) is False
+        return
+
+    # mock that user is editor
+    project_info["role"] = EDITOR_ROLE_NAME
+    assert is_editor_enabled(mc, project_info) is True
+
+    # unit test for editor methods
+    qgs_changeset = {
+        "added": [{"path": "/folder/project.new.Qgz"}],
+        "updated": [{"path": "/folder/project.updated.Qgs"}],
+        "removed": [{"path": "/folder/project.removed.qgs"}],
+    }
+    qgs_changeset = filter_changes(mc, project_info, qgs_changeset)
+    assert sum(len(v) for v in qgs_changeset.values()) == 2
+
+
+def test_editor_push(mc: MerginClient, mc2: MerginClient):
+    """Test push with editor"""
+    if not mc.has_editor_support():
+        return
+    test_project = "test_editor_push"
+    test_project_fullname = API_USER + "/" + test_project
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    project_dir2 = os.path.join(TMP_DIR, test_project + "_2")
+    cleanup(mc, project, [project_dir, project_dir2])
+
+    # create new (empty) project on server
+    # TODO: return project_info from create project, don't use project_full name for project info, instead returned id of project
+    mc.create_project(test_project)
+    mc.add_user_permissions_to_project(project, [API_USER2], "editor")
+    # download empty project
+    mc2.download_project(test_project_fullname, project_dir)
+
+    # editor is starting to adding qgis files and "normal" file
+    qgs_file_name = "test.qgs"
+    txt_file_name = "test.txt"
+    gpkg_file_name = "base.gpkg"
+    files_to_push = [txt_file_name, gpkg_file_name]
+    for file in files_to_push:
+        shutil.copy(os.path.join(TEST_DATA_DIR, file), project_dir)
+    # it's possible to push allowed files if editor
+    mc2.push_project(project_dir)
+    project_info = mc2.project_info(test_project_fullname)
+    assert len(project_info.get("files")) == len(files_to_push)  # ggs is not pushed
+    # find pushed files in server
+    assert any(file["path"] == txt_file_name for file in project_info.get("files")) is True
+    assert any(file["path"] == gpkg_file_name for file in project_info.get("files")) is True
+    pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
+    assert not sum(len(v) for v in pull_changes.values())
+    assert not sum(len(v) for v in push_changes.values())
+
+    # editor is trying to push row to gpkg file -> it's possible
+    shutil.copy(
+        os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"),
+        os.path.join(project_dir, gpkg_file_name),
+    )
+    mc2.push_project(project_dir)
+    project_info = mc2.project_info(test_project_fullname)
+    pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
+    assert any(file["path"] == gpkg_file_name for file in project_info.get("files")) is True
+    assert any(file["path"] == gpkg_file_name for file in push_changes.get("updated")) is False
+
+    # add qgis file as editor
+    shutil.copy(os.path.join(TEST_DATA_DIR, qgs_file_name), project_dir)
+    with pytest.raises(ClientError, match=f"You do not have permissions for this project"):
+        mc2.push_project(project_dir)
+    mc.push_project(project_dir)
+
+    # editor is trying to update qgis file
+    with open(os.path.join(project_dir, qgs_file_name), "a") as f:
+        f.write("Editor is here!")
+    project_info = mc2.project_info(test_project_fullname)
+    pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
+    # ggs is still waiting to push
+    assert any(file["path"] == qgs_file_name for file in push_changes.get("updated")) is True
+
+    # push as owner do cleanup local changes and preparation to conflicited copy simulate
+    mc.push_project(project_dir)
+
+    # simulate conflicting copy of qgis file
+    # Push from dir2 changes to qgis file
+    mc.download_project(test_project_fullname, project_dir2)
+    with open(os.path.join(project_dir2, qgs_file_name), "a") as f:
+        f.write("C server version")
+    mc.push_project(project_dir2)
+    # editor is editing qgs file too in dir
+    with open(os.path.join(project_dir, qgs_file_name), "a") as f:
+        f.write("B local version")
+    mc2.pull_project(project_dir)
+    conflicted_file = None
+    for project_file in os.listdir(project_dir):
+        _, ext = os.path.splitext(project_file)
+        if ext == ".qgs~":
+            conflicted_file = project_file
+    # There is no conflicted qgs file
+    assert conflicted_file is None
+
+
+def test_error_push_already_named_project(mc: MerginClient):
+    test_project = "test_push_already_existing"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+
+    with pytest.raises(ClientError) as e:
+        mc.create_project_and_push(test_project, project_dir)
+    assert e.value.detail == "Project with the same name already exists"
+    assert e.value.http_error == 409
+    assert e.value.http_method == "POST"
+    assert e.value.url == f"{mc.url}v1/project/test_plugin"
+
+
+def test_error_projects_limit_hit(mcStorage: MerginClient):
+    test_project = "test_another_project_above_projects_limit"
+    test_project_fullname = STORAGE_WORKSPACE + "/" + test_project
+
+    project_dir = os.path.join(TMP_DIR, test_project, API_USER)
+
+    with pytest.raises(ClientError) as e:
+        mcStorage.create_project_and_push(test_project_fullname, project_dir)
+    assert e.value.server_code == ErrorCode.ProjectsLimitHit.value
+    assert (
+        e.value.detail
+        == "Maximum number of projects is reached. Please upgrade your subscription to create new projects (ProjectsLimitHit)"
+    )
+    assert e.value.http_error == 422
+    assert e.value.http_method == "POST"
+    assert e.value.url == f"{mcStorage.url}v1/project/testpluginstorage"

@@ -17,7 +17,7 @@ import re
 import typing
 import warnings
 
-from .common import ClientError, LoginError, InvalidProject
+from .common import ClientError, LoginError, InvalidProject, ErrorCode
 from .merginproject import MerginProject
 from .client_pull import (
     download_file_finalize,
@@ -205,19 +205,20 @@ class MerginClient:
         try:
             return self.opener.open(request)
         except urllib.error.HTTPError as e:
-            if e.headers.get("Content-Type", "") == "application/problem+json":
-                info = json.load(e)
-                err_detail = info.get("detail")
-            else:
-                err_detail = e.read().decode("utf-8")
+            server_response = json.load(e)
 
-            error_msg = (
-                f"HTTP Error: {e.code} {e.reason}\n"
-                f"URL: {request.get_full_url()}\n"
-                f"Method: {request.get_method()}\n"
-                f"Detail: {err_detail}"
+            # We first to try to get the value from the response otherwise we set a default value
+            err_detail = server_response.get("detail", e.read().decode("utf-8"))
+            server_code = server_response.get("code", None)
+
+            raise ClientError(
+                detail=err_detail,
+                url=request.get_full_url(),
+                server_code=server_code,
+                server_response=server_response,
+                http_error=e.code,
+                http_method=request.get_method(),
             )
-            raise ClientError(error_msg)
         except urllib.error.URLError as e:
             # e.g. when DNS resolution fails (no internet connection?)
             raise ClientError("Error requesting " + request.full_url + ": " + str(e))
@@ -429,9 +430,9 @@ class MerginClient:
 
         try:
             self.post("/v1/workspace", params, {"Content-Type": "application/json"})
-        except Exception as e:
-            detail = f"Workspace name: {workspace_name}"
-            raise ClientError(str(e), detail)
+        except ClientError as e:
+            e.extra = f"Workspace name: {workspace_name}"
+            raise e
 
     def create_project(self, project_name, is_public=False, namespace=None):
         """
@@ -478,9 +479,9 @@ class MerginClient:
             namespace = self.username()
         try:
             self.post(f"/v1/project/{namespace}", params, {"Content-Type": "application/json"})
-        except Exception as e:
-            detail = f"Namespace: {namespace}, project name: {project_name}"
-            raise ClientError(str(e), detail)
+        except ClientError as e:
+            e.extra = f"Namespace: {namespace}, project name: {project_name}"
+            raise e
 
     def create_project_and_push(self, project_name, directory, is_public=False, namespace=None):
         """
@@ -761,8 +762,11 @@ class MerginClient:
         """
         Updates access for given project.
         :param project_path: project full name (<namespace>/<name>)
-        :param access: dict <readersnames, writersnames, ownersnames> -> list of str username we want to give access to
+        :param access: dict <readersnames, editorsnames, writersnames, ownersnames> -> list of str username we want to give access to (editorsnames are only supported on servers at version 2024.4.0 or later)
         """
+        if "editorsnames" in access and not self.has_editor_support():
+            raise NotImplementedError("Editors are only supported on servers at version 2024.4.0 or later")
+
         if not self._user_info:
             raise Exception("Authentication required")
 
@@ -773,18 +777,22 @@ class MerginClient:
         try:
             request = urllib.request.Request(url, data=json.dumps(params).encode(), headers=json_headers, method="PUT")
             self._do_request(request)
-        except Exception as e:
-            detail = f"Project path: {project_path}"
-            raise ClientError(str(e), detail)
+        except ClientError as e:
+            e.extra = f"Project path: {project_path}"
+            raise e
 
     def add_user_permissions_to_project(self, project_path, usernames, permission_level):
         """
         Add specified permissions to specified users to project
         :param project_path: project full name (<namespace>/<name>)
         :param usernames: list of usernames to be granted specified permission level
-        :param permission_level: string (reader, writer, owner)
+        :param permission_level: string (reader, editor, writer, owner)
+
+        Editor permission_level is only supported on servers at version 2024.4.0 or later.
         """
-        if permission_level not in ["owner", "reader", "writer"]:
+        if permission_level not in ["owner", "reader", "writer", "editor"] or (
+            permission_level == "editor" and not self.has_editor_support()
+        ):
             raise ClientError("Unsupported permission level")
 
         project_info = self.project_info(project_path)
@@ -792,9 +800,11 @@ class MerginClient:
         for name in usernames:
             if permission_level == "owner":
                 access.get("ownersnames").append(name)
-            if permission_level == "writer" or permission_level == "owner":
+            if permission_level in ("writer", "owner"):
                 access.get("writersnames").append(name)
-            if permission_level == "writer" or permission_level == "owner" or permission_level == "reader":
+            if permission_level in ("writer", "owner", "editor") and "editorsnames" in access:
+                access.get("editorsnames").append(name)
+            if permission_level in ("writer", "owner", "editor", "reader"):
                 access.get("readersnames").append(name)
         self.set_project_access(project_path, access)
 
@@ -807,11 +817,13 @@ class MerginClient:
         project_info = self.project_info(project_path)
         access = project_info.get("access")
         for name in usernames:
-            if name in access.get("ownersnames"):
+            if name in access.get("ownersnames", []):
                 access.get("ownersnames").remove(name)
-            if name in access.get("writersnames"):
+            if name in access.get("writersnames", []):
                 access.get("writersnames").remove(name)
-            if name in access.get("readersnames"):
+            if name in access.get("editorsnames", []):
+                access.get("editorsnames").remove(name)
+            if name in access.get("readersnames", []):
                 access.get("readersnames").remove(name)
         self.set_project_access(project_path, access)
 
@@ -821,14 +833,18 @@ class MerginClient:
         :param project_path: project full name (<namespace>/<name>)
         :return dict("owners": list(usernames),
                      "writers": list(usernames),
+                     "editors": list(usernames) - only on servers at version 2024.4.0 or later,
                      "readers": list(usernames))
         """
         project_info = self.project_info(project_path)
         access = project_info.get("access")
         result = {}
-        result["owners"] = access.get("ownersnames")
-        result["writers"] = access.get("writersnames")
-        result["readers"] = access.get("readersnames")
+        if "editorsnames" in access:
+            result["editors"] = access.get("editorsnames", [])
+
+        result["owners"] = access.get("ownersnames", [])
+        result["writers"] = access.get("writersnames", [])
+        result["readers"] = access.get("readersnames", [])
         return result
 
     def push_project(self, directory):
@@ -1220,3 +1236,9 @@ class MerginClient:
         job = download_files_async(self, project_dir, file_paths, output_paths, version=version)
         pull_project_wait(job)
         download_files_finalize(job)
+
+    def has_editor_support(self):
+        """
+        Returns whether the server version is acceptable for editor support.
+        """
+        return is_version_acceptable(self.server_version(), "2024.4.0")

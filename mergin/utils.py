@@ -205,7 +205,7 @@ def conflicted_copy_file_name(path, user, version):
     # to avoid having several QGIS project files inside Mergin Maps project.
     # See https://github.com/lutraconsulting/qgis-mergin-plugin/issues/382
     # for more details
-    if ext.lower() in (".qgz", ".qgs"):
+    if is_qgis_file(path):
         ext += "~"
     return os.path.join(head, file_name) + f" (conflicted copy, {user} v{version}){ext}"
 
@@ -255,3 +255,42 @@ def is_version_acceptable(version, min_version):
     major, minor = m.group(1), m.group(2)
 
     return major > min_major or (major == min_major and minor >= min_minor)
+
+
+def is_versioned_file(path: str) -> bool:
+    diff_extensions = [".gpkg", ".sqlite"]
+    f_extension = os.path.splitext(path)[1]
+    return f_extension.lower() in diff_extensions
+
+
+def is_qgis_file(path: str) -> bool:
+    """
+    Check if file is a QGIS project file.
+    """
+    f_extension = os.path.splitext(path)[1]
+    return f_extension.lower() in [".qgs", ".qgz"]
+
+
+def is_mergin_config(path: str) -> bool:
+    """Check if the given path is for file mergin-config.json"""
+    filename = os.path.basename(path).lower()
+    return filename == "mergin-config.json"
+
+
+def bytes_to_human_size(bytes: int):
+    """
+    Convert bytes to human readable size
+    example  :
+    bytes_to_human_size(5600000) -> "5.3 MB"
+    """
+    precision = 1
+    if bytes < 1e-5:
+        return "0.0 MB"
+    elif bytes < 1024.0 * 1024.0:
+        return f"{round( bytes / 1024.0, precision )} KB"
+    elif bytes < 1024.0 * 1024.0 * 1024.0:
+        return f"{round( bytes / 1024.0 / 1024.0, precision)} MB"
+    elif bytes < 1024.0 * 1024.0 * 1024.0 * 1024.0:
+        return f"{round( bytes / 1024.0 / 1024.0 / 1024.0, precision )} GB"
+    else:
+        return f"{round( bytes / 1024.0 / 1024.0 / 1024.0 / 1024.0, precision )} TB"
