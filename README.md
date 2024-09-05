@@ -71,6 +71,7 @@ Commands:
   download             Download last version of Mergin Maps project
   download-file        Download project file at specified version.
   list-projects        List projects on the server
+  list-files           List files in a project
   login                Login to the service and see how to set the token...
   pull                 Fetch changes from Mergin Maps repository
   push                 Upload local changes into Mergin Maps repository
