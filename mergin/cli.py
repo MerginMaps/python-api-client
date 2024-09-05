@@ -656,9 +656,9 @@ def reset(ctx):
 @cli.command()
 @click.argument("namespace")
 @click.argument("project")
-@click.option("--fmt_json", is_flag=True, default=False, help="Output in JSON format")
+@click.option("--json", is_flag=True, default=False, help="Output in JSON format")
 @click.pass_context
-def list_files(ctx, namespace, project,fmt_json):
+def list_files(ctx, namespace, project,json):
     """List files in a project."""
 
     mc = ctx.obj["client"]
@@ -669,7 +669,7 @@ def list_files(ctx, namespace, project,fmt_json):
     project_info = mc.project_info(namespace + "/" + project)
     project_files = project_info["files"]
 
-    if fmt_json:
+    if json:
         print(project_files)
     else:
         click.echo("Fetched {} files .".format(len(project_files)))
