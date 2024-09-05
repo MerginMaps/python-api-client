@@ -654,19 +654,17 @@ def reset(ctx):
         _print_unhandled_exception()
 
 @cli.command()
-@click.argument("namespace")
 @click.argument("project")
 @click.option("--json", is_flag=True, default=False, help="Output in JSON format")
 @click.pass_context
-def list_files(ctx, namespace, project,json):
+def list_files(ctx, project, json):
     """List files in a project."""
 
     mc = ctx.obj["client"]
     if mc is None:
         return
 
-    #projects_files = mc.projects_files(name=project, namespace=namespace)
-    project_info = mc.project_info(namespace + "/" + project)
+    project_info = mc.project_info(project)
     project_files = project_info["files"]
 
     if json:
