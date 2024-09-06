@@ -17,7 +17,7 @@ import re
 import typing
 import warnings
 
-from .common import ClientError, LoginError, InvalidProject
+from .common import ClientError, LoginError, InvalidProject, ErrorCode
 from .merginproject import MerginProject
 from .client_pull import (
     download_file_finalize,
@@ -205,19 +205,20 @@ class MerginClient:
         try:
             return self.opener.open(request)
         except urllib.error.HTTPError as e:
-            if e.headers.get("Content-Type", "") == "application/problem+json":
-                info = json.load(e)
-                err_detail = info.get("detail")
-            else:
-                err_detail = e.read().decode("utf-8")
+            server_response = json.load(e)
 
-            error_msg = (
-                f"HTTP Error: {e.code} {e.reason}\n"
-                f"URL: {request.get_full_url()}\n"
-                f"Method: {request.get_method()}\n"
-                f"Detail: {err_detail}"
+            # We first to try to get the value from the response otherwise we set a default value
+            err_detail = server_response.get("detail", e.read().decode("utf-8"))
+            server_code = server_response.get("code", None)
+
+            raise ClientError(
+                detail=err_detail,
+                url=request.get_full_url(),
+                server_code=server_code,
+                server_response=server_response,
+                http_error=e.code,
+                http_method=request.get_method(),
             )
-            raise ClientError(error_msg)
         except urllib.error.URLError as e:
             # e.g. when DNS resolution fails (no internet connection?)
             raise ClientError("Error requesting " + request.full_url + ": " + str(e))
@@ -447,9 +448,9 @@ class MerginClient:
 
         try:
             self.post("/v1/workspace", params, {"Content-Type": "application/json"})
-        except Exception as e:
-            detail = f"Workspace name: {workspace_name}"
-            raise ClientError(str(e), detail)
+        except ClientError as e:
+            e.extra = f"Workspace name: {workspace_name}"
+            raise e
 
     def create_project(self, project_name, is_public=False, namespace=None):
         """
@@ -496,9 +497,9 @@ class MerginClient:
             namespace = self.username()
         try:
             self.post(f"/v1/project/{namespace}", params, {"Content-Type": "application/json"})
-        except Exception as e:
-            detail = f"Namespace: {namespace}, project name: {project_name}"
-            raise ClientError(str(e), detail)
+        except ClientError as e:
+            e.extra = f"Namespace: {namespace}, project name: {project_name}"
+            raise e
 
     def create_project_and_push(self, project_name, directory, is_public=False, namespace=None):
         """
@@ -833,9 +834,9 @@ class MerginClient:
         try:
             request = urllib.request.Request(url, data=json.dumps(params).encode(), headers=json_headers, method="PUT")
             self._do_request(request)
-        except Exception as e:
-            detail = f"Project path: {project_path}"
-            raise ClientError(str(e), detail)
+        except ClientError as e:
+            e.extra = f"Project path: {project_path}"
+            raise e
 
     def add_user_permissions_to_project(self, project_path, usernames, permission_level):
         """
@@ -1040,13 +1041,10 @@ class MerginClient:
 
         return pull_changes, push_changes, push_changes_summary
 
-    def project_version_info(self, project_path, version):
+    def project_version_info(self, project_id, version):
         """Returns JSON with detailed information about a single project version"""
-        params = {"version_id": version}
-        params = {"page": version, "per_page": 1, "descending": False}
-        resp = self.get(f"/v1/project/versions/paginated/{project_path}", params)
-        j = json.load(resp)
-        return j["versions"]
+        resp = self.get(f"/v1/project/version/{project_id}/{version}")
+        return json.load(resp)
 
     def project_file_history_info(self, project_path, file_path):
         """Returns JSON with full history of a single file within a project"""
