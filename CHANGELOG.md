@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.3
+
+- Upgrade pygeodiff to 2.0.4 (#217)
+- Do not use paginated endpoint for project version detail detail #216
+- Improve client error handling #209
+
 ## 0.9.2
 
 - Update rules when pushing with editor permission level (#208)
