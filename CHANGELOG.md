@@ -2,6 +2,7 @@
 
 ## 0.9.3
 
+- Added ```list-files``` CLI command for list of project files (#199 by @kaloyan13)
 - Upgrade pygeodiff to 2.0.4 (#217)
 - Do not use paginated endpoint for project version detail (#216)
 - Improve client error handling (#209)
