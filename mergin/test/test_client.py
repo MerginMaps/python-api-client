@@ -225,10 +225,9 @@ def test_create_remote_project_from_local(mc):
     assert project_info["namespace"] == API_USER
     assert project_info["id"] == source_mp.project_id()
 
-    versions = mc.project_versions(project)
-    assert len(versions) == 1
-    assert versions[0]["name"] == "v1"
-    assert any(f for f in versions[0]["changes"]["added"] if f["path"] == "test.qgs")
+    version = mc.project_version_info(project_info.get("id"), "v1")
+    assert version["name"] == "v1"
+    assert any(f for f in version["changes"]["added"] if f["path"] == "test.qgs")
 
     # check we can fully download remote project
     mc.download_project(project, download_dir)
@@ -306,13 +305,9 @@ def test_push_pull_changes(mc):
     assert generate_checksum(os.path.join(project_dir, f_updated)) == f_remote_checksum
     assert project_info["id"] == mp.project_id()
     assert len(project_info["files"]) == len(mp.inspect_files())
-    project_versions = mc.project_versions(project)
-    assert len(project_versions) == 2
-    f_change = next(
-        (f for f in project_versions[-1]["changes"]["updated"] if f["path"] == f_updated),
-        None,
-    )
-    assert "origin_checksum" not in f_change  # internal client info
+    project_version = mc.project_version_info(project_info["id"], "v2")
+    updated_file = [f for f in project_version["changes"]["updated"] if f["path"] == f_updated][0]
+    assert "origin_checksum" not in updated_file  # internal client info
 
     # test parallel changes
     with open(os.path.join(project_dir_2, f_updated), "w") as f:
@@ -2019,7 +2014,7 @@ def test_report(mc):
             ]
         )
         assert headers in content
-        assert "base.gpkg,simple,test_plugin" in content
+        assert f"base.gpkg,simple,{API_USER}" in content
         assert "v3,update,,,2" in content
         # files not edited are not in reports
         assert "inserted_1_A.gpkg" not in content
@@ -2164,7 +2159,7 @@ def test_version_info(mc):
     project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
     test_gpkg = "test.gpkg"
-    file_path = os.path.join(project_dir, "test.gpkg")
+    file_path = os.path.join(project_dir, test_gpkg)
 
     cleanup(mc, project, [project_dir])
 
@@ -2177,8 +2172,8 @@ def test_version_info(mc):
 
     shutil.copy(os.path.join(TEST_DATA_DIR, "inserted_1_A_mod.gpkg"), file_path)
     mc.push_project(project_dir)
-
-    info = mc.project_version_info(project, 2)[0]
+    project_info = mc.project_info(project)
+    info = mc.project_version_info(project_info.get("id"), "v2")
     assert info["namespace"] == API_USER
     assert info["project_name"] == test_project
     assert info["name"] == "v2"
@@ -2345,9 +2340,14 @@ def test_project_metadata(mc):
 
     # copy metadata in old format
     os.makedirs(os.path.join(project_dir, ".mergin"), exist_ok=True)
-    project_metadata = os.path.join(project_dir, ".mergin", "mergin.json")
     metadata_file = os.path.join(project_dir, "old_metadata.json")
-    shutil.copyfile(metadata_file, project_metadata)
+    # rewrite metadata nemespace to prevent failing tests with other user than test_plugin
+    with open(metadata_file, "r") as f:
+        metadata = json.load(f)
+    metadata["name"] = f"{API_USER}/{test_project}"
+    project_metadata_file = os.path.join(project_dir, ".mergin", "mergin.json")
+    with open(project_metadata_file, "w") as f:
+        json.dump(metadata, f, indent=2)
 
     # verify we have correct metadata
     mp = MerginProject(project_dir)
@@ -2358,7 +2358,12 @@ def test_project_metadata(mc):
 
     # copy metadata in new format
     metadata_file = os.path.join(project_dir, "new_metadata.json")
-    shutil.copyfile(metadata_file, project_metadata)
+    # rewrite metadata nemespace to prevent failing tests with other user than test_plugin
+    with open(metadata_file, "r") as f:
+        metadata = json.load(f)
+    metadata["namespace"] = API_USER
+    with open(project_metadata_file, "w") as f:
+        json.dump(metadata, f, indent=2)
 
     # verify we have correct metadata
     mp = MerginProject(project_dir)
@@ -2634,7 +2639,6 @@ def test_editor_push(mc: MerginClient, mc2: MerginClient):
 
 def test_error_push_already_named_project(mc: MerginClient):
     test_project = "test_push_already_existing"
-    project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)
 
     with pytest.raises(ClientError) as e:
@@ -2642,7 +2646,7 @@ def test_error_push_already_named_project(mc: MerginClient):
     assert e.value.detail == "Project with the same name already exists"
     assert e.value.http_error == 409
     assert e.value.http_method == "POST"
-    assert e.value.url == f"{mc.url}v1/project/test_plugin"
+    assert e.value.url == f"{mc.url}v1/project/{API_USER}"
 
 
 def test_error_projects_limit_hit(mcStorage: MerginClient):
