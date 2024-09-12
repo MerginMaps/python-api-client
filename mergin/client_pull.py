@@ -786,7 +786,7 @@ def download_files_async(
     mp.log.info(f"Got project info. version {project_info['version']}")
 
     # set temporary directory for download
-    temp_dir = tempfile.mkdtemp(prefix="mergin-py-client-")
+    temp_dir = tempfile.mkdtemp(prefix="python-api-client-")
 
     if output_paths is None:
         output_paths = []
