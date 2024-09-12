@@ -803,7 +803,7 @@ def test_available_storage_validation(mcStorage):
 def test_available_storage_validation2(mc, mc2):
     """
     Testing of storage limit - should not be applied for user pushing changes into project with different namespace.
-    This should cover the exception of mergin-py-client that a user can push changes to someone else's project regardless
+    This should cover the exception of python-api-client that a user can push changes to someone else's project regardless
     the user's own storage limitation. Of course, other limitations are still applied (write access, owner of
     a modified project has to have enough free storage).
 

@@ -162,7 +162,7 @@ class MerginProject:
 
         Raises ClientError if project id is not present in the project metadata. This should
         only happen with projects downloaded with old client, before February 2023,
-        see https://github.com/MerginMaps/mergin-py-client/pull/154
+        see https://github.com/MerginMaps/python-api-client/pull/154
         """
         self._read_metadata()
 
@@ -810,7 +810,7 @@ class MerginProject:
 
         self.log.info("resolving unfinished pull")
 
-        temp_dir = tempfile.mkdtemp(prefix="mergin-py-client-")
+        temp_dir = tempfile.mkdtemp(prefix="python-api-client-")
 
         for root, dirs, files in os.walk(self.unfinished_pull_dir):
             for file_name in files:

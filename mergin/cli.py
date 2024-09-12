@@ -143,7 +143,7 @@ def _print_unhandled_exception():
 
 
 @click.group(
-    epilog=f"Copyright (C) 2019-{date.today().year} Lutra Consulting\n\n(mergin-py-client v{__version__} / pygeodiff v{GeoDiff().version()})"
+    epilog=f"Copyright (C) 2019-{date.today().year} Lutra Consulting\n\n(python-api-client v{__version__} / pygeodiff v{GeoDiff().version()})"
 )
 @click.option(
     "--url",
