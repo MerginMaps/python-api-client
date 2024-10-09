@@ -143,7 +143,7 @@ def _print_unhandled_exception():
 
 
 @click.group(
-    epilog=f"Copyright (C) 2019-{date.today().year} Lutra Consulting\n\n(mergin-py-client v{__version__} / pygeodiff v{GeoDiff().version()})"
+    epilog=f"Copyright (C) 2019-{date.today().year} Lutra Consulting\n\n(python-api-client v{__version__} / pygeodiff v{GeoDiff().version()})"
 )
 @click.option(
     "--url",
@@ -661,6 +661,7 @@ def reset(ctx):
     except Exception as e:
         _print_unhandled_exception()
 
+
 @cli.command()
 @click.argument("project")
 @click.option("--json", is_flag=True, default=False, help="Output in JSON format")
@@ -680,7 +681,7 @@ def list_files(ctx, project, json):
     else:
         click.echo("Fetched {} files .".format(len(project_files)))
         for file in project_files:
-            click.echo("  {:40}\t{:6.1f} MB".format(file['path'], file["size"] / (1024 * 1024)))
+            click.echo("  {:40}\t{:6.1f} MB".format(file["path"], file["size"] / (1024 * 1024)))
 
 
 if __name__ == "__main__":
