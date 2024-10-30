@@ -764,30 +764,6 @@ class MerginClient:
         # filter out versions not within range
         filtered_versions = list(filter(lambda v: (num_since <= int_version(v["name"]) <= num_to), versions))
         return filtered_versions
-    
-    def project_versions_count(self, project_path):
-
-        #TODO ask tomas if we should return the total count another
-
-        """
-        Get the total count of project's versions history.
-
-        :param project_path: Project's full name (<namespace>/<name>)
-        :type project_path: String
-        :param since: Version to track project history from
-        :type since: String
-        :param to: Version to track project history to
-        :type to: String
-
-        :rtype: Integer
-        """
-        start_page = 1 #we don't care which page to get the count 
-        per_page = 100  # server limit
-        params = {"page": start_page, "per_page": per_page, "descending": False}
-        resp = self.get("/v1/project/versions/paginated/{}".format(project_path), params)
-        resp_json = json.load(resp)
-
-        return resp_json["count"]
 
 
     def download_project(self, project_path, directory, version=None):
