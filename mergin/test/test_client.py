@@ -814,7 +814,11 @@ def test_available_workspace_storage(mcStorage):
         remove_folders([project_dir])
 
         # revert storage limit to default value
-        mcStorage.patch(f"/v1/tests/workspaces/{client_workspace_id}", {"limits_override": { "storage": current_storage, "projects": 1, "api_allowed": True }}, {"Content-Type": "application/json"})
+        mcStorage.patch(
+            f"/v1/tests/workspaces/{client_workspace_id}",
+            {"limits_override": {"storage": current_storage, "projects": 1, "api_allowed": True}},
+            {"Content-Type": "application/json"},
+        )
 
 
 def test_available_storage_validation2(mc, mc2):
@@ -2670,6 +2674,19 @@ def test_error_projects_limit_hit(mcStorage: MerginClient):
     test_project = "test_another_project_above_projects_limit"
     test_project_fullname = STORAGE_WORKSPACE + "/" + test_project
 
+    client_workspace = None
+    for workspace in mcStorage.workspaces_list():
+        if workspace["name"] == STORAGE_WORKSPACE:
+            client_workspace = workspace
+            break
+    client_workspace_id = client_workspace["id"]
+    client_workspace_storage = client_workspace["storage"]
+    mcStorage.patch(
+        f"/v1/tests/workspaces/{client_workspace_id}",
+        {"limits_override": {"storage": client_workspace_storage, "projects": 0, "api_allowed": True}},
+        {"Content-Type": "application/json"},
+    )
+
     project_dir = os.path.join(TMP_DIR, test_project, API_USER)
 
     with pytest.raises(ClientError) as e:
@@ -2682,3 +2699,10 @@ def test_error_projects_limit_hit(mcStorage: MerginClient):
     assert e.value.http_error == 422
     assert e.value.http_method == "POST"
     assert e.value.url == f"{mcStorage.url}v1/project/testpluginstorage"
+
+    # back to original values... (1 project, api allowed ...)
+    mcStorage.patch(
+        f"/v1/tests/workspaces/{client_workspace_id}",
+        {"limits_override": {"storage": client_workspace_storage, "projects": 1, "api_allowed": True}},
+        {"Content-Type": "application/json"},
+    )

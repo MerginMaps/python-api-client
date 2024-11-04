@@ -668,7 +668,6 @@ class MerginClient:
                 order_params=order_params,
                 only_public=only_public,
             )
-            print(resp["projects"])
             fetched_projects += len(resp["projects"])
             count = resp["count"]
             projects += resp["projects"]
