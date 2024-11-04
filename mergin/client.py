@@ -236,6 +236,13 @@ class MerginClient:
             data = json.dumps(data, cls=DateTimeEncoder).encode("utf-8")
         request = urllib.request.Request(url, data, headers, method="POST")
         return self._do_request(request)
+    
+    def patch(self, path, data=None, headers={}):
+        url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
+        if headers.get("Content-Type", None) == "application/json":
+            data = json.dumps(data, cls=DateTimeEncoder).encode("utf-8")
+        request = urllib.request.Request(url, data, headers, method="PATCH")
+        return self._do_request(request)
 
     def is_server_compatible(self):
         """
@@ -661,6 +668,7 @@ class MerginClient:
                 order_params=order_params,
                 only_public=only_public,
             )
+            print(resp["projects"])
             fetched_projects += len(resp["projects"])
             count = resp["count"]
             projects += resp["projects"]

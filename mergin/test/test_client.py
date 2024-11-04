@@ -32,7 +32,6 @@ from ..client_pull import (
 from ..utils import (
     generate_checksum,
     get_versions_with_file_changes,
-    is_version_acceptable,
     unique_path_name,
     conflicted_copy_file_name,
     edit_conflict_file_name,
@@ -745,12 +744,12 @@ def test_set_editor_access(mc):
     assert API_USER2 not in access["writersnames"]
 
 
-def test_available_storage_validation(mcStorage):
+def test_available_workspace_storage(mcStorage):
     """
     Testing of storage limit - applies to user pushing changes into own project (namespace matching username).
     This test also tests giving read and write access to another user. Additionally tests also uploading of big file.
     """
-    test_project = "test_available_storage_validation"
+    test_project = "test_available_workspace_storage"
     test_project_fullname = STORAGE_WORKSPACE + "/" + test_project
 
     # cleanups
@@ -766,15 +765,28 @@ def test_available_storage_validation(mcStorage):
 
     # get info about storage capacity
     storage_remaining = 0
+    client_workspace = None
+    for workspace in mcStorage.workspaces_list():
+        if workspace["name"] == STORAGE_WORKSPACE:
+            client_workspace = workspace
+            break
+    assert client_workspace is not None
+    current_storage = client_workspace["storage"]
+    client_workspace_id = client_workspace["id"]
+    # 5 MB
+    testing_storage = 5242880
+    # add  storage limit, to prevent creating too big files
+    mcStorage.patch(
+        f"/v1/tests/workspaces/{client_workspace_id}",
+        {"limits_override": {"storage": testing_storage, "projects": 1, "api_allowed": True}},
+        {"Content-Type": "application/json"},
+    )
 
     if mcStorage.server_type() == ServerType.OLD:
         user_info = mcStorage.user_info()
-        storage_remaining = user_info["storage"] - user_info["disk_usage"]
+        storage_remaining = testing_storage - user_info["disk_usage"]
     else:
-        for workspace in mcStorage.workspaces_list():
-            if workspace["name"] == STORAGE_WORKSPACE:
-                storage_remaining = workspace["storage"] - workspace["disk_usage"]
-                break
+        storage_remaining = testing_storage - client_workspace["disk_usage"]
 
     # generate dummy data (remaining storage + extra 1024b)
     dummy_data_path = project_dir + "/data"
@@ -786,18 +798,23 @@ def test_available_storage_validation(mcStorage):
     try:
         mcStorage.push_project(project_dir)
     except ClientError as e:
+        print("Pushe fail")
         # Expecting "You have reached a data limit" 400 server error msg.
         assert "You have reached a data limit" in str(e)
         got_right_err = True
-    assert got_right_err
+    finally:
+        assert got_right_err
 
-    # Expecting empty project
-    project_info = get_project_info(mcStorage, STORAGE_WORKSPACE, test_project)
-    assert project_info["version"] == "v0"
-    assert project_info["disk_usage"] == 0
+        # Expecting empty project
+        project_info = get_project_info(mcStorage, STORAGE_WORKSPACE, test_project)
+        assert project_info["version"] == "v0"
+        assert project_info["disk_usage"] == 0
 
-    # remove dummy big file from a disk
-    remove_folders([project_dir])
+        # remove dummy big file from a disk
+        remove_folders([project_dir])
+
+        # revert storage limit to default value
+        mcStorage.patch(f"/v1/tests/workspaces/{client_workspace_id}", {"limits_override": { "storage": current_storage, "projects": 1, "api_allowed": True }}, {"Content-Type": "application/json"})
 
 
 def test_available_storage_validation2(mc, mc2):
@@ -866,7 +883,7 @@ def get_project_info(mc, namespace, project_name):
     :param project_name: project's name
     :return: dict with project info
     """
-    projects = mc.projects_list(flag="created")
+    projects = mc.projects_list(flag="created", namespace=namespace)
     test_project_list = [p for p in projects if p["name"] == project_name and p["namespace"] == namespace]
     assert len(test_project_list) == 1
     return test_project_list[0]
