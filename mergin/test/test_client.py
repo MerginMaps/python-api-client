@@ -1956,23 +1956,23 @@ def test_project_versions_list(mc):
     assert project_info["version"] == "v5"
 
     # get all versions
-    versions = mc.project_versions(project)
+    versions = mc.project_versions_in_range(project)
     assert len(versions) == 5
     assert versions[0]["name"] == "v1"
     assert versions[-1]["name"] == "v5"
 
     # get first 3 versions
-    versions = mc.project_versions(project, to="v3")
+    versions = mc.project_versions_in_range(project, to="v3")
     assert len(versions) == 3
     assert versions[-1]["name"] == "v3"
 
     # get last 2 versions
-    versions = mc.project_versions(project, since="v4")
+    versions = mc.project_versions_in_range(project, since="v4")
     assert len(versions) == 2
     assert versions[0]["name"] == "v4"
 
     # get range v2-v4
-    versions = mc.project_versions(project, since="v2", to="v4")
+    versions = mc.project_versions_in_range(project, since="v2", to="v4")
     assert len(versions) == 3
     assert versions[0]["name"] == "v2"
     assert versions[-1]["name"] == "v4"

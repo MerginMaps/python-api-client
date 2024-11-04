@@ -216,7 +216,7 @@ def create_report(mc, directory, since, to, out_file):
     mp = MerginProject(directory)
     project = mp.project_full_name()
     mp.log.info(f"--- Creating changesets report for {project} from {since} to {to if to else 'latest'} versions ----")
-    versions = mc.project_versions(project, since, to if to else None)
+    versions = mc.project_versions_in_range(project, since, to if to else None)
     versions_map = {v["name"]: v for v in versions}
     headers = ["file", "table", "author", "date", "time", "version", "operation", "length", "area", "count"]
     records = []
