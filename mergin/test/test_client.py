@@ -67,9 +67,27 @@ def mc2():
 
 
 @pytest.fixture(scope="function")
-def mcStorage():
+def mcStorage(request):
     client = create_client(API_USER, USER_PWD)
-    create_workspace_for_client(client, STORAGE_WORKSPACE)
+    workspace_name = create_workspace_for_client(client, STORAGE_WORKSPACE)
+    print(workspace_name)
+    client_workspace = None
+    for workspace in client.workspaces_list():
+        if workspace["name"] == workspace_name:
+            client_workspace = workspace
+            break
+    client_workspace_id = client_workspace["id"]
+    client_workspace_storage = client_workspace["storage"]
+
+    def teardown():
+        # back to original values... (1 project, api allowed ...)
+        client.patch(
+            f"/v1/tests/workspaces/{client_workspace_id}",
+            {"limits_override": {"storage": client_workspace_storage, "projects": 1, "api_allowed": True}},
+            {"Content-Type": "application/json"},
+        )
+
+    request.addfinalizer(teardown)
     return client
 
 
@@ -78,11 +96,13 @@ def create_client(user, pwd):
     return MerginClient(SERVER_URL, login=user, password=pwd)
 
 
-def create_workspace_for_client(mc: MerginClient, workspace_name=None):
+def create_workspace_for_client(mc: MerginClient, workspace_name=None) -> str:
+    workspace_name = workspace_name or mc.username()
     try:
-        mc.create_workspace(workspace_name or mc.username())
+        mc.create_workspace(workspace_name)
     except ClientError:
-        return
+        pass
+    return workspace_name
 
 
 def cleanup(mc, project, dirs):
@@ -798,7 +818,6 @@ def test_available_workspace_storage(mcStorage):
     try:
         mcStorage.push_project(project_dir)
     except ClientError as e:
-        print("Pushe fail")
         # Expecting "You have reached a data limit" 400 server error msg.
         assert "You have reached a data limit" in str(e)
         got_right_err = True
@@ -812,13 +831,6 @@ def test_available_workspace_storage(mcStorage):
 
         # remove dummy big file from a disk
         remove_folders([project_dir])
-
-        # revert storage limit to default value
-        mcStorage.patch(
-            f"/v1/tests/workspaces/{client_workspace_id}",
-            {"limits_override": {"storage": current_storage, "projects": 1, "api_allowed": True}},
-            {"Content-Type": "application/json"},
-        )
 
 
 def test_available_storage_validation2(mc, mc2):
@@ -2699,10 +2711,3 @@ def test_error_projects_limit_hit(mcStorage: MerginClient):
     assert e.value.http_error == 422
     assert e.value.http_method == "POST"
     assert e.value.url == f"{mcStorage.url}v1/project/testpluginstorage"
-
-    # back to original values... (1 project, api allowed ...)
-    mcStorage.patch(
-        f"/v1/tests/workspaces/{client_workspace_id}",
-        {"limits_override": {"storage": client_workspace_storage, "projects": 1, "api_allowed": True}},
-        {"Content-Type": "application/json"},
-    )
