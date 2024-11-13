@@ -14,6 +14,7 @@ this_dir = os.path.dirname(os.path.realpath(__file__))
 class ErrorCode(Enum):
     ProjectsLimitHit = "ProjectsLimitHit"
     StorageLimitHit = "StorageLimitHit"
+    MonthlyContributorsError = "MonthlyContributorsError"
 
 
 class ClientError(Exception):
