@@ -16,6 +16,7 @@ class ErrorCode(Enum):
     StorageLimitHit = "StorageLimitHit"
     MonthlyContributorsLimitHit = "MonthlyContributorsLimitHit"
 
+
 class ClientError(Exception):
     def __init__(self, detail, url=None, server_code=None, server_response=None, http_error=None, http_method=None):
         self.detail = detail
