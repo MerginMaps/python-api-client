@@ -83,14 +83,7 @@ def mcStorage(request):
         # back to original values... (1 project, api allowed ...)
         client.patch(
             f"/v1/tests/workspaces/{client_workspace_id}",
-            {
-                "limits_override": {
-                    "storage": client_workspace_storage,
-                    "projects": 1,
-                    "monthly_contributors": 1000,
-                    "api_allowed": True,
-                }
-            },
+            {"limits_override": {"storage": client_workspace_storage, "projects": 1, "api_allowed": True}},
             {"Content-Type": "application/json"},
         )
 
