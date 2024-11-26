@@ -83,7 +83,14 @@ def mcStorage(request):
         # back to original values... (1 project, api allowed ...)
         client.patch(
             f"/v1/tests/workspaces/{client_workspace_id}",
-            {"limits_override": {"storage": client_workspace_storage, "projects": 1, "api_allowed": True}},
+            {
+                "limits_override": {
+                    "storage": client_workspace_storage,
+                    "projects": 1,
+                    "monthly_contributors": 1000,
+                    "api_allowed": True,
+                }
+            },
             {"Content-Type": "application/json"},
         )
 
@@ -2711,3 +2718,35 @@ def test_error_projects_limit_hit(mcStorage: MerginClient):
     assert e.value.http_error == 422
     assert e.value.http_method == "POST"
     assert e.value.url == f"{mcStorage.url}v1/project/testpluginstorage"
+
+
+# TODO: refactor tests to create workspaces on each run and apply test_error_monthly_contributors_limit_hit
+# def test_error_monthly_contributors_limit_hit(mcStorage: MerginClient):
+#     test_project = "test_monthly_contributors_limit_hit"
+#     test_project_fullname = STORAGE_WORKSPACE + "/" + test_project
+
+#     client_workspace = None
+#     for workspace in mcStorage.workspaces_list():
+#         if workspace["name"] == STORAGE_WORKSPACE:
+#             client_workspace = workspace
+#             break
+
+#     client_workspace_id = client_workspace["id"]
+#     mcStorage.patch(
+#         f"/v1/tests/workspaces/{client_workspace_id}",
+#         {"limits_override": {"monthly_contributors": 0, "api_allowed": True}},
+#         {"Content-Type": "application/json"},
+#     )
+
+#     with pytest.raises(ClientError) as e:
+#         mcStorage.create_project_and_push(test_project_fullname, project_dir)
+
+#     assert e.value.server_code == ErrorCode.MonthlyContributorsLimitHit.value
+#     assert e.value.detail == (
+#         "Maximum number of workspace contributors is reached. "
+#         "Please upgrade your subscription to push changes or create projects."
+#     )
+#     assert e.value.http_error == 422
+#     assert e.value.http_method == "POST"
+#     assert e.value.url == f"{mc.url}v1/project/testpluginstorage"
+#     assert e.value.contributors_quota == 0
