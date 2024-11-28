@@ -2742,7 +2742,6 @@ def test_error_monthly_contributors_limit_hit(mcStorage: MerginClient):
     with pytest.raises(ClientError) as e:
         mcStorage.push_project(project_dir)
 
-    print(e.value.server_response)
     assert e.value.server_code == ErrorCode.MonthlyContributorsLimitHit.value
     assert e.value.detail == (
         "Maximum number of workspace contributors is reached. "
