@@ -14,6 +14,7 @@ this_dir = os.path.dirname(os.path.realpath(__file__))
 class ErrorCode(Enum):
     ProjectsLimitHit = "ProjectsLimitHit"
     StorageLimitHit = "StorageLimitHit"
+    MonthlyContributorsLimitHit = "MonthlyContributorsLimitHit"
 
 
 class ClientError(Exception):
@@ -36,6 +37,8 @@ class ClientError(Exception):
             string_res += f"URL: {self.url}\n"
         if self.http_method:
             string_res += f"Method: {self.http_method}\n"
+        if self.server_code:
+            string_res += f"Error code: {self.server_code}\n"
         if self.extra:
             string_res += f"{self.extra}\n"
         return string_res
