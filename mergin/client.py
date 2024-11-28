@@ -755,13 +755,13 @@ class MerginClient:
         if type(since) == str:
             num_since = int_version(since)
         elif since == None:
-            num_since == 1
+            num_since = 1
         else:
             # keep the since parameter as is
             num_since = since
 
         if type(to) == str:
-            num_to = int_version(int)
+            num_to = int_version(to)
         else:
             # keep the to parameter as is
             num_to = to
