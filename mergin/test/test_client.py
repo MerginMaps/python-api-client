@@ -2011,6 +2011,14 @@ def test_project_versions_list(mc):
     assert versions[-1]["name"] == "v4"
 
 
+
+    versions_count = mc.project_versions_count(project)
+    assert versions_count == 5
+
+    versions = mc.project_versions_page(project, page=1, descending=True)
+    assert len(versions) == 5
+    assert versions[0]["name"] == "v5"
+    assert versions[-1]["name"] == "v1"
 def test_report(mc):
     test_project = "test_report"
     project = API_USER + "/" + test_project
