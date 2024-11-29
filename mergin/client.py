@@ -719,6 +719,21 @@ class MerginClient:
         return json.load(resp)
 
     def project_versions_page(self, project_path, page, per_page=100, descending=False):
+        """
+        Get records of project's versions (history) using calculated pagination.
+        wrapper around the /v1/project/versions/paginated/{} API end point
+
+        :param project_path: Project's full name (<namespace>/<name>)
+        :type project_path: String | Int
+        :param page: page number
+        :type page: Int
+        :param per_page: number of results per page default 100
+        :type per_page: Int
+        :param descending: order of sorting
+        :type descending: Bool
+
+        :rtype: List[Dict]
+        """
         params = {"page": page, "per_page": per_page, "descending": descending}
         resp = self.get("/v1/project/versions/paginated/{}".format(project_path), params)
         resp_json = json.load(resp)
@@ -727,8 +742,12 @@ class MerginClient:
     def project_versions_count(self, project_path):
         """
         return the total count of versions
+        To note we fetch only one page and one item as we only need the "count" response
 
-        To note the requested informations are kept to the minimal
+        :param project_path_or_id: Project's full name (<namespace>/<name>) or id
+        :type project_path_or_id: String
+
+        :rtype: Int
         """
         params = {"page": 1, "per_page": 1, "descending": False}
         resp = self.get("/v1/project/versions/paginated/{}".format(project_path), params)
@@ -741,11 +760,11 @@ class MerginClient:
         If neither 'since' nor 'to' is specified it will return all versions.
 
         :param project_path: Project's full name (<namespace>/<name>)
-        :type project_path: String | Int
+        :type project_path: String
         :param since: Version to track project history from
         :type since: String | Int
         :param to: Version to track project history to
-        :type to: String
+        :type to: String | Int
 
         :rtype: List[Dict]
         """
