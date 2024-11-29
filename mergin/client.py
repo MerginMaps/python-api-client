@@ -754,7 +754,7 @@ class MerginClient:
         resp_json = json.load(resp)
         return resp_json["count"]
 
-    def project_versions_in_range(self, project_path, since=None, to=None):
+    def project_versions(self, project_path, since=1, to=None):
         """
         Get records of project's versions (history) in ascending order.
         If neither 'since' nor 'to' is specified it will return all versions.
@@ -773,8 +773,6 @@ class MerginClient:
 
         if type(since) == str:
             num_since = int_version(since)
-        elif since == None:
-            num_since = 1
         else:
             # keep the since parameter as is
             num_since = since
@@ -792,8 +790,7 @@ class MerginClient:
             num_to = self.project_versions_count(project_path)
             latest_version = int_version(versions[-1]["name"])
             if latest_version < num_to:
-                # add yield here
-                versions += self.project_versions_in_range(project_path, f"v{latest_version+1}", f"v{num_to}")
+                versions += self.project_versions(project_path, f"v{latest_version+1}", f"v{num_to}")
         else:
             end_page = math.ceil(num_to / per_page)
             for page in range(start_page, end_page + 1):
