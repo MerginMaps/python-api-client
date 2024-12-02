@@ -732,12 +732,12 @@ class MerginClient:
         :param descending: order of sorting
         :type descending: Bool
 
-        :rtype: List[Dict]
+        :rtype: List[Dict], Int
         """
         params = {"page": page, "per_page": per_page, "descending": descending}
         resp = self.get("/v1/project/versions/paginated/{}".format(project_path), params)
         resp_json = json.load(resp)
-        return resp_json["versions"]
+        return resp_json["versions"], resp_json["count"]
 
     def project_versions_count(self, project_path):
         """
@@ -786,15 +786,16 @@ class MerginClient:
         start_page = math.ceil(num_since / per_page)
         if not num_to:
             # let's get first page and count
-            versions = self.project_versions_page(project_path, start_page, per_page)
-            num_to = self.project_versions_count(project_path)
+            versions, num_to = self.project_versions_page(project_path, start_page, per_page)
+
             latest_version = int_version(versions[-1]["name"])
             if latest_version < num_to:
                 versions += self.project_versions(project_path, f"v{latest_version+1}", f"v{num_to}")
         else:
             end_page = math.ceil(num_to / per_page)
             for page in range(start_page, end_page + 1):
-                versions += self.project_versions_page(project_path, page, per_page)
+                page_versions, _ = self.project_versions_page(project_path, page, per_page)
+                versions += page_versions
 
         # filter out versions not within range
         filtered_versions = list(filter(lambda v: (num_since <= int_version(v["name"]) <= num_to), versions))
