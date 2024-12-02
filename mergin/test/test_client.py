@@ -52,6 +52,10 @@ CHANGED_SCHEMA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "
 STORAGE_WORKSPACE = os.environ.get("TEST_STORAGE_WORKSPACE", "testpluginstorage")
 
 
+def get_limit_overrides(storage: int):
+    return {"storage": storage, "projects": 2, "api_allowed": True, "monthly_contributors": -1}
+
+
 @pytest.fixture(scope="function")
 def mc():
     client = create_client(API_USER, USER_PWD)
@@ -70,7 +74,6 @@ def mc2():
 def mcStorage(request):
     client = create_client(API_USER, USER_PWD)
     workspace_name = create_workspace_for_client(client, STORAGE_WORKSPACE)
-    print(workspace_name)
     client_workspace = None
     for workspace in client.workspaces_list():
         if workspace["name"] == workspace_name:
@@ -83,7 +86,7 @@ def mcStorage(request):
         # back to original values... (1 project, api allowed ...)
         client.patch(
             f"/v1/tests/workspaces/{client_workspace_id}",
-            {"limits_override": {"storage": client_workspace_storage, "projects": 1, "api_allowed": True}},
+            {"limits_override": get_limit_overrides(client_workspace_storage)},
             {"Content-Type": "application/json"},
         )
 
@@ -2691,8 +2694,10 @@ def test_error_push_already_named_project(mc: MerginClient):
 
 
 def test_error_projects_limit_hit(mcStorage: MerginClient):
-    test_project = "test_another_project_above_projects_limit"
+    test_project = "project_above_projects_limit"
     test_project_fullname = STORAGE_WORKSPACE + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project, API_USER)
+    cleanup(mcStorage, test_project, [project_dir])
 
     client_workspace = None
     for workspace in mcStorage.workspaces_list():
@@ -2703,11 +2708,9 @@ def test_error_projects_limit_hit(mcStorage: MerginClient):
     client_workspace_storage = client_workspace["storage"]
     mcStorage.patch(
         f"/v1/tests/workspaces/{client_workspace_id}",
-        {"limits_override": {"storage": client_workspace_storage, "projects": 0, "api_allowed": True}},
+        {"limits_override": {**get_limit_overrides(client_workspace_storage), "projects": 0}},
         {"Content-Type": "application/json"},
     )
-
-    project_dir = os.path.join(TMP_DIR, test_project, API_USER)
 
     with pytest.raises(ClientError) as e:
         mcStorage.create_project_and_push(test_project_fullname, project_dir)
@@ -2719,3 +2722,40 @@ def test_error_projects_limit_hit(mcStorage: MerginClient):
     assert e.value.http_error == 422
     assert e.value.http_method == "POST"
     assert e.value.url == f"{mcStorage.url}v1/project/testpluginstorage"
+
+
+# TODO: refactor tests to create workspaces on each run and apply test_error_monthly_contributors_limit_hit
+def test_error_monthly_contributors_limit_hit(mcStorage: MerginClient):
+    test_project = "test_monthly_contributors_limit_hit"
+    project_dir = os.path.join(TMP_DIR, test_project)
+    test_project_fullname = STORAGE_WORKSPACE + "/" + test_project
+    cleanup(mcStorage, test_project_fullname, [project_dir])
+
+    client_workspace = None
+    for workspace in mcStorage.workspaces_list():
+        if workspace["name"] == STORAGE_WORKSPACE:
+            client_workspace = workspace
+            break
+
+    client_workspace_id = client_workspace["id"]
+    client_workspace_storage = client_workspace["storage"]
+    mcStorage.patch(
+        f"/v1/tests/workspaces/{client_workspace_id}",
+        {"limits_override": {**get_limit_overrides(client_workspace_storage), "monthly_contributors": 0}},
+        {"Content-Type": "application/json"},
+    )
+
+    mcStorage.create_project_and_push(test_project_fullname, project_dir)
+    shutil.copy(os.path.join(TEST_DATA_DIR, "test.txt"), project_dir)
+    with pytest.raises(ClientError) as e:
+        mcStorage.push_project(project_dir)
+
+    assert e.value.server_code == ErrorCode.MonthlyContributorsLimitHit.value
+    assert e.value.detail == (
+        "Maximum number of workspace contributors is reached. "
+        "Please upgrade your subscription to push changes or create projects. (MonthlyContributorsLimitHit)"
+    )
+    assert e.value.http_error == 422
+    assert e.value.http_method == "POST"
+    assert e.value.url == f"{mcStorage.url}v1/project/push/testpluginstorage/{test_project}"
+    assert e.value.server_response.get("contributors_quota") == 0
