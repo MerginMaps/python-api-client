@@ -687,6 +687,8 @@ def download_diffs_async(mc, project_directory, file_path, versions):
     fetch_files = []
 
     for version in versions:
+        if version not in file_history["history"]:
+            continue  # skip if this file was not modified at this version
         version_data = file_history["history"][version]
         if "diff" not in version_data:
             continue  # skip if there is no diff in history
