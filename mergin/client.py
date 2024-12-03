@@ -380,15 +380,8 @@ class MerginClient:
         Returns response from server as JSON dict or None if endpoint is not found
         """
 
-        try:
-            response = self.get(f"/v1/workspace/{workspace_id}/usage")
-        except ClientError as e:
-            e.extra = f"Unable to query for /workspace/{workspace_id}/usage endpoint"
-            raise e
-
-        response = json.loads(response.read())
-
-        return response
+        resp = self.get(f"/v1/workspace/{workspace_id}/usage")
+        return json.load(resp)
 
     def server_type(self):
         """
