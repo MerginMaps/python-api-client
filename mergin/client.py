@@ -383,8 +383,8 @@ class MerginClient:
         try:
             response = self.get(f"/v1/workspace/{workspace_id}/usage")
         except ClientError as e:
-            self.log.debug(f"Unable to query for /workspace/{workspace_id}/usage endpoint")
-            return
+            e.extra = f"Unable to query for /workspace/{workspace_id}/usage endpoint"
+            raise e
 
         response = json.loads(response.read())
 
@@ -718,7 +718,7 @@ class MerginClient:
             resp = self.get("/v1/project/{}".format(project_path_or_id), params)
         return json.load(resp)
 
-    def project_versions_page(self, project_path, page, per_page=100, descending=False):
+    def paginated_project_versions(self, project_path, page, per_page=100, descending=False):
         """
         Get records of project's versions (history) using calculated pagination.
         wrapper around the /v1/project/versions/paginated/{} API end point
@@ -786,7 +786,7 @@ class MerginClient:
         start_page = math.ceil(num_since / per_page)
         if not num_to:
             # let's get first page and count
-            versions, num_to = self.project_versions_page(project_path, start_page, per_page)
+            versions, num_to = self.paginated_project_versions(project_path, start_page, per_page)
 
             latest_version = int_version(versions[-1]["name"])
             if latest_version < num_to:
@@ -794,7 +794,7 @@ class MerginClient:
         else:
             end_page = math.ceil(num_to / per_page)
             for page in range(start_page, end_page + 1):
-                page_versions, _ = self.project_versions_page(project_path, page, per_page)
+                page_versions, _ = self.paginated_project_versions(project_path, page, per_page)
                 versions += page_versions
 
         # filter out versions not within range
