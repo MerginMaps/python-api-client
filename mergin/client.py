@@ -336,24 +336,6 @@ class MerginClient:
             return None  # not authenticated
         return self._user_info["username"]
 
-    def user_service(self):
-        """
-        Requests information about user from /user/service endpoint if such exists in self.url server.
-
-        Returns response from server as JSON dict or None if endpoint is not found
-        This can be removed once our SaaS server is upgraded to support workspaces
-        """
-
-        try:
-            response = self.get("/v1/user/service")
-        except ClientError as e:
-            self.log.debug("Unable to query for /user/service endpoint")
-            return
-
-        response = json.loads(response.read())
-
-        return response
-
     def workspace_service(self, workspace_id):
         """
         This Requests information about a workspace service from /workspace/{id}/service endpoint,
@@ -361,16 +343,8 @@ class MerginClient:
 
         Returns response from server as JSON dict or None if endpoint is not found
         """
-
-        try:
-            response = self.get(f"/v1/workspace/{workspace_id}/service")
-        except ClientError as e:
-            self.log.debug(f"Unable to query for /workspace/{workspace_id}/service endpoint")
-            return
-
-        response = json.loads(response.read())
-
-        return response
+        resp = self.get(f"/v1/workspace/{workspace_id}/service")
+        return json.loads(resp)
 
     def workspace_usage(self, workspace_id):
         """
