@@ -1058,11 +1058,6 @@ def test_logging(mc):
     del os.environ["MERGIN_CLIENT_LOG"]
 
 
-def test_server_compatibility(mc):
-    """Test server compatibility."""
-    assert mc.is_server_compatible()
-
-
 def create_versioned_project(mc, project_name, project_dir, updated_file, remove=True, overwrite=False):
     project = API_USER + "/" + project_name
     cleanup(mc, project, [project_dir])

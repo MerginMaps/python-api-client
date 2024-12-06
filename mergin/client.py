@@ -244,52 +244,6 @@ class MerginClient:
         request = urllib.request.Request(url, data, headers, method="PATCH")
         return self._do_request(request)
 
-    def is_server_compatible(self):
-        """
-        Test whether version of the server meets the required set of endpoints.
-
-        :returns: client compatible with server
-        rtype: Boolean
-        """
-        resp = self.get("/ping")
-        data = json.load(resp)
-        if "endpoints" not in data:
-            return False
-        endpoints = data["endpoints"]
-
-        client_endpoints = {
-            "data_sync": {
-                "GET": ["/project/raw/{namespace}/{project_name}"],
-                "POST": [
-                    "/project/push/cancel/{transaction_id}",
-                    "/project/push/finish/{transaction_id}",
-                    "/project/push/{namespace}/{project_name}",
-                    # "/project/push/chunk/{transaction_id}/{chunk_id}" # issue in server
-                ],
-            },
-            "project": {
-                "DELETE": ["/project/{namespace}/{project_name}"],
-                "GET": [
-                    "/project",
-                    "/project/{namespace}/{project_name}",
-                    "/project/version/{namespace}/{project_name}",
-                ],
-                "POST": ["/project/{namespace}"],
-            },
-            "user": {"POST": ["/auth/login"]},
-        }
-
-        for k, v in client_endpoints.items():
-            if k not in endpoints:
-                return False
-            for method, url_list in v.items():
-                if method not in endpoints[k]:
-                    return False
-                for url in url_list:
-                    if url not in endpoints[k][method]:
-                        return False
-        return True
-
     def login(self, login, password):
         """
         Authenticate login credentials and store session token
