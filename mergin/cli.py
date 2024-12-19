@@ -95,9 +95,7 @@ def pretty_summary(summary):
 def get_token(url, username, password):
     """Get authorization token for given user and password."""
     mc = MerginClient(url)
-    if not mc.is_server_compatible():
-        click.secho(str("This client version is incompatible with server, try to upgrade"), fg="red")
-        return None
+
     try:
         session = mc.login(username, password)
     except LoginError as e:
