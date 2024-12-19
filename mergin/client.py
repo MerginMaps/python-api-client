@@ -290,24 +290,6 @@ class MerginClient:
             return None  # not authenticated
         return self._user_info["username"]
 
-    def user_service(self):
-        """
-        Requests information about user from /user/service endpoint if such exists in self.url server.
-
-        Returns response from server as JSON dict or None if endpoint is not found
-        This can be removed once our SaaS server is upgraded to support workspaces
-        """
-
-        try:
-            response = self.get("/v1/user/service")
-        except ClientError as e:
-            self.log.debug("Unable to query for /user/service endpoint")
-            return
-
-        response = json.loads(response.read())
-
-        return response
-
     def workspace_service(self, workspace_id):
         """
         This Requests information about a workspace service from /workspace/{id}/service endpoint,
@@ -315,16 +297,19 @@ class MerginClient:
 
         Returns response from server as JSON dict or None if endpoint is not found
         """
+        resp = self.get(f"/v1/workspace/{workspace_id}/service")
+        return json.loads(resp)
 
-        try:
-            response = self.get(f"/v1/workspace/{workspace_id}/service")
-        except ClientError as e:
-            self.log.debug(f"Unable to query for /workspace/{workspace_id}/service endpoint")
-            return
+    def workspace_usage(self, workspace_id):
+        """
+        This Requests information about a workspace usage from /workspace/{id}/usage endpoint,
+        if such exists in self.url server.
 
-        response = json.loads(response.read())
+        Returns response from server as JSON dict or None if endpoint is not found
+        """
 
-        return response
+        resp = self.get(f"/v1/workspace/{workspace_id}/usage")
+        return json.load(resp)
 
     def server_type(self):
         """
@@ -654,7 +639,43 @@ class MerginClient:
             resp = self.get("/v1/project/{}".format(project_path_or_id), params)
         return json.load(resp)
 
-    def project_versions(self, project_path, since=None, to=None):
+    def paginated_project_versions(self, project_path, page, per_page=100, descending=False):
+        """
+        Get records of project's versions (history) using calculated pagination.
+        wrapper around the /v1/project/versions/paginated/{} API end point
+
+        :param project_path: Project's full name (<namespace>/<name>)
+        :type project_path: String | Int
+        :param page: page number
+        :type page: Int
+        :param per_page: number of results per page default 100
+        :type per_page: Int
+        :param descending: order of sorting
+        :type descending: Bool
+
+        :rtype: List[Dict], Int
+        """
+        params = {"page": page, "per_page": per_page, "descending": descending}
+        resp = self.get("/v1/project/versions/paginated/{}".format(project_path), params)
+        resp_json = json.load(resp)
+        return resp_json["versions"], resp_json["count"]
+
+    def project_versions_count(self, project_path):
+        """
+        return the total count of versions
+        To note we fetch only one page and one item as we only need the "count" response
+
+        :param project_path_or_id: Project's full name (<namespace>/<name>) or id
+        :type project_path_or_id: String
+
+        :rtype: Int
+        """
+        params = {"page": 1, "per_page": 1, "descending": False}
+        resp = self.get("/v1/project/versions/paginated/{}".format(project_path), params)
+        resp_json = json.load(resp)
+        return resp_json["count"]
+
+    def project_versions(self, project_path, since=1, to=None):
         """
         Get records of project's versions (history) in ascending order.
         If neither 'since' nor 'to' is specified it will return all versions.
@@ -662,33 +683,40 @@ class MerginClient:
         :param project_path: Project's full name (<namespace>/<name>)
         :type project_path: String
         :param since: Version to track project history from
-        :type since: String
+        :type since: String | Int
         :param to: Version to track project history to
-        :type to: String
+        :type to: String | Int
 
         :rtype: List[Dict]
         """
         versions = []
         per_page = 100  # server limit
-        num_since = int_version(since) if since else 1
-        num_to = int_version(to) if to else None  # we may not know yet
+
+        if type(since) == str:
+            num_since = int_version(since)
+        else:
+            # keep the since parameter as is
+            num_since = since
+
+        if type(to) == str:
+            num_to = int_version(to)
+        else:
+            # keep the to parameter as is
+            num_to = to
+
         start_page = math.ceil(num_since / per_page)
         if not num_to:
             # let's get first page and count
-            params = {"page": start_page, "per_page": per_page, "descending": False}
-            resp = self.get("/v1/project/versions/paginated/{}".format(project_path), params)
-            resp_json = json.load(resp)
-            versions = resp_json["versions"]
-            num_to = resp_json["count"]
+            versions, num_to = self.paginated_project_versions(project_path, start_page, per_page)
+
             latest_version = int_version(versions[-1]["name"])
             if latest_version < num_to:
                 versions += self.project_versions(project_path, f"v{latest_version+1}", f"v{num_to}")
         else:
             end_page = math.ceil(num_to / per_page)
             for page in range(start_page, end_page + 1):
-                params = {"page": page, "per_page": per_page, "descending": False}
-                resp = self.get("/v1/project/versions/paginated/{}".format(project_path), params)
-                versions += json.load(resp)["versions"]
+                page_versions, _ = self.paginated_project_versions(project_path, page, per_page)
+                versions += page_versions
 
         # filter out versions not within range
         filtered_versions = list(filter(lambda v: (num_since <= int_version(v["name"]) <= num_to), versions))
