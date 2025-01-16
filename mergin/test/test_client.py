@@ -2718,6 +2718,7 @@ def test_error_projects_limit_hit(mcStorage: MerginClient):
     assert e.value.http_method == "POST"
     assert e.value.url == f"{mcStorage.url}v1/project/testpluginstorage"
 
+
 def test_workspace_requests(mc2: MerginClient):
     test_project = "test_permissions"
     test_project_fullname = API_USER2 + "/" + test_project
@@ -2741,4 +2742,3 @@ def test_workspace_requests(mc2: MerginClient):
     assert service["plan"]["product_id"] == None
     assert service["plan"]["type"] == "custom"
     assert service["subscription"] == None
-
