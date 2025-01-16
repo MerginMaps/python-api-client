@@ -298,7 +298,7 @@ class MerginClient:
         Returns response from server as JSON dict or None if endpoint is not found
         """
         resp = self.get(f"/v1/workspace/{workspace_id}/service")
-        return json.loads(resp)
+        return json.load(resp)
 
     def workspace_usage(self, workspace_id):
         """

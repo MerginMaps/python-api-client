@@ -2717,3 +2717,28 @@ def test_error_projects_limit_hit(mcStorage: MerginClient):
     assert e.value.http_error == 422
     assert e.value.http_method == "POST"
     assert e.value.url == f"{mcStorage.url}v1/project/testpluginstorage"
+
+def test_workspace_requests(mc2: MerginClient):
+    test_project = "test_permissions"
+    test_project_fullname = API_USER2 + "/" + test_project
+
+    project_info = mc2.project_info(test_project_fullname)
+    ws_id = project_info.get("workspace_id")
+
+    usage = mc2.workspace_usage(ws_id)
+    # Check type and common value
+    assert type(usage) == dict
+    assert usage["api"]["allowed"] == True
+    assert usage["history"]["quota"] == 214748364800
+    assert usage["history"]["usage"] == 0
+
+    service = mc2.workspace_service(ws_id)
+    # Check type and common value
+    assert type(service) == dict
+    assert service["action_required"] == False
+    assert service["plan"]
+    assert service["plan"]["is_paid_plan"] == False
+    assert service["plan"]["product_id"] == None
+    assert service["plan"]["type"] == "custom"
+    assert service["subscription"] == None
+
