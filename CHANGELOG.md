@@ -1,5 +1,7 @@
 # Changelog
 
+Changelog is moved to [GitHub releases](https://github.com/MerginMaps/python-api-client/releases).
+
 ## 0.9.3
 
 - Added ```list-files``` CLI command for list of project files (#199 by @kaloyan13)
