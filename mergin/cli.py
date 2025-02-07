@@ -153,7 +153,7 @@ def _print_unhandled_exception():
 @click.option("--username", envvar="MERGIN_USERNAME")
 @click.option("--password", cls=OptionPasswordIfUser, prompt=True, hide_input=True, envvar="MERGIN_PASSWORD")
 @click.pass_context
-def cli(ctx, version, url, auth_token, username, password):
+def cli(ctx, url, auth_token, username, password):
     """
     Command line interface for the Mergin Maps client module.
     For user authentication on server there are two options:
@@ -526,7 +526,7 @@ def history(ctx, path):
 @click.argument("path")
 @click.argument("version")
 @click.pass_context
-def show_file_changeset(ctx, path, version):
+def changeset(ctx, path, version):
     """Displays file changes."""
     mc = ctx.obj["client"]
     if mc is None:
@@ -744,6 +744,12 @@ def members():
     "Workspace members management"
     pass
 
+@members.command(name="list")
+@click.pass_context
+def members_list():
+    "List workspace members"
+    pass
+
 @members.command()
 @click.pass_context
 def get():
@@ -756,10 +762,10 @@ def add():
     "Add workspace member"
     pass
 
-@workspace.command()
+@members.command()
 @click.pass_context
 def update():
-    "Create workspace"
+    "Update workspace member"
     pass
 
 @members.command()
