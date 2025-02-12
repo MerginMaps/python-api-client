@@ -1,5 +1,5 @@
 from itertools import filterfalse
-from typing import Callable
+from typing import Callable, Dict, List
 
 from .utils import is_mergin_config, is_qgis_file, is_versioned_file
 
@@ -24,7 +24,7 @@ def is_editor_enabled(mc, project_info: dict) -> bool:
     return server_support and project_role == EDITOR_ROLE_NAME
 
 
-def _apply_editor_filters(changes: dict[str, list[dict]]) -> dict[str, list[dict]]:
+def _apply_editor_filters(changes: Dict[str, List[dict]]) -> Dict[str, List[dict]]:
     """
     Applies editor-specific filters to the changes dictionary, removing any changes to files that are not in the editor's list of allowed files.
 
@@ -40,7 +40,7 @@ def _apply_editor_filters(changes: dict[str, list[dict]]) -> dict[str, list[dict
     return changes
 
 
-def filter_changes(mc, project_info: dict, changes: dict[str, list[dict]]) -> dict[str, list[dict]]:
+def filter_changes(mc, project_info: dict, changes: Dict[str, List[dict]]) -> Dict[str, List[dict]]:
     """
     Filters the given changes dictionary based on the editor's enabled state.
 

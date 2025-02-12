@@ -17,7 +17,7 @@ import re
 import typing
 import warnings
 
-from .common import ClientError, LoginError, InvalidProject, ErrorCode
+from .common import ClientError, LoginError
 from .merginproject import MerginProject
 from .client_pull import (
     download_file_finalize,
