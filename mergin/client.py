@@ -36,6 +36,7 @@ from .utils import DateTimeEncoder, get_versions_with_file_changes, int_version,
 from .version import __version__
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
+json_headers = {"Content-Type": "application/json"}
 
 
 class TokenError(Exception):
@@ -242,6 +243,11 @@ class MerginClient:
         if headers.get("Content-Type", None) == "application/json":
             data = json.dumps(data, cls=DateTimeEncoder).encode("utf-8")
         request = urllib.request.Request(url, data, headers, method="PATCH")
+        return self._do_request(request)
+
+    def delete(self, path, data=None, headers={}):
+        url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
+        request = urllib.request.Request(url, data, headers, method="DELETE")
         return self._do_request(request)
 
     def login(self, login, password):
@@ -1205,7 +1211,8 @@ class MerginClient:
             self.download_files(directory, files_download, version=current_version)
 
     def download_files(
-        self, project_dir: str, file_paths: typing.List[str], output_paths: typing.List[str] = None, version: str = None
+            self, project_dir: str, file_paths: typing.List[str], output_paths: typing.List[str] = None,
+            version: str = None
     ):
         """
         Download project files at specified version. Get the latest if no version specified.
@@ -1228,3 +1235,84 @@ class MerginClient:
         Returns whether the server version is acceptable for editor support.
         """
         return is_version_acceptable(self.server_version(), "2024.4.0")
+
+    def create_user(self, email: str, password: str, workspace_id: int, workspace_role: str, notify_user: bool = False):
+        """
+        Create a new user in a workspace. The username is generated from the email address.
+        """
+        params = {
+            "email": email,
+            "password": password,
+            "workspace_id": workspace_id,
+            "role": workspace_role,
+            "notify_user": notify_user,
+        }
+        try:
+            self.post("v2/users", params, json_headers)
+        except ClientError as e:
+            e.extra = f"Email: {email}"
+            raise e
+
+    def get_workspace_member(self, workspace_id: int, user_id: int):
+        """
+        Get a workspace member detail
+        """
+        resp = self.get(f"v2/workspaces/{workspace_id}/members/{user_id}")
+        return json.load(resp)
+
+    def list_workspace_members(self, workspace_id: int):
+        """
+        Get a list of workspace members
+        """
+        resp = self.get(f"v2/workspaces/{workspace_id}/members")
+        return json.load(resp)
+
+    def update_workspace_member(self, workspace_id: int, user_id: int, workspace_role: str,
+                                reset_projects_roles: bool = False):
+        """
+        Update workspace role of a workspace member, optionally resets the projects role
+        """
+        params = {
+            "reset_projects_roles": reset_projects_roles,
+            "workspace_role": workspace_role,
+        }
+        resp = self.patch(f"v2/workspaces/{workspace_id}/members/{user_id}", params, json_headers)
+        return json.load(resp)
+
+    def remove_workspace_member(self, workspace_id: int, user_id: int):
+        """
+        Remove a user from workspace members
+        """
+        self.delete(f"v2/workspaces/{workspace_id}/members/{user_id}")
+
+    def list_project_collaborators(self, project_id: int):
+        """
+        Get a list of project collaborators
+        """
+        project_collaborators = self.get(f"v2/projects/{project_id}/collaborators")
+        return json.load(project_collaborators)
+
+    def add_project_collaborator(self, project_id: int, user: str, project_role: str):
+        """
+        Add a user to project collaborators and grant them a project role
+        """
+        params = {
+            "role": project_role,
+            "user": user
+        }
+        project_collaborator = self.post(f"v2/projects/{project_id}/collaborators", params, json_headers)
+        return json.load(project_collaborator)
+
+    def update_project_collaborator(self, project_id: int, user_id: int, project_role: str):
+        """
+        Update project role of the existing project collaborator
+        """
+        params = {"role": project_role}
+        project_collaborator = self.patch(f"v2/projects/{project_id}/collaborators/{user_id}", params, json_headers)
+        return json.load(project_collaborator)
+
+    def remove_project_collaborator(self, project_id: int, user_id: int):
+        """
+        Remove a user from project collaborators
+        """
+        self.delete(f"v2/projects/{project_id}/collaborators/{user_id}")

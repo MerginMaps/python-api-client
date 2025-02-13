@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import random
 import tempfile
 import subprocess
 import shutil
@@ -19,7 +20,6 @@ from ..client import (
     decode_token_data,
     TokenError,
     ServerType,
-    ErrorCode,
 )
 from ..client_push import push_project_async, push_project_cancel
 from ..client_pull import (
@@ -39,7 +39,7 @@ from ..utils import (
 from ..merginproject import pygeodiff
 from ..report import create_report
 from ..editor import EDITOR_ROLE_NAME, filter_changes, is_editor_enabled
-
+from ..common import ErrorCode
 
 SERVER_URL = os.environ.get("TEST_MERGIN_URL")
 API_USER = os.environ.get("TEST_API_USERNAME")
@@ -355,8 +355,8 @@ def test_push_pull_changes(mc):
     assert os.path.exists(os.path.join(project_dir_2, "renamed.txt"))
     assert os.path.exists(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 1)))
     assert (
-        generate_checksum(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 1)))
-        == f_conflict_checksum
+            generate_checksum(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 1)))
+            == f_conflict_checksum
     )
     assert generate_checksum(os.path.join(project_dir_2, f_updated)) == f_remote_checksum
 
@@ -2459,8 +2459,8 @@ def test_project_rename(mc: MerginClient):
 
     # cannot rename with full project name
     with pytest.raises(
-        ClientError,
-        match="Project's new name should be without workspace specification",
+            ClientError,
+            match="Project's new name should be without workspace specification",
     ):
         mc.rename_project(project, "workspace" + "/" + test_project_renamed)
 
@@ -2711,8 +2711,8 @@ def test_error_projects_limit_hit(mcStorage: MerginClient):
         mcStorage.create_project_and_push(test_project_fullname, project_dir)
     assert e.value.server_code == ErrorCode.ProjectsLimitHit.value
     assert (
-        e.value.detail
-        == "Maximum number of projects is reached. Please upgrade your subscription to create new projects (ProjectsLimitHit)"
+            e.value.detail
+            == "Maximum number of projects is reached. Please upgrade your subscription to create new projects (ProjectsLimitHit)"
     )
     assert e.value.http_error == 422
     assert e.value.http_method == "POST"
@@ -2742,3 +2742,58 @@ def test_workspace_requests(mc2: MerginClient):
     assert service["plan"]["product_id"] == None
     assert service["plan"]["type"] == "custom"
     assert service["subscription"] == None
+
+
+def test_access_management(mc: MerginClient):
+    # create a user in a workspace
+    workspace_id = None
+    for workspace in mc.workspaces_list():
+        if workspace["name"] == mc.username():
+            workspace_id = workspace["id"]
+            break
+    email = "create_user" + str(random.randint(1000, 9999)) + "@client.py"
+    password = "Il0vemergin"
+    role = "writer"
+    mc.create_user(email, password, workspace_id, role)
+    workspace_members = mc.list_workspace_members(workspace_id)
+    new_user = next((m for m in workspace_members if m["email"] == email))
+    assert new_user
+    assert new_user["workspace_role"] == role
+    # test get workspace member
+    ws_member = mc.get_workspace_member(workspace_id, new_user["id"])
+    assert ws_member["email"] == email
+    assert ws_member["workspace_role"] == role
+    updated_role = "admin"
+    # test update workspace member
+    mc.update_workspace_member(workspace_id, new_user["id"], updated_role)
+    updated_user = mc.get_workspace_member(workspace_id, new_user["id"])
+    assert updated_user["workspace_role"] == updated_role
+    # test remove workspace member
+    mc.remove_workspace_member(workspace_id, new_user["id"])
+    workspace_members = mc.list_workspace_members(workspace_id)
+    assert not any(m["id"] == new_user["id"] for m in workspace_members)
+    # add project
+    test_project_name = "test_collaborators"
+    test_project_fullname = API_USER + "/" + test_project_name
+    project_dir = os.path.join(TMP_DIR, test_project_name, API_USER)
+    cleanup(mc, test_project_fullname, [project_dir])
+    mc.create_project(test_project_name)
+    project_info = get_project_info(mc, API_USER, test_project_name)
+    test_project_id = project_info["id"]
+    project_role = "reader"
+    # test add project collaborator
+    mc.add_project_collaborator(test_project_id, new_user["email"], project_role)
+    collaborators = mc.list_project_collaborators(test_project_id)
+    new_collaborator = next((c for c in collaborators if c["id"] == new_user["id"]))
+    assert new_collaborator
+    assert new_collaborator["project_role"] == project_role
+    updated_role = "owner"
+    # test update project collaborator
+    mc.update_project_collaborator(test_project_id, new_user["id"], updated_role)
+    collaborators = mc.list_project_collaborators(test_project_id)
+    updated_collaborator = next((c for c in collaborators if c["id"] == new_user["id"]))
+    assert updated_collaborator["project_role"] == updated_role
+    # test remove project collaborator
+    mc.remove_project_collaborator(test_project_id, new_user["id"])
+    collaborators = mc.list_project_collaborators(test_project_id)
+    assert not any(c["id"] == new_user["id"] for c in collaborators)
