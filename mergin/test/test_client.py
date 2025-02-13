@@ -355,8 +355,8 @@ def test_push_pull_changes(mc):
     assert os.path.exists(os.path.join(project_dir_2, "renamed.txt"))
     assert os.path.exists(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 1)))
     assert (
-            generate_checksum(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 1)))
-            == f_conflict_checksum
+        generate_checksum(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 1)))
+        == f_conflict_checksum
     )
     assert generate_checksum(os.path.join(project_dir_2, f_updated)) == f_remote_checksum
 
@@ -2459,8 +2459,8 @@ def test_project_rename(mc: MerginClient):
 
     # cannot rename with full project name
     with pytest.raises(
-            ClientError,
-            match="Project's new name should be without workspace specification",
+        ClientError,
+        match="Project's new name should be without workspace specification",
     ):
         mc.rename_project(project, "workspace" + "/" + test_project_renamed)
 
@@ -2711,8 +2711,8 @@ def test_error_projects_limit_hit(mcStorage: MerginClient):
         mcStorage.create_project_and_push(test_project_fullname, project_dir)
     assert e.value.server_code == ErrorCode.ProjectsLimitHit.value
     assert (
-            e.value.detail
-            == "Maximum number of projects is reached. Please upgrade your subscription to create new projects (ProjectsLimitHit)"
+        e.value.detail
+        == "Maximum number of projects is reached. Please upgrade your subscription to create new projects (ProjectsLimitHit)"
     )
     assert e.value.http_error == 422
     assert e.value.http_method == "POST"

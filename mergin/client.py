@@ -1211,8 +1211,7 @@ class MerginClient:
             self.download_files(directory, files_download, version=current_version)
 
     def download_files(
-            self, project_dir: str, file_paths: typing.List[str], output_paths: typing.List[str] = None,
-            version: str = None
+        self, project_dir: str, file_paths: typing.List[str], output_paths: typing.List[str] = None, version: str = None
     ):
         """
         Download project files at specified version. Get the latest if no version specified.
@@ -1267,8 +1266,9 @@ class MerginClient:
         resp = self.get(f"v2/workspaces/{workspace_id}/members")
         return json.load(resp)
 
-    def update_workspace_member(self, workspace_id: int, user_id: int, workspace_role: str,
-                                reset_projects_roles: bool = False):
+    def update_workspace_member(
+        self, workspace_id: int, user_id: int, workspace_role: str, reset_projects_roles: bool = False
+    ):
         """
         Update workspace role of a workspace member, optionally resets the projects role
         """
@@ -1296,10 +1296,7 @@ class MerginClient:
         """
         Add a user to project collaborators and grant them a project role
         """
-        params = {
-            "role": project_role,
-            "user": user
-        }
+        params = {"role": project_role, "user": user}
         project_collaborator = self.post(f"v2/projects/{project_id}/collaborators", params, json_headers)
         return json.load(project_collaborator)
 
