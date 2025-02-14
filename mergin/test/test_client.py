@@ -39,7 +39,7 @@ from ..utils import (
 from ..merginproject import pygeodiff
 from ..report import create_report
 from ..editor import EDITOR_ROLE_NAME, filter_changes, is_editor_enabled
-from ..common import ErrorCode
+from ..common import ErrorCode, WorkspaceRole, ProjectRole
 
 SERVER_URL = os.environ.get("TEST_MERGIN_URL")
 API_USER = os.environ.get("TEST_API_USERNAME")
@@ -50,6 +50,8 @@ TMP_DIR = tempfile.gettempdir()
 TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "test_data")
 CHANGED_SCHEMA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "modified_schema")
 STORAGE_WORKSPACE = os.environ.get("TEST_STORAGE_WORKSPACE", "testpluginstorage")
+
+json_headers = {"Content-Type": "application/json"}
 
 
 def get_limit_overrides(storage: int):
@@ -2744,34 +2746,37 @@ def test_workspace_requests(mc2: MerginClient):
     assert service["subscription"] == None
 
 
-def test_access_management(mc: MerginClient):
-    # create a user in a workspace
-    workspace_id = None
-    for workspace in mc.workspaces_list():
-        if workspace["name"] == mc.username():
-            workspace_id = workspace["id"]
-            break
+def test_access_management(mc: MerginClient, mc2: MerginClient):
+    # create a user in the workspace
+    workspace_id = next((w["id"] for w in mc.workspaces_list() if w["name"] == mc.username()))
     email = "create_user" + str(random.randint(1000, 9999)) + "@client.py"
     password = "Il0vemergin"
-    role = "writer"
-    mc.create_user(email, password, workspace_id, role)
+    ws_role = WorkspaceRole.WRITER
+    mc.create_user(email, password, workspace_id, ws_role)
     workspace_members = mc.list_workspace_members(workspace_id)
     new_user = next((m for m in workspace_members if m["email"] == email))
     assert new_user
-    assert new_user["workspace_role"] == role
-    # test get workspace member
+    assert new_user["workspace_role"] == ws_role.value
+    # get workspace member
     ws_member = mc.get_workspace_member(workspace_id, new_user["id"])
     assert ws_member["email"] == email
-    assert ws_member["workspace_role"] == role
-    updated_role = "admin"
-    # test update workspace member
+    assert ws_member["workspace_role"] == ws_role.value
+    updated_role = WorkspaceRole.ADMIN
+    # update workspace member
     mc.update_workspace_member(workspace_id, new_user["id"], updated_role)
     updated_user = mc.get_workspace_member(workspace_id, new_user["id"])
-    assert updated_user["workspace_role"] == updated_role
-    # test remove workspace member
+    assert updated_user["workspace_role"] == updated_role.value
+    # test permissions - a different client cannot update the role
+    with pytest.raises(ClientError, match=f"You do not have admin permissions to workspace"):
+        mc2.update_workspace_member(workspace_id, new_user["id"], ws_role)
+    # remove workspace member
     mc.remove_workspace_member(workspace_id, new_user["id"])
     workspace_members = mc.list_workspace_members(workspace_id)
     assert not any(m["id"] == new_user["id"] for m in workspace_members)
+    # duplicated call
+    with pytest.raises(ClientError) as exc_info:
+        mc.remove_workspace_member(workspace_id, new_user["id"])
+    assert exc_info.value.http_error == 404
     # add project
     test_project_name = "test_collaborators"
     test_project_fullname = API_USER + "/" + test_project_name
@@ -2780,20 +2785,42 @@ def test_access_management(mc: MerginClient):
     mc.create_project(test_project_name)
     project_info = get_project_info(mc, API_USER, test_project_name)
     test_project_id = project_info["id"]
-    project_role = "reader"
-    # test add project collaborator
+    project_role = ProjectRole.READER
+    # user must be added to project collaborators before updating project role
+    updated_role = ProjectRole.OWNER
+    with pytest.raises(ClientError) as exc_info2:
+        mc.update_project_collaborator(test_project_id, new_user["id"], updated_role)
+    assert exc_info2.value.http_error == 404
+    # add project collaborator
     mc.add_project_collaborator(test_project_id, new_user["email"], project_role)
     collaborators = mc.list_project_collaborators(test_project_id)
     new_collaborator = next((c for c in collaborators if c["id"] == new_user["id"]))
     assert new_collaborator
-    assert new_collaborator["project_role"] == project_role
-    updated_role = "owner"
-    # test update project collaborator
+    assert new_collaborator["project_role"] == project_role.value
+    # update project collaborator
     mc.update_project_collaborator(test_project_id, new_user["id"], updated_role)
     collaborators = mc.list_project_collaborators(test_project_id)
     updated_collaborator = next((c for c in collaborators if c["id"] == new_user["id"]))
-    assert updated_collaborator["project_role"] == updated_role
-    # test remove project collaborator
+    assert updated_collaborator["project_role"] == updated_role.value
+    # remove project collaborator
     mc.remove_project_collaborator(test_project_id, new_user["id"])
     collaborators = mc.list_project_collaborators(test_project_id)
     assert not any(c["id"] == new_user["id"] for c in collaborators)
+    # try to assign new editor when editors limit is reached
+    ws_usage = mc.workspace_usage(workspace_id)
+    editors_usage = ws_usage["editors"]["editors_count"] + ws_usage["editors"]["invitations_count"]
+    mc.patch(
+        f"/v1/tests/workspaces/{workspace_id}",
+        {"limits_override": {"editors": editors_usage}},
+        json_headers,
+    )
+    editor_role = ProjectRole.EDITOR
+    with pytest.raises(ClientError, match="Maximum number of editors in this workspace is reached."):
+        mc.add_project_collaborator(test_project_id, new_user["email"], editor_role)
+    # set limits to the original state
+    orig_projects_limit = ws_usage["projects"]["quota"]
+    mc.patch(
+        f"/v1/tests/workspaces/{workspace_id}",
+        {"limits_override": {"projects": orig_projects_limit}},
+        json_headers,
+    )

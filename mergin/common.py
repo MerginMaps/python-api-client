@@ -65,3 +65,27 @@ except ImportError:
 
         import dateutil.parser
         from dateutil.tz import tzlocal
+
+
+class WorkspaceRole(Enum):
+    """
+    Workspace roles
+    """
+
+    GUEST = "guest"
+    READER = "reader"
+    EDITOR = "editor"
+    WRITER = "writer"
+    ADMIN = "admin"
+    OWNER = "owner"
+
+
+class ProjectRole(Enum):
+    """
+    Project roles
+    """
+
+    READER = "reader"
+    EDITOR = "editor"
+    WRITER = "writer"
+    OWNER = "owner"

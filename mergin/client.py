@@ -17,7 +17,7 @@ import re
 import typing
 import warnings
 
-from .common import ClientError, LoginError
+from .common import ClientError, LoginError, WorkspaceRole, ProjectRole
 from .merginproject import MerginProject
 from .client_pull import (
     download_file_finalize,
@@ -245,9 +245,9 @@ class MerginClient:
         request = urllib.request.Request(url, data, headers, method="PATCH")
         return self._do_request(request)
 
-    def delete(self, path, data=None, headers={}):
+    def delete(self, path):
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
-        request = urllib.request.Request(url, data, headers, method="DELETE")
+        request = urllib.request.Request(url, method="DELETE")
         return self._do_request(request)
 
     def login(self, login, password):
@@ -1235,7 +1235,15 @@ class MerginClient:
         """
         return is_version_acceptable(self.server_version(), "2024.4.0")
 
-    def create_user(self, email: str, password: str, workspace_id: int, workspace_role: str, notify_user: bool = False):
+    def create_user(
+        self,
+        email: str,
+        password: str,
+        workspace_id: int,
+        workspace_role: WorkspaceRole,
+        username: str = None,
+        notify_user: bool = False,
+    ):
         """
         Create a new user in a workspace. The username is generated from the email address.
         """
@@ -1243,14 +1251,12 @@ class MerginClient:
             "email": email,
             "password": password,
             "workspace_id": workspace_id,
-            "role": workspace_role,
+            "role": workspace_role.value,
             "notify_user": notify_user,
         }
-        try:
-            self.post("v2/users", params, json_headers)
-        except ClientError as e:
-            e.extra = f"Email: {email}"
-            raise e
+        if username:
+            params["username"] = username
+        self.post("v2/users", params, json_headers)
 
     def get_workspace_member(self, workspace_id: int, user_id: int):
         """
@@ -1267,14 +1273,14 @@ class MerginClient:
         return json.load(resp)
 
     def update_workspace_member(
-        self, workspace_id: int, user_id: int, workspace_role: str, reset_projects_roles: bool = False
+        self, workspace_id: int, user_id: int, workspace_role: WorkspaceRole, reset_projects_roles: bool = False
     ):
         """
         Update workspace role of a workspace member, optionally resets the projects role
         """
         params = {
             "reset_projects_roles": reset_projects_roles,
-            "workspace_role": workspace_role,
+            "workspace_role": workspace_role.value,
         }
         resp = self.patch(f"v2/workspaces/{workspace_id}/members/{user_id}", params, json_headers)
         return json.load(resp)
@@ -1292,19 +1298,19 @@ class MerginClient:
         project_collaborators = self.get(f"v2/projects/{project_id}/collaborators")
         return json.load(project_collaborators)
 
-    def add_project_collaborator(self, project_id: int, user: str, project_role: str):
+    def add_project_collaborator(self, project_id: int, user: str, project_role: ProjectRole):
         """
         Add a user to project collaborators and grant them a project role
         """
-        params = {"role": project_role, "user": user}
+        params = {"role": project_role.value, "user": user}
         project_collaborator = self.post(f"v2/projects/{project_id}/collaborators", params, json_headers)
         return json.load(project_collaborator)
 
-    def update_project_collaborator(self, project_id: int, user_id: int, project_role: str):
+    def update_project_collaborator(self, project_id: int, user_id: int, project_role: ProjectRole):
         """
         Update project role of the existing project collaborator
         """
-        params = {"role": project_role}
+        params = {"role": project_role.value}
         project_collaborator = self.patch(f"v2/projects/{project_id}/collaborators/{user_id}", params, json_headers)
         return json.load(project_collaborator)
 
