@@ -804,6 +804,12 @@ class MerginClient:
             if permission_level in ("writer", "owner", "editor", "reader"):
                 access.get("readersnames").append(name)
         self.set_project_access(project_path, access)
+        warnings.warn(
+            "This method will be deprecated in the next major release (1.0.0)"
+            "Use `add_project_collaborator` to create a project permission and "
+            "`update_project_collaborator` to change it instead.",
+            category=DeprecationWarning,
+        )
 
     def remove_user_permissions_from_project(self, project_path, usernames):
         """
@@ -823,6 +829,11 @@ class MerginClient:
             if name in access.get("readersnames", []):
                 access.get("readersnames").remove(name)
         self.set_project_access(project_path, access)
+        warnings.warn(
+            "This method will be deprecated in the next major release (1.0.0)"
+            "Use `remove_project_collaborator` instead.",
+            category=DeprecationWarning,
+        )
 
     def project_user_permissions(self, project_path):
         """
