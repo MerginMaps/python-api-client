@@ -2752,7 +2752,10 @@ def test_access_management(mc: MerginClient, mc2: MerginClient):
     email = "create_user" + str(random.randint(1000, 9999)) + "@client.py"
     password = "Il0vemergin"
     ws_role = WorkspaceRole.WRITER
-    mc.create_user(email, password, workspace_id, ws_role)
+    user_info = mc.create_user(email, password, workspace_id, ws_role)
+    assert user_info["email"] == email
+    assert user_info["receive_notifications"] is False
+    # list workspace members
     workspace_members = mc.list_workspace_members(workspace_id)
     new_user = next((m for m in workspace_members if m["email"] == email))
     assert new_user
