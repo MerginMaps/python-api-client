@@ -28,10 +28,9 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest --cov=mergin mergin/test/
+          pytest --cov=mergin --cov-report=lcov mergin/test/
 
       - name: Submit coverage to Coveralls
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          coveralls --service=github
+        uses: coverallsapp/github-action@v2
+        with:
+          format: lcov
