@@ -2599,17 +2599,17 @@ def test_editor_push(mc: MerginClient, mc2: MerginClient):
     """Test push with editor"""
     if not mc.has_editor_support():
         return
-    test_project = "test_editor_push"
-    test_project_fullname = API_USER + "/" + test_project
-    project = API_USER + "/" + test_project
-    project_dir = os.path.join(TMP_DIR, test_project)
-    project_dir2 = os.path.join(TMP_DIR, test_project + "_2")
-    cleanup(mc, project, [project_dir, project_dir2])
+    test_project_name = "test_editor_push"
+    test_project_fullname = API_USER + "/" + test_project_name
+    project_dir = os.path.join(TMP_DIR, test_project_name)
+    project_dir2 = os.path.join(TMP_DIR, test_project_name + "_2")
+    cleanup(mc, test_project_fullname, [project_dir, project_dir2])
 
     # create new (empty) project on server
     # TODO: return project_info from create project, don't use project_full name for project info, instead returned id of project
-    mc.create_project(test_project)
-    mc.add_user_permissions_to_project(project, [API_USER2], "editor")
+    mc.create_project(test_project_name)
+    project_info = get_project_info(mc, API_USER, test_project_name)
+    mc.add_project_collaborator(project_info["id"], mc2.username(), ProjectRole.EDITOR)
     # download empty project
     mc2.download_project(test_project_fullname, project_dir)
 
@@ -2651,12 +2651,11 @@ def test_editor_push(mc: MerginClient, mc2: MerginClient):
     # editor is trying to update qgis file
     with open(os.path.join(project_dir, qgs_file_name), "a") as f:
         f.write("Editor is here!")
-    project_info = mc2.project_info(test_project_fullname)
     pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
     # ggs is still waiting to push
     assert any(file["path"] == qgs_file_name for file in push_changes.get("updated")) is True
 
-    # push as owner do cleanup local changes and preparation to conflicited copy simulate
+    # push as owner do cleanup local changes and preparation to conflicted copy simulate
     mc.push_project(project_dir)
 
     # simulate conflicting copy of qgis file
