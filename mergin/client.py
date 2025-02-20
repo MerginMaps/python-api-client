@@ -221,7 +221,9 @@ class MerginClient:
                         f"{key}: {', '.join(map(str, value))}"
                         for key, value in server_response.items()
                         if isinstance(value, list)
-                    ) or str(server_response)  # Fallback to raw response if structure is unexpected
+                    ) or str(
+                        server_response
+                    )  # Fallback to raw response if structure is unexpected
             else:
                 err_detail = str(server_response)
 
