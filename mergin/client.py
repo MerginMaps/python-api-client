@@ -210,9 +210,20 @@ class MerginClient:
         except urllib.error.HTTPError as e:
             server_response = json.load(e)
 
-            # We first to try to get the value from the response otherwise we set a default value
-            err_detail = server_response.get("detail", e.read().decode("utf-8"))
             server_code = server_response.get("code", None)
+            # Try to get error detail
+            if isinstance(server_response, dict):
+                if "detail" in server_response:
+                    err_detail = server_response["detail"]
+                else:
+                    # Extract all field-specific errors and format them
+                    err_detail = "\n".join(
+                        f"{key}: {', '.join(map(str, value))}"
+                        for key, value in server_response.items()
+                        if isinstance(value, list)
+                    ) or str(server_response)  # Fallback to raw response if structure is unexpected
+            else:
+                err_detail = str(server_response)
 
             raise ClientError(
                 detail=err_detail,

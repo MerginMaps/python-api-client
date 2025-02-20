@@ -2746,11 +2746,16 @@ def test_workspace_requests(mc2: MerginClient):
 
 
 def test_access_management(mc: MerginClient, mc2: MerginClient):
-    # create a user in the workspace
+    # create a user in the workspace -
     workspace_id = next((w["id"] for w in mc.workspaces_list() if w["name"] == mc.username()))
-    email = "create_user" + str(random.randint(1000, 9999)) + "@client.py"
-    password = "Il0vemergin"
     ws_role = WorkspaceRole.WRITER
+    email = "create_user" + str(random.randint(1000, 9999)) + "@client.py"
+    # returning meaningful error when requirements are not met
+    password = "1234"
+    with pytest.raises(ClientError, match=f"Passwords must be at least 8 characters long."):
+        mc.create_user(email, password, workspace_id, ws_role)
+    # strong password
+    password = "Il0vemergin"
     user_info = mc.create_user(email, password, workspace_id, ws_role)
     assert user_info["email"] == email
     assert user_info["receive_notifications"] is False
