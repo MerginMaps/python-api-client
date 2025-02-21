@@ -210,12 +210,13 @@ class MerginClient:
         except urllib.error.HTTPError as e:
             server_response = json.load(e)
 
-            server_code = server_response.get("code", None)
+            err_detail = None
+            server_code = None
             # Try to get error detail
             if isinstance(server_response, dict):
-                if "detail" in server_response:
-                    err_detail = server_response["detail"]
-                else:
+                server_code = server_response.get("code")
+                err_detail = server_response.get("detail")
+                if not err_detail:
                     # Extract all field-specific errors and format them
                     err_detail = "\n".join(
                         f"{key}: {', '.join(map(str, value))}"
