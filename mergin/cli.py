@@ -164,9 +164,11 @@ def cli(ctx, url, auth_token, username, password):
 
     Run `mergin --username <your_user> login` to see how to set the token variable manually.
     """
+    if (version):
+        click.secho(f"v{__version__} / pygeodiff v{GeoDiff().version()}")
+        return
     mc = get_client(url=url, auth_token=auth_token, username=username, password=password)
     ctx.obj = {"client": mc}
-
 
 @cli.command()
 @click.pass_context
@@ -182,8 +184,17 @@ def login(ctx):
             hint = f'To set the MERGIN_AUTH variable run:\nexport MERGIN_AUTH="{token}"'
         click.secho(hint)
 
+@cli.group()
+def project():
+    "Commands related to projects"
+    pass
 
-@cli.command()
+@cli.group()
+def file():
+    "Commands related to files stored in project"
+    pass
+
+@project.command()
 @click.argument("project")
 @click.option("--public", is_flag=True, default=False, help="Public project, visible to everyone")
 @click.option(
@@ -212,7 +223,7 @@ def create(ctx, project, public, from_dir):
         _print_unhandled_exception()
 
 
-@cli.command()
+@project.command(name="list")
 @click.argument("namespace")
 @click.option(
     "--name",
@@ -227,7 +238,7 @@ def create(ctx, project, public, from_dir):
     "Available attrs: namespace, name, created, updated, disk_usage, creator",
 )
 @click.pass_context
-def list_projects(ctx, name, namespace, order_params):
+def project_list(ctx, name, namespace, order_params):
     """List projects on the server."""
 
     mc = ctx.obj["client"]
@@ -244,7 +255,7 @@ def list_projects(ctx, name, namespace, order_params):
         )
 
 
-@cli.command()
+@project.command()
 @click.argument("project")
 @click.argument("directory", type=click.Path(), required=False)
 @click.option("--version", default=None, help="Version of project to download")
@@ -276,7 +287,7 @@ def download(ctx, project, directory, version):
         _print_unhandled_exception()
 
 
-@cli.command()
+@project.command()
 @click.argument("project")
 @click.argument("usernames", nargs=-1)
 @click.option("--permissions", help="permissions to be granted to project (reader, writer, owner)")
@@ -290,7 +301,7 @@ def share_add(ctx, project, usernames, permissions):
     mc.add_user_permissions_to_project(project, usernames, permissions)
 
 
-@cli.command()
+@project.command()
 @click.argument("project")
 @click.argument("usernames", nargs=-1)
 @click.pass_context
@@ -303,7 +314,7 @@ def share_remove(ctx, project, usernames):
     mc.remove_user_permissions_from_project(project, usernames)
 
 
-@cli.command()
+@project.command()
 @click.argument("project")
 @click.pass_context
 def share(ctx, project):
@@ -331,12 +342,12 @@ def share(ctx, project):
             click.echo("{:20}\t{:20}".format(username, "reader"))
 
 
-@cli.command()
+@file.command("download")
 @click.argument("filepath")
 @click.argument("output")
 @click.option("--version", help="Project version tag, for example 'v3'")
 @click.pass_context
-def download_file(ctx, filepath, output, version):
+def file_download(ctx, filepath, output, version):
     """
     Download project file at specified version. `project` needs to be a combination of namespace/project.
     If no version is given, the latest will be fetched.
@@ -368,7 +379,7 @@ def num_version(name):
     return int(name.lstrip("v"))
 
 
-@cli.command()
+@project.command()
 @click.pass_context
 def status(ctx):
     """Show all changes in project files - upstream and local."""
@@ -469,10 +480,10 @@ def pull(ctx):
         _print_unhandled_exception()
 
 
-@cli.command()
+@project.command()
 @click.argument("version")
 @click.pass_context
-def show_version(ctx, version):
+def version(ctx, version):
     """Displays information about a single version of a project. `version` is 'v1', 'v2', etc."""
     mc = ctx.obj["client"]
     if mc is None:
@@ -488,11 +499,11 @@ def show_version(ctx, version):
     pretty_diff(version_info_dict["changes"])
 
 
-@cli.command()
+@file.command()
 @click.argument("path")
 @click.pass_context
-def show_file_history(ctx, path):
-    """Displays information about a single version of a project."""
+def history(ctx, path):
+    """Displays history for file in specified path"""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -511,12 +522,12 @@ def show_file_history(ctx, path):
         click.secho(" {:5} {:10} {}".format(version, version_data["change"], diff_info))
 
 
-@cli.command()
+@file.command()
 @click.argument("path")
 @click.argument("version")
 @click.pass_context
-def show_file_changeset(ctx, path, version):
-    """Displays information about project changes."""
+def changeset(ctx, path, version):
+    """Displays file changes."""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -528,7 +539,7 @@ def show_file_changeset(ctx, path, version):
     click.secho(json.dumps(info_dict, indent=2))
 
 
-@cli.command()
+@project.command()
 @click.argument("source_project_path", required=True)
 @click.argument("cloned_project_name", required=True)
 @click.argument("cloned_project_namespace", required=False)
@@ -561,7 +572,7 @@ def clone(ctx, source_project_path, cloned_project_name, cloned_project_namespac
         _print_unhandled_exception()
 
 
-@cli.command()
+@project.command()
 @click.argument("project", required=True)
 @click.pass_context
 def remove(ctx, project):
@@ -608,7 +619,7 @@ def resolve_unfinished_pull(ctx):
         _print_unhandled_exception()
 
 
-@cli.command()
+@project.command()
 @click.argument("project_path")
 @click.argument("new_project_name")
 @click.pass_context
@@ -642,7 +653,7 @@ def rename(ctx, project_path: str, new_project_name: str):
         _print_unhandled_exception()
 
 
-@cli.command()
+@project.command()
 @click.pass_context
 def reset(ctx):
     """Reset local changes in project."""
@@ -660,11 +671,11 @@ def reset(ctx):
         _print_unhandled_exception()
 
 
-@cli.command()
+@file.command("list")
 @click.argument("project")
 @click.option("--json", is_flag=True, default=False, help="Output in JSON format")
 @click.pass_context
-def list_files(ctx, project, json):
+def file_list(ctx, project, json):
     """List files in a project."""
 
     mc = ctx.obj["client"]
@@ -680,6 +691,89 @@ def list_files(ctx, project, json):
         click.echo("Fetched {} files .".format(len(project_files)))
         for file in project_files:
             click.echo("  {:40}\t{:6.1f} MB".format(file["path"], file["size"] / (1024 * 1024)))
+
+@cli.group()
+@click.pass_context
+def user():
+    """User management"""
+    pass
+
+@user.command()
+@click.pass_context
+def register():
+    "Register user"
+    pass
+
+@project.group()
+@click.pass_context
+def collaborators():
+    pass
+
+@collaborators.command(name="list")
+@click.pass_context
+def collaborators_list(ctx):
+    "List project collaborators"
+    pass
+
+@collaborators.command()
+@click.pass_context
+def add():
+    "Add project collaborator"
+    pass
+
+@collaborators.command()
+@click.pass_context
+def update():
+    "Update project collaborator"
+    pass
+
+@collaborators.command()
+@click.pass_context
+def remove():
+    "Update project collaborator"
+    pass
+
+@cli.group()
+def workspace():
+    "Workspace management"
+    pass
+
+@workspace.group()
+@click.pass_context
+def members():
+    "Workspace members management"
+    pass
+
+@members.command(name="list")
+@click.pass_context
+def members_list():
+    "List workspace members"
+    pass
+
+@members.command()
+@click.pass_context
+def get():
+    "Get workspace member"
+    pass
+
+@members.command()
+@click.pass_context
+def add():
+    "Add workspace member"
+    pass
+
+@members.command()
+@click.pass_context
+def update():
+    "Update workspace member"
+    pass
+
+@members.command()
+@click.pass_context
+def remove():
+    "Remove workspace member"
+    pass
+
 
 
 if __name__ == "__main__":
