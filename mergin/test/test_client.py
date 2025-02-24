@@ -814,7 +814,7 @@ def test_available_workspace_storage(mcStorage):
         storage_remaining = testing_storage - client_workspace["disk_usage"]
 
     # generate dummy data (remaining storage + extra 1024b)
-    dummy_data_path = project_dir + "/data"
+    dummy_data_path = project_dir + "/data.txt"
     file_size = storage_remaining + 1024
     _generate_big_file(dummy_data_path, file_size)
 
@@ -880,7 +880,7 @@ def test_available_storage_validation2(mc, mc2):
         return
 
     # generate dummy data (remaining storage + extra 1024b)
-    dummy_data_path = project_dir + "/data"
+    dummy_data_path = project_dir + "/data.txt"
     file_size = storage_remaining + 1024
     _generate_big_file(dummy_data_path, file_size)
 
