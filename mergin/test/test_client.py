@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import random
 import tempfile
 import subprocess
 import shutil
@@ -19,7 +20,6 @@ from ..client import (
     decode_token_data,
     TokenError,
     ServerType,
-    ErrorCode,
 )
 from ..client_push import push_project_async, push_project_cancel
 from ..client_pull import (
@@ -39,7 +39,7 @@ from ..utils import (
 from ..merginproject import pygeodiff
 from ..report import create_report
 from ..editor import EDITOR_ROLE_NAME, filter_changes, is_editor_enabled
-
+from ..common import ErrorCode, WorkspaceRole, ProjectRole
 
 SERVER_URL = os.environ.get("TEST_MERGIN_URL")
 API_USER = os.environ.get("TEST_API_USERNAME")
@@ -50,6 +50,8 @@ TMP_DIR = tempfile.gettempdir()
 TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "test_data")
 CHANGED_SCHEMA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "modified_schema")
 STORAGE_WORKSPACE = os.environ.get("TEST_STORAGE_WORKSPACE", "testpluginstorage")
+
+json_headers = {"Content-Type": "application/json"}
 
 
 def get_limit_overrides(storage: int):
@@ -2597,17 +2599,17 @@ def test_editor_push(mc: MerginClient, mc2: MerginClient):
     """Test push with editor"""
     if not mc.has_editor_support():
         return
-    test_project = "test_editor_push"
-    test_project_fullname = API_USER + "/" + test_project
-    project = API_USER + "/" + test_project
-    project_dir = os.path.join(TMP_DIR, test_project)
-    project_dir2 = os.path.join(TMP_DIR, test_project + "_2")
-    cleanup(mc, project, [project_dir, project_dir2])
+    test_project_name = "test_editor_push"
+    test_project_fullname = API_USER + "/" + test_project_name
+    project_dir = os.path.join(TMP_DIR, test_project_name)
+    project_dir2 = os.path.join(TMP_DIR, test_project_name + "_2")
+    cleanup(mc, test_project_fullname, [project_dir, project_dir2])
 
     # create new (empty) project on server
     # TODO: return project_info from create project, don't use project_full name for project info, instead returned id of project
-    mc.create_project(test_project)
-    mc.add_user_permissions_to_project(project, [API_USER2], "editor")
+    mc.create_project(test_project_name)
+    project_info = get_project_info(mc, API_USER, test_project_name)
+    mc.add_project_collaborator(project_info["id"], mc2.username(), ProjectRole.EDITOR)
     # download empty project
     mc2.download_project(test_project_fullname, project_dir)
 
@@ -2649,12 +2651,11 @@ def test_editor_push(mc: MerginClient, mc2: MerginClient):
     # editor is trying to update qgis file
     with open(os.path.join(project_dir, qgs_file_name), "a") as f:
         f.write("Editor is here!")
-    project_info = mc2.project_info(test_project_fullname)
     pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
     # ggs is still waiting to push
     assert any(file["path"] == qgs_file_name for file in push_changes.get("updated")) is True
 
-    # push as owner do cleanup local changes and preparation to conflicited copy simulate
+    # push as owner do cleanup local changes and preparation to conflicted copy simulate
     mc.push_project(project_dir)
 
     # simulate conflicting copy of qgis file
@@ -2742,3 +2743,91 @@ def test_workspace_requests(mc2: MerginClient):
     assert service["plan"]["product_id"] == None
     assert service["plan"]["type"] == "custom"
     assert service["subscription"] == None
+
+
+def test_access_management(mc: MerginClient, mc2: MerginClient):
+    # create a user in the workspace -
+    workspace_id = next((w["id"] for w in mc.workspaces_list() if w["name"] == mc.username()))
+    ws_role = WorkspaceRole.WRITER
+    email = "create_user" + str(random.randint(1000, 9999)) + "@client.py"
+    # returning meaningful error when requirements are not met
+    password = "1234"
+    with pytest.raises(ClientError, match=f"Passwords must be at least 8 characters long."):
+        mc.create_user(email, password, workspace_id, ws_role)
+    # strong password
+    password = "Il0vemergin"
+    user_info = mc.create_user(email, password, workspace_id, ws_role)
+    assert user_info["email"] == email
+    assert user_info["receive_notifications"] is False
+    # list workspace members
+    workspace_members = mc.list_workspace_members(workspace_id)
+    new_user = next((m for m in workspace_members if m["email"] == email))
+    assert new_user
+    assert new_user["workspace_role"] == ws_role.value
+    # get workspace member
+    ws_member = mc.get_workspace_member(workspace_id, new_user["id"])
+    assert ws_member["email"] == email
+    assert ws_member["workspace_role"] == ws_role.value
+    updated_role = WorkspaceRole.ADMIN
+    # update workspace member
+    mc.update_workspace_member(workspace_id, new_user["id"], updated_role)
+    updated_user = mc.get_workspace_member(workspace_id, new_user["id"])
+    assert updated_user["workspace_role"] == updated_role.value
+    # test permissions - a different client cannot update the role
+    with pytest.raises(ClientError, match=f"You do not have admin permissions to workspace"):
+        mc2.update_workspace_member(workspace_id, new_user["id"], ws_role)
+    # remove workspace member
+    mc.remove_workspace_member(workspace_id, new_user["id"])
+    workspace_members = mc.list_workspace_members(workspace_id)
+    assert not any(m["id"] == new_user["id"] for m in workspace_members)
+    # duplicated call
+    with pytest.raises(ClientError) as exc_info:
+        mc.remove_workspace_member(workspace_id, new_user["id"])
+    assert exc_info.value.http_error == 404
+    # add project
+    test_project_name = "test_collaborators"
+    test_project_fullname = API_USER + "/" + test_project_name
+    project_dir = os.path.join(TMP_DIR, test_project_name, API_USER)
+    cleanup(mc, test_project_fullname, [project_dir])
+    mc.create_project(test_project_name)
+    project_info = get_project_info(mc, API_USER, test_project_name)
+    test_project_id = project_info["id"]
+    project_role = ProjectRole.READER
+    # user must be added to project collaborators before updating project role
+    updated_role = ProjectRole.OWNER
+    with pytest.raises(ClientError) as exc_info2:
+        mc.update_project_collaborator(test_project_id, new_user["id"], updated_role)
+    assert exc_info2.value.http_error == 404
+    # add project collaborator
+    mc.add_project_collaborator(test_project_id, new_user["email"], project_role)
+    collaborators = mc.list_project_collaborators(test_project_id)
+    new_collaborator = next((c for c in collaborators if c["id"] == new_user["id"]))
+    assert new_collaborator
+    assert new_collaborator["project_role"] == project_role.value
+    # update project collaborator
+    mc.update_project_collaborator(test_project_id, new_user["id"], updated_role)
+    collaborators = mc.list_project_collaborators(test_project_id)
+    updated_collaborator = next((c for c in collaborators if c["id"] == new_user["id"]))
+    assert updated_collaborator["project_role"] == updated_role.value
+    # remove project collaborator
+    mc.remove_project_collaborator(test_project_id, new_user["id"])
+    collaborators = mc.list_project_collaborators(test_project_id)
+    assert not any(c["id"] == new_user["id"] for c in collaborators)
+    # try to assign new editor when editors limit is reached
+    ws_usage = mc.workspace_usage(workspace_id)
+    editors_usage = ws_usage["editors"]["editors_count"] + ws_usage["editors"]["invitations_count"]
+    mc.patch(
+        f"/v1/tests/workspaces/{workspace_id}",
+        {"limits_override": {"editors": editors_usage}},
+        json_headers,
+    )
+    editor_role = ProjectRole.EDITOR
+    with pytest.raises(ClientError, match="Maximum number of editors in this workspace is reached."):
+        mc.add_project_collaborator(test_project_id, new_user["email"], editor_role)
+    # set limits to the original state
+    orig_projects_limit = ws_usage["projects"]["quota"]
+    mc.patch(
+        f"/v1/tests/workspaces/{workspace_id}",
+        {"limits_override": {"projects": orig_projects_limit}},
+        json_headers,
+    )
