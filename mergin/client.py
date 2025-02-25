@@ -1328,14 +1328,14 @@ class MerginClient:
         """
         self.delete(f"v2/workspaces/{workspace_id}/members/{user_id}")
 
-    def list_project_collaborators(self, project_id: int) -> List[dict]:
+    def list_project_collaborators(self, project_id: str) -> List[dict]:
         """
         Get a list of project collaborators
         """
         project_collaborators = self.get(f"v2/projects/{project_id}/collaborators")
         return json.load(project_collaborators)
 
-    def add_project_collaborator(self, project_id: int, user: str, project_role: ProjectRole) -> dict:
+    def add_project_collaborator(self, project_id: str, user: str, project_role: ProjectRole) -> dict:
         """
         Add a user to project collaborators and grant them a project role.
         Fails if user is already a member of the project.
@@ -1346,7 +1346,7 @@ class MerginClient:
         project_collaborator = self.post(f"v2/projects/{project_id}/collaborators", params, json_headers)
         return json.load(project_collaborator)
 
-    def update_project_collaborator(self, project_id: int, user_id: int, project_role: ProjectRole) -> dict:
+    def update_project_collaborator(self, project_id: str, user_id: int, project_role: ProjectRole) -> dict:
         """
         Update project role of the existing project collaborator.
         Fails if user is not a member of the project yet.
@@ -1355,7 +1355,7 @@ class MerginClient:
         project_collaborator = self.patch(f"v2/projects/{project_id}/collaborators/{user_id}", params, json_headers)
         return json.load(project_collaborator)
 
-    def remove_project_collaborator(self, project_id: int, user_id: int):
+    def remove_project_collaborator(self, project_id: str, user_id: int):
         """
         Remove a user from project collaborators
         """
