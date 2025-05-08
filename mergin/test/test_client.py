@@ -1236,6 +1236,7 @@ def test_modify_project_permissions(mc):
     # create remote project
     mc.create_project_and_push(test_project_fullname, directory=project_dir)
 
+    mc.add_user_permissions_to_project(test_project_fullname, [API_USER], "owner")
     permissions = mc.project_user_permissions(test_project_fullname)
     assert permissions["owners"] == [API_USER]
     assert permissions["writers"] == [API_USER]
