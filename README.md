@@ -124,7 +124,7 @@ working directory:
 
 1. get status of the project (check if there are any local/remote changes)
    ```
-   $ mergin status
+   $ mergin project status
    ```
 2. pull changes from Mergin Maps service
    ```
@@ -141,6 +141,7 @@ If you plan to run `mergin` command multiple times and you wish to avoid logging
 you can use "login" command to get authorization token.
 It will ask for password and then output environment variable with auth token. The returned token
 is not permanent - it will expire after several hours.
+
 ```bash
 $ mergin --username john login
 Password: topsecret
@@ -150,17 +151,18 @@ export MERGIN_AUTH="Bearer ......."
 In Windows:
 SET MERGIN_AUTH=Bearer .......
 ```
+
 When setting the variable in Windows you do not quote the value.
 
 When the MERGIN_AUTH env variable is set (or passed with `--auth-token` command line argument),
 it is possible to run other commands without specifying username/password.
-
 
 ## Development
 
 ### Installing deps
 
 Python 3.7+ required. Create `mergin/deps` folder where [geodiff](https://github.com/MerginMaps/geodiff) lib is supposed to be and install dependencies:
+
 ```bash
     rm -r mergin/deps
     mkdir mergin/deps
@@ -168,7 +170,15 @@ Python 3.7+ required. Create `mergin/deps` folder where [geodiff](https://github
     pip install pygeodiff --target=mergin/deps
 ```
 
+To run `cli` from source code, install the package in editable mode:
+
+```bash
+python setup.py dist
+cd dist && pip install {PACKAGE}.gz
+```
+
 For using mergin client with its dependencies packaged locally run:
+
 ```bash
     pip install wheel
     python3 setup.py sdist bdist_wheel
@@ -179,6 +189,7 @@ For using mergin client with its dependencies packaged locally run:
 ```
 
 ### Tests
+
 For running test do:
 
 ```bash
