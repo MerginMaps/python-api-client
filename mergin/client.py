@@ -45,6 +45,10 @@ class TokenError(Exception):
     pass
 
 
+class AuthTokenExpiredError(Exception):
+    pass
+
+
 class ServerType(Enum):
     OLD = auto()  # Server is old and does not support workspaces
     CE = auto()  # Server is Community Edition
@@ -214,12 +218,18 @@ class MerginClient:
                     # Refresh auth token if it expired or will expire very soon
                     delta = self._auth_session["expire"] - datetime.now(timezone.utc)
                     if delta.total_seconds() < 5:
-                        self.log.info("Token has expired - refreshing...")
-                        self.login(self._auth_params["login"], self._auth_params["password"])
+                        if self._login_type == LoginType.PASSWORD:
+                            self.log.info("Token has expired - refreshing...")
+                            self.login(self._auth_params["login"], self._auth_params["password"])
+                        elif self._login_type == LoginType.SSO:
+                            raise AuthTokenExpiredError("Token has expired - please re-login")
                 else:
                     # Create a new authorization token
-                    self.log.info(f"No token - login user: {self._auth_params['login']}")
-                    self.login(self._auth_params["login"], self._auth_params["password"])
+                    if self._login_type == LoginType.PASSWORD:
+                        self.log.info(f"No token - login user: {self._auth_params['login']}")
+                        self.login(self._auth_params["login"], self._auth_params["password"])
+                    elif self._login_type == LoginType.SSO:
+                        raise AuthTokenExpiredError("Token has expired - please re-login")
             return f(self, *args)
 
         return wrapper
