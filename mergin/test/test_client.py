@@ -2802,7 +2802,8 @@ def test_access_management(mc: MerginClient, mc2: MerginClient):
     collaborators = mc.list_project_collaborators(test_project_id)
     updated_collaborator = next((c for c in collaborators if c["id"] == new_user["id"]))
     assert updated_collaborator["project_role"] == updated_role.value
-    # remove project collaborator
+    # remove project collaborator, add this user guest first to make sure it can be removed from project collaborators
+    mc.update_workspace_member(workspace_id, new_user["id"], WorkspaceRole.GUEST)
     mc.remove_project_collaborator(test_project_id, new_user["id"])
     collaborators = mc.list_project_collaborators(test_project_id)
     assert not any(c["id"] == new_user["id"] for c in collaborators)
