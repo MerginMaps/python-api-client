@@ -2777,14 +2777,6 @@ def test_access_management(mc: MerginClient, mc2: MerginClient):
     # test permissions - a different client cannot update the role
     with pytest.raises(ClientError, match=f"You do not have admin permissions to workspace"):
         mc2.update_workspace_member(workspace_id, new_user["id"], ws_role)
-    # remove workspace member
-    mc.remove_workspace_member(workspace_id, new_user["id"])
-    workspace_members = mc.list_workspace_members(workspace_id)
-    assert not any(m["id"] == new_user["id"] for m in workspace_members)
-    # duplicated call
-    with pytest.raises(ClientError) as exc_info:
-        mc.remove_workspace_member(workspace_id, new_user["id"])
-    assert exc_info.value.http_error == 404
     # add project
     test_project_name = "test_collaborators"
     test_project_fullname = API_USER + "/" + test_project_name
@@ -2832,3 +2824,11 @@ def test_access_management(mc: MerginClient, mc2: MerginClient):
         {"limits_override": {"projects": orig_projects_limit}},
         json_headers,
     )
+    # remove workspace member
+    mc.remove_workspace_member(workspace_id, new_user["id"])
+    workspace_members = mc.list_workspace_members(workspace_id)
+    assert not any(m["id"] == new_user["id"] for m in workspace_members)
+    # duplicated call
+    with pytest.raises(ClientError) as exc_info:
+        mc.remove_workspace_member(workspace_id, new_user["id"])
+    assert exc_info.value.http_error == 404
