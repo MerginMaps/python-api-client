@@ -19,7 +19,7 @@ import warnings
 
 from typing import List
 
-from .common import ClientError, LoginError, WorkspaceRole, ProjectRole
+from .common import ClientError, LoginError, WorkspaceRole, ProjectRole, LOG_FILE_SIZE_TO_SEND, MERGIN_DEFAULT_LOGS_URL
 from .merginproject import MerginProject
 from .client_pull import (
     download_file_finalize,
@@ -39,8 +39,6 @@ from .version import __version__
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 json_headers = {"Content-Type": "application/json"}
-
-MERGIN_DEFAULT_LOGS_URL = "https://g4pfq226j0.execute-api.eu-west-1.amazonaws.com/mergin_client_log_submit"
 
 
 class TokenError(Exception):
@@ -1402,8 +1400,8 @@ class MerginClient:
         global_logs = b""
         if global_log_file and os.path.exists(global_log_file):
             with open(global_log_file, "rb") as f:
-                if os.path.getsize(global_log_file) > 100 * 1024:
-                    f.seek(-100 * 1024, os.SEEK_END)
+                if os.path.getsize(global_log_file) > LOG_FILE_SIZE_TO_SEND:
+                    f.seek(-LOG_FILE_SIZE_TO_SEND, os.SEEK_END)
                 global_logs = f.read() + b"\n--------------------------------\n\n"
 
         with open(logfile, "rb") as f:
