@@ -1385,10 +1385,12 @@ class MerginClient:
         config = self.server_config()
         diagnostic_logs_url = config.get("diagnostic_logs_url", None)
 
+        use_server_api = False
         if is_version_acceptable(self.server_version(), "2025.4.1") and (
             diagnostic_logs_url is None or diagnostic_logs_url == ""
         ):
-            url = self.url() + "?" + urllib.parse.urlencode(params)
+            url = "v2/diagnostic-logs" + "?" + urllib.parse.urlencode(params)
+            use_server_api = True
         else:
             url = MERGIN_DEFAULT_LOGS_URL + "?" + urllib.parse.urlencode(params)
 
@@ -1412,5 +1414,8 @@ class MerginClient:
         payload = meta.encode() + global_logs + logs
         header = {"content-type": "text/plain"}
 
-        request = urllib.request.Request(url, data=payload, headers=header)
-        return self._do_request(request)
+        if use_server_api:
+            return self.post(url, data=payload, headers=header)
+        else:
+            request = urllib.request.Request(url, data=payload, headers=header)
+            return self._do_request(request)
