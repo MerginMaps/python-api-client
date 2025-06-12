@@ -1390,7 +1390,11 @@ class MerginClient:
             url = "v2/diagnostic-logs" + "?" + urllib.parse.urlencode(params)
             use_server_api = True
         else:
-            url = MERGIN_DEFAULT_LOGS_URL + "?" + urllib.parse.urlencode(params)
+            if diagnostic_logs_url:
+                url = diagnostic_logs_url + "?" + urllib.parse.urlencode(params)
+            else:
+                # fallback to default logs URL
+                url = MERGIN_DEFAULT_LOGS_URL + "?" + urllib.parse.urlencode(params)
 
         if meta is None:
             meta = "Python API Client\nSystem: {} \nMergin Maps URL: {} \nMergin Maps user: {} \n--------------------------------\n\n".format(
