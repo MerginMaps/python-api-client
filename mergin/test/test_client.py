@@ -2833,3 +2833,15 @@ def test_access_management(mc: MerginClient, mc2: MerginClient):
     with pytest.raises(ClientError) as exc_info:
         mc.remove_workspace_member(workspace_id, new_user["id"])
     assert exc_info.value.http_error == 404
+
+
+def test_server_config(mc: MerginClient):
+    """Test retrieving server configuration and some keys."""
+    config = mc.server_config()
+
+    assert config
+    assert isinstance(config, dict)
+
+    assert "server_type" in config
+    assert "version" in config
+    assert "server_configured" in config
