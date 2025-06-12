@@ -1368,9 +1368,9 @@ class MerginClient:
         response = self.get("/config")
         return json.load(response)
 
-    def server_version_newer_or_equal_than(self, version: str) -> bool:
+    def server_version_newer_or_equal_than(self, required_version: str) -> bool:
         """Check if the server version is newer or equal to the specified version."""
-        required_major, required_minor, required_fix = version.split(".")
+        required_major, required_minor, required_fix = required_version.split(".")
         server_version = self.server_version()
         if server_version:
             server_major, server_minor, server_fix = server_version.split(".")
