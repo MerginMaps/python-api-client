@@ -40,6 +40,8 @@ from .version import __version__
 this_dir = os.path.dirname(os.path.realpath(__file__))
 json_headers = {"Content-Type": "application/json"}
 
+MERGIN_DEFAULT_LOGS_URL = "https://g4pfq226j0.execute-api.eu-west-1.amazonaws.com/mergin_client_log_submit"
+
 
 class TokenError(Exception):
     pass
@@ -1360,3 +1362,72 @@ class MerginClient:
         Remove a user from project collaborators
         """
         self.delete(f"v2/projects/{project_id}/collaborators/{user_id}")
+
+    def server_config(self) -> dict:
+        """Get server configuration as dictionary."""
+        response = self.get("/config")
+        return json.load(response)
+
+    def server_version_newer_or_equal_than(self, version: str) -> bool:
+        """Check if the server version is newer or equal to the specified version."""
+        required_major, required_minor, required_fix = version.split(".")
+        server_version = self.server_version()
+        if server_version:
+            server_major, server_minor, server_fix = server_version.split(".")
+            return (
+                int(server_major) > int(required_major)
+                or (int(server_major) == int(required_major) and int(server_minor) > int(required_minor))
+                or (
+                    int(server_major) == int(required_major)
+                    and int(server_minor) == int(required_minor)
+                    and int(server_fix) >= int(required_fix)
+                )
+            )
+        return False
+
+    def send_logs(
+        self,
+        logfile: str,
+        global_log_file: typing.Optional[str] = None,
+        application: typing.Optional[str] = None,
+        meta: typing.Optional[str] = None,
+    ):
+        """Send logs to configured server or the default Mergin server."""
+
+        if application is None:
+            application = "mergin-client-{}".format(__version__)
+
+        params = {"app": application, "username": self.username()}
+
+        config = self.server_config()
+        diagnostic_logs_url = config.get("diagnostic_logs_url", None)
+
+        if self.server_version_newer_or_equal_than("2023.4.1") and (
+            diagnostic_logs_url is None or diagnostic_logs_url == ""
+        ):
+            url = self.url() + "?" + urllib.parse.urlencode(params)
+        else:
+            url = MERGIN_DEFAULT_LOGS_URL + "?" + urllib.parse.urlencode(params)
+
+        if meta is None:
+            meta = "Python API Client\nSystem: {} \nMergin Maps URL: {} \nMergin Maps user: {} \n--------------------------------\n\n".format(
+                platform.system(), self.url, self.username()
+            )
+
+        global_logs = b""
+        if global_log_file and os.path.exists(global_log_file):
+            with open(global_log_file, "rb") as f:
+                if os.path.getsize(global_log_file) > 100 * 1024:
+                    f.seek(-100 * 1024, os.SEEK_END)
+                global_logs = f.read() + b"\n--------------------------------\n\n"
+
+        with open(logfile, "rb") as f:
+            if os.path.getsize(logfile) > 512 * 1024:
+                f.seek(-512 * 1024, os.SEEK_END)
+            logs = f.read()
+
+        payload = meta.encode() + global_logs + logs
+        header = {"content-type": "text/plain"}
+
+        request = urllib.request.Request(url, data=payload, headers=header)
+        return self._do_request(request)
