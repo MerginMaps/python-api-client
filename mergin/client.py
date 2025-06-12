@@ -1368,23 +1368,6 @@ class MerginClient:
         response = self.get("/config")
         return json.load(response)
 
-    def server_version_newer_or_equal_than(self, required_version: str) -> bool:
-        """Check if the server version is newer or equal to the specified version."""
-        required_major, required_minor, required_fix = required_version.split(".")
-        server_version = self.server_version()
-        if server_version:
-            server_major, server_minor, server_fix = server_version.split(".")
-            return (
-                int(server_major) > int(required_major)
-                or (int(server_major) == int(required_major) and int(server_minor) > int(required_minor))
-                or (
-                    int(server_major) == int(required_major)
-                    and int(server_minor) == int(required_minor)
-                    and int(server_fix) >= int(required_fix)
-                )
-            )
-        return False
-
     def send_logs(
         self,
         logfile: str,
@@ -1402,7 +1385,7 @@ class MerginClient:
         config = self.server_config()
         diagnostic_logs_url = config.get("diagnostic_logs_url", None)
 
-        if self.server_version_newer_or_equal_than("2023.4.1") and (
+        if is_version_acceptable(self.server_version(), "2025.4.1") and (
             diagnostic_logs_url is None or diagnostic_logs_url == ""
         ):
             url = self.url() + "?" + urllib.parse.urlencode(params)
