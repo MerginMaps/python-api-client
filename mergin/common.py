@@ -6,6 +6,11 @@ CHUNK_SIZE = 100 * 1024 * 1024
 # there is an upper limit for chunk size on server, ideally should be requested from there once implemented
 UPLOAD_CHUNK_SIZE = 10 * 1024 * 1024
 
+# size of the log file part to send (if file is larger only this size from end will be sent)
+LOG_FILE_SIZE_TO_SEND = 100 * 1024
+
+# default URL for submitting logs
+MERGIN_DEFAULT_LOGS_URL = "https://g4pfq226j0.execute-api.eu-west-1.amazonaws.com/mergin_client_log_submit"
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 

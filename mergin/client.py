@@ -19,7 +19,7 @@ import warnings
 
 from typing import List
 
-from .common import ClientError, LoginError, WorkspaceRole, ProjectRole
+from .common import ClientError, LoginError, WorkspaceRole, ProjectRole, LOG_FILE_SIZE_TO_SEND, MERGIN_DEFAULT_LOGS_URL
 from .merginproject import MerginProject
 from .client_pull import (
     download_file_finalize,
@@ -1360,3 +1360,64 @@ class MerginClient:
         Remove a user from project collaborators
         """
         self.delete(f"v2/projects/{project_id}/collaborators/{user_id}")
+
+    def server_config(self) -> dict:
+        """Get server configuration as dictionary."""
+        response = self.get("/config")
+        return json.load(response)
+
+    def send_logs(
+        self,
+        logfile: str,
+        global_log_file: typing.Optional[str] = None,
+        application: typing.Optional[str] = None,
+        meta: typing.Optional[str] = None,
+    ):
+        """Send logs to configured server or the default Mergin server."""
+
+        if application is None:
+            application = "mergin-client-{}".format(__version__)
+
+        params = {"app": application, "username": self.username()}
+
+        config = self.server_config()
+        diagnostic_logs_url = config.get("diagnostic_logs_url", None)
+
+        use_server_api = False
+        if is_version_acceptable(self.server_version(), "2025.4.1") and (
+            diagnostic_logs_url is None or diagnostic_logs_url == ""
+        ):
+            url = "v2/diagnostic-logs" + "?" + urllib.parse.urlencode(params)
+            use_server_api = True
+        else:
+            if diagnostic_logs_url:
+                url = diagnostic_logs_url + "?" + urllib.parse.urlencode(params)
+            else:
+                # fallback to default logs URL
+                url = MERGIN_DEFAULT_LOGS_URL + "?" + urllib.parse.urlencode(params)
+
+        if meta is None:
+            meta = "Python API Client\nSystem: {} \nMergin Maps URL: {} \nMergin Maps user: {} \n--------------------------------\n\n".format(
+                platform.system(), self.url, self.username()
+            )
+
+        global_logs = b""
+        if global_log_file and os.path.exists(global_log_file):
+            with open(global_log_file, "rb") as f:
+                if os.path.getsize(global_log_file) > LOG_FILE_SIZE_TO_SEND:
+                    f.seek(-LOG_FILE_SIZE_TO_SEND, os.SEEK_END)
+                global_logs = f.read() + b"\n--------------------------------\n\n"
+
+        with open(logfile, "rb") as f:
+            if os.path.getsize(logfile) > 512 * 1024:
+                f.seek(-512 * 1024, os.SEEK_END)
+            logs = f.read()
+
+        payload = meta.encode() + global_logs + logs
+        header = {"content-type": "text/plain"}
+
+        if use_server_api:
+            return self.post(url, data=payload, headers=header)
+        else:
+            request = urllib.request.Request(url, data=payload, headers=header)
+            return self._do_request(request)
