@@ -2845,3 +2845,29 @@ def test_server_config(mc: MerginClient):
     assert "server_type" in config
     assert "version" in config
     assert "server_configured" in config
+
+
+def test_send_logs(mc: MerginClient, monkeypatch):
+    """Test that logs can be send to the server."""
+    test_project = "test_logs_send"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+
+    cleanup(mc, project, [project_dir])
+    # prepare local project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+
+    # create remote project
+    mc.create_project_and_push(project, directory=project_dir)
+
+    # patch mc.server_config() to return empty config which means that logs will be send to the server
+    # but it is not configured to accept them so client error with message will be raised
+    def server_config(self):
+        return {}
+
+    monkeypatch.setattr(mc, "server_config", server_config.__get__(mc))
+
+    logs_path = os.path.join(project_dir, ".mergin", "client-log.txt")
+
+    with pytest.raises(ClientError, match="The requested URL was not found on the server"):
+        mc.send_logs(logs_path)
