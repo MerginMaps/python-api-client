@@ -1,7 +1,7 @@
 import os
 from enum import Enum
 
-CHUNK_SIZE = 100 * 1024 * 1024
+CHUNK_SIZE = 10 * 1024 * 1024
 
 # there is an upper limit for chunk size on server, ideally should be requested from there once implemented
 UPLOAD_CHUNK_SIZE = 10 * 1024 * 1024

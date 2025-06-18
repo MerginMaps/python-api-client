@@ -19,6 +19,7 @@ import os
 from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
 from .editor import filter_changes
+from .utils import is_qgis_file, is_versioned_file
 
 
 class UploadJob:
@@ -122,6 +123,23 @@ def push_project_async(mc, directory):
 
     changes = mp.get_push_changes()
     changes = filter_changes(mc, project_info, changes)
+
+    blocking_changes, non_blocking_changes = split_changes(changes)
+
+    blocking_job = (
+        _prepare_upload_job(mp, mc, project_path, local_version, blocking_changes)
+        if any(len(v) for v in blocking_changes.values())
+        else None
+    )
+    non_blocking_job = (
+        _prepare_upload_job(mp, mc, project_path, local_version,  non_blocking_changes)
+        if any(len(v) for v in non_blocking_changes.values())
+        else None
+    )
+
+    return blocking_job, non_blocking_job
+
+def _prepare_upload_job(mp, mc, project_path, local_version, changes):
     mp.log.debug("push changes:\n" + pprint.pformat(changes))
 
     tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
@@ -206,9 +224,7 @@ def push_project_async(mc, directory):
     for item in upload_queue_items:
         future = job.executor.submit(_do_upload, item, job)
         job.futures.append(future)
-
     return job
-
 
 def push_project_wait(job):
     """blocks until all upload tasks are finished"""
@@ -334,3 +350,26 @@ def remove_diff_files(job) -> None:
             diff_file = job.mp.fpath_meta(change["diff"]["path"])
             if os.path.exists(diff_file):
                 os.remove(diff_file)
+
+
+def split_changes(changes):
+    """Split changes into blocking and non-blocking.
+
+    Blocking criteria:
+     - any updated files
+     - any removed files
+     - added files that are .gpkg or .qgz (.ggs)
+    """
+    blocking = non_blocking = {"added": [], "updated": [], "removed": [], "renamed": []}
+
+    blocking["updated"] = changes["updated"]
+    blocking["removed"] = changes["removed"]
+    blocking["renamed"] = changes["renamed"]
+
+    for f in changes["added"]:
+        if is_qgis_file(f["path"]) or is_versioned_file(f["path"]):
+            blocking["added"].append(f)
+        else:
+            non_blocking["added"].append(f)
+
+    return blocking, non_blocking
