@@ -81,9 +81,9 @@ Commands:
   share                Fetch permissions to project
   share-add            Add permissions to [users] to project
   share-remove         Remove [users] permissions from project
-  show-file-changeset  Displays information about project changes.
-  show-file-history    Displays information about a single version of a...
-  show-version         Displays information about a single version of a...
+  show-file-changeset  Display information about project changes.
+  show-file-history    Display information about a single version of a...
+  show-version         Display information about a single version of a...
   status               Show all changes in project files - upstream and...
 ```
 
@@ -99,7 +99,7 @@ To download a specific version of a project:
 $ mergin --username john download --version v42 john/project1 ~/mergin/project1
 ```
 
-To download a sepecific version of a single file:
+To download a specific version of a single file:
 
 1. First you need to download the project:
 ```

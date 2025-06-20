@@ -412,17 +412,18 @@ def push(ctx):
         return
     directory = os.getcwd()
     try:
-        job = push_project_async(mc, directory)
-        if job is not None:  # if job is none, we don't upload any files, and the transaction is finished already
-            with click.progressbar(length=job.total_size) as bar:
-                last_transferred_size = 0
-                while push_project_is_running(job):
-                    time.sleep(1 / 10)  # 100ms
-                    new_transferred_size = job.transferred_size
-                    bar.update(new_transferred_size - last_transferred_size)  # the update() needs increment only
-                    last_transferred_size = new_transferred_size
-            push_project_finalize(job)
-        click.echo("Done")
+        blocking_job, non_blocking_job = push_project_async(mc, directory)
+        for job in [blocking_job, non_blocking_job]:
+            if job is not None:  # if job is none, we don't upload any files, and the transaction is finished already
+                with click.progressbar(length=job.total_size) as bar:
+                    last_transferred_size = 0
+                    while push_project_is_running(job):
+                        time.sleep(1 / 10)  # 100ms
+                        new_transferred_size = job.transferred_size
+                        bar.update(new_transferred_size - last_transferred_size)  # the update() needs increment only
+                        last_transferred_size = new_transferred_size
+                push_project_finalize(job)
+            click.echo("Done")
     except InvalidProject as e:
         click.secho("Invalid project directory ({})".format(str(e)), fg="red")
     except ClientError as e:
@@ -473,7 +474,7 @@ def pull(ctx):
 @click.argument("version")
 @click.pass_context
 def show_version(ctx, version):
-    """Displays information about a single version of a project. `version` is 'v1', 'v2', etc."""
+    """Display information about a single version of a project. `version` is 'v1', 'v2', etc."""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -492,7 +493,7 @@ def show_version(ctx, version):
 @click.argument("path")
 @click.pass_context
 def show_file_history(ctx, path):
-    """Displays information about a single version of a project."""
+    """Display information about a single version of a project."""
     mc = ctx.obj["client"]
     if mc is None:
         return
@@ -516,7 +517,7 @@ def show_file_history(ctx, path):
 @click.argument("version")
 @click.pass_context
 def show_file_changeset(ctx, path, version):
-    """Displays information about project changes."""
+    """Display information about project changes."""
     mc = ctx.obj["client"]
     if mc is None:
         return

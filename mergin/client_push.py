@@ -19,6 +19,7 @@ import os
 from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
 from .editor import filter_changes
+from .utils import is_qgis_file, is_versioned_file
 
 
 class UploadJob:
@@ -82,6 +83,38 @@ class UploadQueueItem:
                 raise ClientError("Mismatch between uploaded file chunk {} and local one".format(self.chunk_id))
 
 
+class UploadChanges:
+    def __init__(self, added=None, updated=None, removed=None):
+        self.added = added or []
+        self.updated = updated or []
+        self.removed = removed or []
+        self.renamed = []
+
+    def is_empty(self):
+        return not (self.added or self.updated or self.removed or self.renamed)
+
+    def split(self):
+        blocking = UploadChanges()
+        non_blocking = UploadChanges()
+
+        for file in self.added:
+            target = blocking if is_qgis_file(file["path"]) or is_versioned_file(file["path"]) else non_blocking
+            target.added.append(file)
+
+        for file in self.updated:
+            blocking.updated.append(file)
+
+        for file in self.removed:
+            blocking.removed.append(file)
+
+        result = {}
+        if not blocking.is_empty():
+            result["blocking"] = blocking
+        if not non_blocking.is_empty():
+            result["non_blocking"] = non_blocking
+        return result
+
+
 def push_project_async(mc, directory):
     """Starts push of a project and returns pending upload job"""
 
@@ -122,6 +155,24 @@ def push_project_async(mc, directory):
 
     changes = mp.get_push_changes()
     changes = filter_changes(mc, project_info, changes)
+
+    blocking_changes, non_blocking_changes = changes.split()
+
+    blocking_job = (
+        _prepare_upload_job(mp, mc, project_path, local_version, blocking_changes)
+        if any(len(v) for v in blocking_changes.values())
+        else None
+    )
+    non_blocking_job = (
+        _prepare_upload_job(mp, mc, project_path, local_version, non_blocking_changes)
+        if any(len(v) for v in non_blocking_changes.values())
+        else None
+    )
+
+    return blocking_job, non_blocking_job
+
+
+def _prepare_upload_job(mp, mc, project_path, local_version, changes):
     mp.log.debug("push changes:\n" + pprint.pformat(changes))
 
     tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
@@ -206,7 +257,6 @@ def push_project_async(mc, directory):
     for item in upload_queue_items:
         future = job.executor.submit(_do_upload, item, job)
         job.futures.append(future)
-
     return job
 
 
@@ -334,3 +384,4 @@ def remove_diff_files(job) -> None:
             diff_file = job.mp.fpath_meta(change["diff"]["path"])
             if os.path.exists(diff_file):
                 os.remove(diff_file)
+
