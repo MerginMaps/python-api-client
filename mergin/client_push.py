@@ -83,6 +83,38 @@ class UploadQueueItem:
                 raise ClientError("Mismatch between uploaded file chunk {} and local one".format(self.chunk_id))
 
 
+class UploadChanges:
+    def __init__(self, added=None, updated=None, removed=None):
+        self.added = added or []
+        self.updated = updated or []
+        self.removed = removed or []
+        self.renamed = []
+
+    def is_empty(self):
+        return not (self.added or self.updated or self.removed or self.renamed)
+
+    def split(self):
+        blocking = UploadChanges()
+        non_blocking = UploadChanges()
+
+        for file in self.added:
+            target = blocking if is_qgis_file(file["path"]) or is_versioned_file(file["path"]) else non_blocking
+            target.added.append(file)
+
+        for file in self.updated:
+            blocking.updated.append(file)
+
+        for file in self.removed:
+            blocking.removed.append(file)
+
+        result = {}
+        if not blocking.is_empty():
+            result["blocking"] = blocking
+        if not non_blocking.is_empty():
+            result["non_blocking"] = non_blocking
+        return result
+
+
 def push_project_async(mc, directory):
     """Starts push of a project and returns pending upload job"""
 
@@ -124,7 +156,7 @@ def push_project_async(mc, directory):
     changes = mp.get_push_changes()
     changes = filter_changes(mc, project_info, changes)
 
-    blocking_changes, non_blocking_changes = split_changes(changes)
+    blocking_changes, non_blocking_changes = changes.split()
 
     blocking_job = (
         _prepare_upload_job(mp, mc, project_path, local_version, blocking_changes)
@@ -132,12 +164,13 @@ def push_project_async(mc, directory):
         else None
     )
     non_blocking_job = (
-        _prepare_upload_job(mp, mc, project_path, local_version,  non_blocking_changes)
+        _prepare_upload_job(mp, mc, project_path, local_version, non_blocking_changes)
         if any(len(v) for v in non_blocking_changes.values())
         else None
     )
 
     return blocking_job, non_blocking_job
+
 
 def _prepare_upload_job(mp, mc, project_path, local_version, changes):
     mp.log.debug("push changes:\n" + pprint.pformat(changes))
@@ -225,6 +258,7 @@ def _prepare_upload_job(mp, mc, project_path, local_version, changes):
         future = job.executor.submit(_do_upload, item, job)
         job.futures.append(future)
     return job
+
 
 def push_project_wait(job):
     """blocks until all upload tasks are finished"""
@@ -351,25 +385,3 @@ def remove_diff_files(job) -> None:
             if os.path.exists(diff_file):
                 os.remove(diff_file)
 
-
-def split_changes(changes):
-    """Split changes into blocking and non-blocking.
-
-    Blocking criteria:
-     - any updated files
-     - any removed files
-     - added files that are .gpkg or .qgz (.ggs)
-    """
-    blocking = non_blocking = {"added": [], "updated": [], "removed": [], "renamed": []}
-
-    blocking["updated"] = changes["updated"]
-    blocking["removed"] = changes["removed"]
-    blocking["renamed"] = changes["renamed"]
-
-    for f in changes["added"]:
-        if is_qgis_file(f["path"]) or is_versioned_file(f["path"]):
-            blocking["added"].append(f)
-        else:
-            non_blocking["added"].append(f)
-
-    return blocking, non_blocking

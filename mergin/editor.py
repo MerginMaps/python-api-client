@@ -1,6 +1,7 @@
 from itertools import filterfalse
 from typing import Callable, Dict, List
 
+from .client_push import UploadChanges
 from .utils import is_mergin_config, is_qgis_file, is_versioned_file
 
 EDITOR_ROLE_NAME = "editor"
@@ -24,7 +25,7 @@ def is_editor_enabled(mc, project_info: dict) -> bool:
     return server_support and project_role == EDITOR_ROLE_NAME
 
 
-def _apply_editor_filters(changes: Dict[str, List[dict]]) -> Dict[str, List[dict]]:
+def _apply_editor_filters(changes: UploadChanges) -> UploadChanges:
     """
     Applies editor-specific filters to the changes dictionary, removing any changes to files that are not in the editor's list of allowed files.
 
@@ -36,11 +37,11 @@ def _apply_editor_filters(changes: Dict[str, List[dict]]) -> Dict[str, List[dict
     """
     updated = changes.get("updated", [])
 
-    changes["updated"] = list(filterfalse(_disallowed_changes, updated))
+    changes.updated = list(filterfalse(_disallowed_changes, updated))
     return changes
 
 
-def filter_changes(mc, project_info: dict, changes: Dict[str, List[dict]]) -> Dict[str, List[dict]]:
+def filter_changes(mc, project_info: dict, changes: UploadChanges) -> UploadChanges:
     """
     Filters the given changes dictionary based on the editor's enabled state.
 
