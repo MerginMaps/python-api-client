@@ -1,8 +1,7 @@
 from itertools import filterfalse
 from typing import Callable, Dict, List
 
-from .client_push import UploadChanges
-from .utils import is_mergin_config, is_qgis_file, is_versioned_file
+from .utils import is_qgis_file
 
 EDITOR_ROLE_NAME = "editor"
 
@@ -37,7 +36,7 @@ def _apply_editor_filters(changes: Dict[str, List[dict]]) -> Dict[str, List[dict
     """
     updated = changes.get("updated", [])
 
-    changes.updated = list(filterfalse(_disallowed_changes, updated))
+    changes["updated"] = list(filterfalse(_disallowed_changes, updated))
     return changes
 
 

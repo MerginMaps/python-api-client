@@ -15,7 +15,7 @@ import pprint
 import tempfile
 import concurrent.futures
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
@@ -139,7 +139,7 @@ class UploadChangesHandler:
         return result
 
 
-def push_project_async(mc, directory) -> List[UploadJob]:
+def push_project_async(mc, directory) -> Optional[List[UploadJob]]:
     """Starts push of a project and returns pending upload jobs"""
 
     mp = MerginProject(directory)
@@ -164,8 +164,8 @@ def push_project_async(mc, directory) -> List[UploadJob]:
 
     username = mc.username()
     # permissions field contains information about update, delete and upload privileges of the user
-    # on a specific project. This is more accurate information then "writernames" field, as it takes
-    # into account namespace privileges. So we have to check only "permissions", namely "upload" one
+    # on a specific project. This is more accurate information than "writernames" field, as it takes
+    # into account namespace privileges. So we have to check only "permissions", namely "upload" once
     if not mc.has_writing_permissions(project_path):
         mp.log.error(f"--- push {project_path} - username {username} does not have write access")
         raise ClientError(f"You do not seem to have write access to the project (username '{username}')")
@@ -180,11 +180,11 @@ def push_project_async(mc, directory) -> List[UploadJob]:
     changes_handler = UploadChangesHandler(mp, mc, project_info)
     changes_groups = changes_handler.split_by_type()
 
+    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
     jobs = []
+
     for changes in changes_groups:
         mp.log.debug("push changes:\n" + pprint.pformat(changes))
-
-        tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
 
         # If there are any versioned files (aka .gpkg) that are not updated through a diff,
         # we need to make a temporary copy somewhere to be sure that we are uploading full content.

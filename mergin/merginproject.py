@@ -7,9 +7,9 @@ import shutil
 import uuid
 import tempfile
 from datetime import datetime
+from typing import List, Dict
 from dateutil.tz import tzlocal
 
-from .client_push import UploadChanges
 from .editor import prevent_conflicted_copy
 
 from .common import UPLOAD_CHUNK_SIZE, InvalidProject, ClientError
@@ -315,13 +315,20 @@ class MerginProject:
                 )
         return files_meta
 
-    def compare_file_sets(self, origin, current) -> UploadChanges:
+    def compare_file_sets(self, origin, current) -> Dict[str, List[dict]]:
         """
-        Calculate difference between two sets of file metadata using file names and checksums.
-
-        :param origin: List of original file metadata
-        :param current: List of current file metadata
-        :return: UploadChanges instance with added, updated, removed
+        Calculate difference between two sets of files metadata using file names and checksums.
+        :Example:
+        >>> origin = [{'checksum': '08b0e8caddafe74bf5c11a45f65cedf974210fed', 'path': 'base.gpkg', 'size': 2793, 'mtime': '2019-08-26T11:08:34.051221+02:00'}]
+        >>> current = [{'checksum': 'c9a4fd2afd513a97aba19d450396a4c9df8b2ba4', 'path': 'test.qgs', 'size': 31980, 'mtime': '2019-08-26T11:09:30.051221+02:00'}]
+        >>> self.compare_file_sets(origin, current)
+        {"added": [{'checksum': 'c9a4fd2afd513a97aba19d450396a4c9df8b2ba4', 'path': 'test.qgs', 'size': 31980, 'mtime': '2019-08-26T11:09:30.051221+02:00'}], "removed": [[{'checksum': '08b0e8caddafe74bf5c11a45f65cedf974210fed', 'path': 'base.gpkg', 'size': 2793, 'mtime': '2019-08-26T11:08:34.051221+02:00'}]], "renamed": [], "updated": []}
+        :param origin: origin set of files metadata
+        :type origin: list[dict]
+        :param current: current set of files metadata to be compared against origin
+        :type current: list[dict]
+        :returns: changes between two sets with change type
+        :rtype: dict[str, list[dict]]'
         """
         origin_map = {f["path"]: f for f in origin}
         current_map = {f["path"]: f for f in current}
@@ -338,12 +345,7 @@ class MerginProject:
             f["origin_checksum"] = origin_map[path]["checksum"]
             updated.append(f)
 
-        return UploadChanges(
-            added=added,
-            updated=updated,
-            removed=removed,
-        )
-
+        return {"renamed": [], "added": added, "removed": removed, "updated": updated}
 
     def get_pull_changes(self, server_files):
         """
@@ -401,7 +403,7 @@ class MerginProject:
         changes["updated"] = [f for f in changes["updated"] if f not in not_updated]
         return changes
 
-    def get_push_changes(self) -> UploadChanges:
+    def get_push_changes(self) -> Dict[str, List[dict]]:
         """
         Calculate changes needed to be pushed to server.
 
@@ -425,7 +427,7 @@ class MerginProject:
 
         # need to check for real changes in geodiff files using geodiff tool (comparing checksum is not enough)
         not_updated = []
-        for file in changes.updated:
+        for file in changes["updated"]:
             path = file["path"]
             if not self.is_versioned_file(path):
                 continue
@@ -459,7 +461,7 @@ class MerginProject:
                 # we will need to do full upload of the file
                 pass
 
-        changes.updated = [f for f in changes.updated if f not in not_updated]
+        changes["updated"] = [f for f in changes["updated"] if f not in not_updated]
         return changes
 
     def copy_versioned_file_for_upload(self, f, tmp_dir):
