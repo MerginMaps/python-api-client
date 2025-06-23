@@ -393,8 +393,9 @@ def test_cancel_push(mc):
     assert next((f for f in push_changes["updated"] if f["path"] == f_updated), None)
 
     # start pushing and then cancel the job
-    job, _ = push_project_async(mc, project_dir)
-    push_project_cancel(job)
+    jobs = push_project_async(mc, project_dir)
+    for job in jobs:
+        push_project_cancel(job)
 
     # if cancelled properly, we should be now able to do the push without any problem
     mc.push_project(project_dir)

@@ -876,8 +876,8 @@ class MerginClient:
         :param directory: Project's directory
         :type directory: String
         """
-        blocking_job, non_blocking_job = push_project_async(self, directory)
-        for job in [blocking_job, non_blocking_job]:
+        jobs = push_project_async(self, directory)
+        for job in jobs:
             if job is None:
                 return  # there is nothing to push (or we only deleted some files)
             push_project_wait(job)
