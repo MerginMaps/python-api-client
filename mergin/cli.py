@@ -412,8 +412,8 @@ def push(ctx):
         return
     directory = os.getcwd()
     try:
-        blocking_job, non_blocking_job = push_project_async(mc, directory)
-        for job in [blocking_job, non_blocking_job]:
+        jobs = push_project_async(mc, directory)
+        for job in jobs:
             if job is not None:  # if job is none, we don't upload any files, and the transaction is finished already
                 with click.progressbar(length=job.total_size) as bar:
                     last_transferred_size = 0
@@ -431,7 +431,8 @@ def push(ctx):
         return
     except KeyboardInterrupt:
         click.secho("Cancelling...")
-        push_project_cancel(job)
+        for job in jobs:
+            push_project_cancel(job)
     except Exception as e:
         _print_unhandled_exception()
 
