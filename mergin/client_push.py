@@ -19,7 +19,7 @@ from typing import Dict, List, Optional
 
 from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
-from .editor import filter_changes
+from .editor import is_editor_enabled, _apply_editor_filters
 from .utils import is_qgis_file, is_versioned_file
 
 
@@ -84,7 +84,7 @@ class UploadQueueItem:
                 raise ClientError("Mismatch between uploaded file chunk {} and local one".format(self.chunk_id))
 
 
-class UploadChangesHandler:
+class ChangesHandler:
     """
     Handles preparation of file changes to be uploaded to the server.
 
@@ -95,48 +95,70 @@ class UploadChangesHandler:
     - Generating upload-ready change groups for asynchronous job creation.
     """
 
-    def __init__(self, mp, client, project_info):
-        self.mp = mp
+    def __init__(self, client, project_info, changes):
         self.client = client
         self.project_info = project_info
-        self._raw_changes = mp.get_push_changes()
-        self._filtered_changes = filter_changes(client, project_info, self._raw_changes)
+        self._raw_changes = changes
 
     @staticmethod
     def is_blocking_file(file):
         return is_qgis_file(file["path"]) or is_versioned_file(file["path"])
 
-    def split_by_type(self) -> List[Dict[str, List[dict]]]:
+    def _filter_changes(self, changes: Dict[str, List[dict]]) -> Dict[str, List[dict]]:
+        """
+        Filters the given changes dictionary based on the editor's enabled state.
+
+        If the editor is not enabled, the changes dictionary is returned as-is. Otherwise, the changes are passed through the `_apply_editor_filters` method to apply any configured filters.
+
+        Args:
+            changes (dict[str, list[dict]]): A dictionary mapping file paths to lists of change dictionaries.
+
+        Returns:
+            dict[str, list[dict]]: The filtered changes dictionary.
+        """
+        if not is_editor_enabled(self.client, self.project_info):
+            return changes
+        return _apply_editor_filters(changes)
+
+    def _split_by_type(self, changes: Dict[str, List[dict]]) -> List[Dict[str, List[dict]]]:
         """
         Split raw filtered changes into two batches:
         1. Blocking: updated/removed and added files that are blocking
         2. Non-blocking: added files that are not blocking
 
-        Returns a list of dicts each with keys:
-        - added, updated, removed, blocking
+        Adds blocking key with a boolean value for each group
         """
-        blocking_group = {"added": [], "updated": [], "removed": [], "blocking": True}
-        non_blocking_group = {"added": [], "updated": [], "removed": [], "blocking": False}
+        blocking_changes = {"added": [], "updated": [], "removed": [], "blocking": True}
+        non_blocking_changes = {"added": [], "updated": [], "removed": [], "blocking": False}
 
-        for f in self._filtered_changes.get("added", []):
+        for f in changes.get("added", []):
             if self.is_blocking_file(f):
-                blocking_group["added"].append(f)
+                blocking_changes["added"].append(f)
             else:
-                non_blocking_group["added"].append(f)
+                non_blocking_changes["added"].append(f)
 
-        for f in self._filtered_changes.get("updated", []):
-            blocking_group["updated"].append(f)
+        for f in changes.get("updated", []):
+            blocking_changes["updated"].append(f)
 
-        for f in self._filtered_changes.get("removed", []):
-            blocking_group["removed"].append(f)
+        for f in changes.get("removed", []):
+            blocking_changes["removed"].append(f)
 
         result = []
-        if any(blocking_group[k] for k in ("added", "updated", "removed")):
-            result.append(blocking_group)
-        if any(non_blocking_group["added"]):
-            result.append(non_blocking_group)
+        if any(blocking_changes[k] for k in ("added", "updated", "removed")):
+            result.append(blocking_changes)
+        if any(non_blocking_changes["added"]):
+            result.append(non_blocking_changes)
 
         return result
+
+    def split(self) -> List[Dict[str, List[dict]]]:
+        """
+        Applies all configured internal filters and returns a list of change ready to be uploaded.
+        """
+        changes = self._filter_changes(self._raw_changes)
+        changes = self._split_by_type(changes)
+        # TODO: apply limits; changes = self._limit_by_file_count(changes)
+        return changes
 
 
 def push_project_async(mc, directory) -> Optional[List[UploadJob]]:
@@ -177,13 +199,14 @@ def push_project_async(mc, directory) -> Optional[List[UploadJob]]:
             + f"\n\nLocal version: {local_version}\nServer version: {server_version}"
         )
 
-    changes_handler = UploadChangesHandler(mp, mc, project_info)
-    changes_groups = changes_handler.split_by_type()
+    changes = mp.get_push_changes()
+    changes_handler = ChangesHandler(mc, project_info, changes)
+    changes_list = changes_handler.split()
 
     tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
     jobs = []
 
-    for changes in changes_groups:
+    for changes in changes_list:
         mp.log.debug("push changes:\n" + pprint.pformat(changes))
 
         # If there are any versioned files (aka .gpkg) that are not updated through a diff,

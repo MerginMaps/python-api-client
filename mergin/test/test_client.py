@@ -21,7 +21,7 @@ from ..client import (
     TokenError,
     ServerType,
 )
-from ..client_push import push_project_async, push_project_cancel
+from ..client_push import push_project_async, push_project_cancel, ChangesHandler
 from ..client_pull import (
     download_project_async,
     download_project_wait,
@@ -38,7 +38,7 @@ from ..utils import (
 )
 from ..merginproject import pygeodiff
 from ..report import create_report
-from ..editor import EDITOR_ROLE_NAME, filter_changes, is_editor_enabled
+from ..editor import EDITOR_ROLE_NAME, is_editor_enabled
 from ..common import ErrorCode, WorkspaceRole, ProjectRole
 
 SERVER_URL = os.environ.get("TEST_MERGIN_URL")
@@ -2593,7 +2593,8 @@ def test_editor(mc: MerginClient):
         "updated": [{"path": "/folder/project.updated.Qgs"}],
         "removed": [{"path": "/folder/project.removed.qgs"}],
     }
-    qgs_changeset = filter_changes(mc, project_info, qgs_changeset)
+    changes_handler = ChangesHandler(mc, project_info, qgs_changeset)
+    qgs_changeset = changes_handler._filter_changes(qgs_changeset)
     assert sum(len(v) for v in qgs_changeset.values()) == 2
 
 
