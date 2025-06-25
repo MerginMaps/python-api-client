@@ -157,10 +157,6 @@ class MerginClient:
                 if not self._auth_session:
                     self.login(login, password)
 
-        else:
-            if not self._auth_session:
-                raise ClientError("Unable to log in: no auth token provided for login")
-
     def setup_logging(self):
         """Setup Mergin Maps client logging."""
         client_log_file = os.environ.get("MERGIN_CLIENT_LOG", None)
