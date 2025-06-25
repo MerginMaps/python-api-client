@@ -56,16 +56,6 @@ class ServerType(Enum):
     SAAS = auto()  # Server is SaaS
 
 
-class LoginType(Enum):
-    """Types of login supported by Mergin Maps."""
-
-    PASSWORD = "password"  # classic login with username and password
-    SSO = "sso"  # login with SSO token
-
-    def __str__(self) -> str:
-        return self.value
-
-
 def decode_token_data(token):
     token_prefix = "Bearer ."
     if not token.startswith(token_prefix):
