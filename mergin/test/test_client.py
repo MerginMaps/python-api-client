@@ -2777,14 +2777,6 @@ def test_access_management(mc: MerginClient, mc2: MerginClient):
     # test permissions - a different client cannot update the role
     with pytest.raises(ClientError, match=f"You do not have admin permissions to workspace"):
         mc2.update_workspace_member(workspace_id, new_user["id"], ws_role)
-    # remove workspace member
-    mc.remove_workspace_member(workspace_id, new_user["id"])
-    workspace_members = mc.list_workspace_members(workspace_id)
-    assert not any(m["id"] == new_user["id"] for m in workspace_members)
-    # duplicated call
-    with pytest.raises(ClientError) as exc_info:
-        mc.remove_workspace_member(workspace_id, new_user["id"])
-    assert exc_info.value.http_error == 404
     # add project
     test_project_name = "test_collaborators"
     test_project_fullname = API_USER + "/" + test_project_name
@@ -2810,7 +2802,8 @@ def test_access_management(mc: MerginClient, mc2: MerginClient):
     collaborators = mc.list_project_collaborators(test_project_id)
     updated_collaborator = next((c for c in collaborators if c["id"] == new_user["id"]))
     assert updated_collaborator["project_role"] == updated_role.value
-    # remove project collaborator
+    # remove project collaborator, add this user guest first to make sure it can be removed from project collaborators
+    mc.update_workspace_member(workspace_id, new_user["id"], WorkspaceRole.GUEST)
     mc.remove_project_collaborator(test_project_id, new_user["id"])
     collaborators = mc.list_project_collaborators(test_project_id)
     assert not any(c["id"] == new_user["id"] for c in collaborators)
@@ -2832,3 +2825,49 @@ def test_access_management(mc: MerginClient, mc2: MerginClient):
         {"limits_override": {"projects": orig_projects_limit}},
         json_headers,
     )
+    # remove workspace member
+    mc.remove_workspace_member(workspace_id, new_user["id"])
+    workspace_members = mc.list_workspace_members(workspace_id)
+    assert not any(m["id"] == new_user["id"] for m in workspace_members)
+    # duplicated call
+    with pytest.raises(ClientError) as exc_info:
+        mc.remove_workspace_member(workspace_id, new_user["id"])
+    assert exc_info.value.http_error == 404
+
+
+def test_server_config(mc: MerginClient):
+    """Test retrieving server configuration and some keys."""
+    config = mc.server_config()
+
+    assert config
+    assert isinstance(config, dict)
+
+    assert "server_type" in config
+    assert "version" in config
+    assert "server_configured" in config
+
+
+def test_send_logs(mc: MerginClient, monkeypatch):
+    """Test that logs can be send to the server."""
+    test_project = "test_logs_send"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+
+    cleanup(mc, project, [project_dir])
+    # prepare local project
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+
+    # create remote project
+    mc.create_project_and_push(project, directory=project_dir)
+
+    # patch mc.server_config() to return empty config which means that logs will be send to the server
+    # but it is not configured to accept them so client error with message will be raised
+    def server_config(self):
+        return {}
+
+    monkeypatch.setattr(mc, "server_config", server_config.__get__(mc))
+
+    logs_path = os.path.join(project_dir, ".mergin", "client-log.txt")
+
+    with pytest.raises(ClientError, match="The requested URL was not found on the server"):
+        mc.send_logs(logs_path)
