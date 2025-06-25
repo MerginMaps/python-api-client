@@ -146,7 +146,7 @@ class MerginClient:
             self.opener = urllib.request.build_opener(*handlers, https_handler)
         urllib.request.install_opener(self.opener)
 
-        if self._login_type == LoginType.PASSWORD:
+        if login or password:
             if login and not password:
                 raise ClientError("Unable to log in: no password provided for '{}'".format(login))
             if password and not login:
@@ -157,9 +157,9 @@ class MerginClient:
                 if not self._auth_session:
                     self.login(login, password)
 
-        elif self._login_type == LoginType.SSO:
+        else:
             if not self._auth_session:
-                raise ClientError("Unable to log in: no auth token provided for SSO login")
+                raise ClientError("Unable to log in: no auth token provided for login")
 
     def setup_logging(self):
         """Setup Mergin Maps client logging."""
