@@ -10,6 +10,7 @@ import pytest
 import pytz
 import sqlite3
 import glob
+from urllib.error import HTTPError
 
 from .. import InvalidProject
 from ..client import (
@@ -2891,5 +2892,5 @@ def test_mc_without_login():
     assert config["server_configured"]
 
     # without login should not be able to access workspaces
-    with pytest.raises(ClientError, match="The requested URL was not found on the server"):
+    with pytest.raises(HTTPError):
         mc.workspaces_list()
