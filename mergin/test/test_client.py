@@ -2871,3 +2871,18 @@ def test_send_logs(mc: MerginClient, monkeypatch):
 
     with pytest.raises(ClientError, match="The requested URL was not found on the server"):
         mc.send_logs(logs_path)
+
+
+def test_mc_without_login():
+
+    # client without login should be able to access server config
+    mc = MerginClient(SERVER_URL)
+    config = mc.server_config()
+    assert config
+    assert isinstance(config, dict)
+    assert "server_configured" in config
+    assert config["server_configured"]
+
+    # without login should not be able to access workspaces
+    with pytest.raises(ClientError, match="The requested URL was not found on the server"):
+        mc.workspaces_list()
