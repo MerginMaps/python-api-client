@@ -220,7 +220,7 @@ def push_project_async(mc, directory) -> Optional[List[UploadJob]]:
             if mp.is_versioned_file(f["path"]):
                 mp.copy_versioned_file_for_upload(f, tmp_dir.name)
 
-        if not sum(len(v) for v in changes.values()):
+        if not any(len(v) for v in changes.values()):
             mp.log.info(f"--- push {project_path} - nothing to do")
             return
 

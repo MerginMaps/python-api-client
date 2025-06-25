@@ -304,7 +304,7 @@ def test_push_pull_changes(mc):
 
     # check changes before applied
     pull_changes, push_changes, _ = mc.project_status(project_dir)
-    assert not sum(len(v) for v in pull_changes.values())
+    assert not any(len(v) for v in pull_changes.values())
     assert next((f for f in push_changes["added"] if f["path"] == f_added), None)
     assert next((f for f in push_changes["removed"] if f["path"] == f_removed), None)
     assert next((f for f in push_changes["updated"] if f["path"] == f_updated), None)
@@ -388,7 +388,7 @@ def test_cancel_push(mc):
 
     # check changes before applied
     pull_changes, push_changes, _ = mc.project_status(project_dir)
-    assert not sum(len(v) for v in pull_changes.values())
+    assert not any(len(v) for v in pull_changes.values())
     assert next((f for f in push_changes["added"] if f["path"] == f_added), None)
     assert next((f for f in push_changes["updated"] if f["path"] == f_updated), None)
 
@@ -2631,8 +2631,8 @@ def test_editor_push(mc: MerginClient, mc2: MerginClient):
     assert any(file["path"] == txt_file_name for file in project_info.get("files")) is True
     assert any(file["path"] == gpkg_file_name for file in project_info.get("files")) is True
     pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
-    assert not sum(len(v) for v in pull_changes.values())
-    assert not sum(len(v) for v in push_changes.values())
+    assert not any(len(v) for v in pull_changes.values())
+    assert not any(len(v) for v in push_changes.values())
 
     # editor is trying to push row to gpkg file -> it's possible
     shutil.copy(
