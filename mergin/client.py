@@ -206,18 +206,20 @@ class MerginClient:
                     # Refresh auth token if it expired or will expire very soon
                     delta = self._auth_session["expire"] - datetime.now(timezone.utc)
                     if delta.total_seconds() < 5:
-                        if self._login_type == LoginType.PASSWORD:
+                        self.log.info("Token has expired - refreshing...")
+                        if self._auth_params.get("login", None) and self._auth_params.get("password", None):
                             self.log.info("Token has expired - refreshing...")
                             self.login(self._auth_params["login"], self._auth_params["password"])
-                        elif self._login_type == LoginType.SSO:
+                        else:
                             raise AuthTokenExpiredError("Token has expired - please re-login")
                 else:
                     # Create a new authorization token
-                    if self._login_type == LoginType.PASSWORD:
-                        self.log.info(f"No token - login user: {self._auth_params['login']}")
+                    self.log.info(f"No token - login user: {self._auth_params['login']}")
+                    if self._auth_params.get("login", None) and self._auth_params.get("password", None):
                         self.login(self._auth_params["login"], self._auth_params["password"])
-                    elif self._login_type == LoginType.SSO:
-                        raise AuthTokenExpiredError("Token has expired - please re-login")
+                    else:
+                        raise ClientError("Missing login or password")
+
             return f(self, *args)
 
         return wrapper
