@@ -125,11 +125,9 @@ class ChangesHandler:
         Split raw filtered changes into two batches:
         1. Blocking: updated/removed and added files that are blocking
         2. Non-blocking: added files that are not blocking
-
-        Adds blocking key with a boolean value for each group
         """
-        blocking_changes = {"added": [], "updated": [], "removed": [], "blocking": True}
-        non_blocking_changes = {"added": [], "updated": [], "removed": [], "blocking": False}
+        blocking_changes = {"added": [], "updated": [], "removed": []}
+        non_blocking_changes = {"added": [], "updated": [], "removed": []}
 
         for f in changes.get("added", []):
             if self.is_blocking_file(f):
@@ -144,9 +142,9 @@ class ChangesHandler:
             blocking_changes["removed"].append(f)
 
         result = []
-        if any(blocking_changes[k] for k in ("added", "updated", "removed")):
+        if any(len(v) for v in blocking_changes.values()):
             result.append(blocking_changes)
-        if any(non_blocking_changes["added"]):
+        if any(len(v) for v in non_blocking_changes.values()):
             result.append(non_blocking_changes)
 
         return result

@@ -686,7 +686,7 @@ class MerginProject:
         """
         For geodiff files update basefiles according to changes pushed to server.
 
-        :param changes: metadata for pulled files
+        :param changes: metadata for pushed files
         :type changes: dict[str, list[dict]]
         """
         for k, v in changes.items():
