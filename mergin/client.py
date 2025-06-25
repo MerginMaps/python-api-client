@@ -92,7 +92,6 @@ class MerginClient:
         password=None,
         plugin_version=None,
         proxy_config=None,
-        login_type: LoginType = LoginType.PASSWORD,
     ):
         self.url = (url if url is not None else MerginClient.default_url()).rstrip("/") + "/"
         self._auth_params = None
@@ -101,7 +100,6 @@ class MerginClient:
         self._server_type = None
         self._server_version = None
         self.client_version = "Python-client/" + __version__
-        self._login_type = login_type
         if plugin_version is not None:  # this could be e.g. "Plugin/2020.1 QGIS/3.14"
             self.client_version += " " + plugin_version
         self.setup_logging()
