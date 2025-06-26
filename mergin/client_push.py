@@ -126,8 +126,8 @@ class ChangesHandler:
         1. Blocking: updated/removed and added files that are blocking
         2. Non-blocking: added files that are not blocking
         """
-        blocking_changes = {"added": [], "updated": [], "removed": []}
-        non_blocking_changes = {"added": [], "updated": [], "removed": []}
+        blocking_changes = {"added": [], "updated": [], "removed": [], "renamed": []}
+        non_blocking_changes = {"added": [], "updated": [], "removed": [], "renamed": []}
 
         for f in changes.get("added", []):
             if self.is_blocking_file(f):
