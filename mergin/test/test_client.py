@@ -5,6 +5,7 @@ import random
 import tempfile
 import subprocess
 import shutil
+from collections import defaultdict
 from datetime import datetime, timedelta, date
 import pytest
 import pytz
@@ -2893,3 +2894,38 @@ def test_mc_without_login():
     # without login should not be able to access workspaces
     with pytest.raises(ClientError, match="Authentication information is missing or invalid."):
         mc.workspaces_list()
+
+def sort_dict_of_files_by_path(d):
+    return {
+        k: sorted(v, key=lambda f: f["path"]) for k, v in d.items()
+    }
+
+def test_changes_handler(mc):
+    """
+    Test methods of the ChangesHandler class
+    """
+    # test _split_by_type
+    test_project = "test_changes_handler"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    cleanup(mc, project, [project_dir])
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project(project)
+    project_info = mc.project_info(project)
+    mp = MerginProject(project_dir)
+    mp.write_metadata(project_dir, project_info)
+
+    mixed_changes = mp.get_push_changes()
+    changes_handler = ChangesHandler(mc, project_info, mixed_changes)
+    split_changes = changes_handler._split_by_type(mixed_changes)
+    assert len(split_changes) == 2
+    # all blocking files in the first dict and no blocking file in the second dict
+    assert all(ChangesHandler.is_blocking_file(f) for files in split_changes[0].values() for f in files)
+    assert all(not ChangesHandler.is_blocking_file(f) for files in split_changes[1].values() for f in files)
+    # merge the split changes dicts back into a single dict and check files are the same
+    merged = defaultdict(list)
+    for d in split_changes:
+        for k, v in d.items():
+            merged[k].extend(v)
+    assert sort_dict_of_files_by_path(merged) == sort_dict_of_files_by_path(mixed_changes)
+
