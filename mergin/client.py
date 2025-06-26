@@ -81,7 +81,7 @@ class MerginClient:
     """
 
     def __init__(self, url=None, auth_token=None, login=None, password=None, plugin_version=None, proxy_config=None):
-        self.url = url if url is not None else MerginClient.default_url()
+        self.url = (url if url is not None else MerginClient.default_url()).rstrip("/") + "/"
         self._auth_params = None
         self._auth_session = None
         self._user_info = None
@@ -453,7 +453,8 @@ class MerginClient:
 
     def create_project_and_push(self, project_name, directory, is_public=False, namespace=None):
         """
-        Convenience method to create project and push the initial version right after that.
+        Convenience method to create project and push the the files right after that.
+        Creates two versions when directory contains blocking and non-blocking changes.
 
         :param project_name: Project's full name (<namespace>/<name>)
         :type project_name: String
@@ -877,9 +878,9 @@ class MerginClient:
         :type directory: String
         """
         jobs = push_project_async(self, directory)
+        if not jobs:
+            return  # there is nothing to push (or we only deleted some files)
         for job in jobs:
-            if job is None:
-                return  # there is nothing to push (or we only deleted some files)
             push_project_wait(job)
             push_project_finalize(job)
 

@@ -415,4 +415,3 @@ def remove_diff_files(job) -> None:
             diff_file = job.mp.fpath_meta(change["diff"]["path"])
             if os.path.exists(diff_file):
                 os.remove(diff_file)
-
