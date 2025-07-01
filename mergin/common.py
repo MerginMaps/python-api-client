@@ -15,7 +15,7 @@ MERGIN_DEFAULT_LOGS_URL = "https://g4pfq226j0.execute-api.eu-west-1.amazonaws.co
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
 
-# Error code from the public API, add to the end of enum as we handle more eror
+# Error code from the public API, add to the end of enum as we handle more error
 class ErrorCode(Enum):
     ProjectsLimitHit = "ProjectsLimitHit"
     StorageLimitHit = "StorageLimitHit"

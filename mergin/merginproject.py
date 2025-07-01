@@ -7,6 +7,7 @@ import shutil
 import uuid
 import tempfile
 from datetime import datetime
+from typing import List, Dict
 from dateutil.tz import tzlocal
 
 from .editor import prevent_conflicted_copy
@@ -314,17 +315,14 @@ class MerginProject:
                 )
         return files_meta
 
-    def compare_file_sets(self, origin, current):
+    def compare_file_sets(self, origin, current) -> Dict[str, List[dict]]:
         """
-        Helper function to calculate difference between two sets of files metadata using file names and checksums.
-
+        Calculate difference between two sets of files metadata using file names and checksums.
         :Example:
-
         >>> origin = [{'checksum': '08b0e8caddafe74bf5c11a45f65cedf974210fed', 'path': 'base.gpkg', 'size': 2793, 'mtime': '2019-08-26T11:08:34.051221+02:00'}]
         >>> current = [{'checksum': 'c9a4fd2afd513a97aba19d450396a4c9df8b2ba4', 'path': 'test.qgs', 'size': 31980, 'mtime': '2019-08-26T11:09:30.051221+02:00'}]
         >>> self.compare_file_sets(origin, current)
         {"added": [{'checksum': 'c9a4fd2afd513a97aba19d450396a4c9df8b2ba4', 'path': 'test.qgs', 'size': 31980, 'mtime': '2019-08-26T11:09:30.051221+02:00'}], "removed": [[{'checksum': '08b0e8caddafe74bf5c11a45f65cedf974210fed', 'path': 'base.gpkg', 'size': 2793, 'mtime': '2019-08-26T11:08:34.051221+02:00'}]], "renamed": [], "updated": []}
-
         :param origin: origin set of files metadata
         :type origin: list[dict]
         :param current: current set of files metadata to be compared against origin
@@ -405,7 +403,7 @@ class MerginProject:
         changes["updated"] = [f for f in changes["updated"] if f not in not_updated]
         return changes
 
-    def get_push_changes(self):
+    def get_push_changes(self) -> Dict[str, List[dict]]:
         """
         Calculate changes needed to be pushed to server.
 
@@ -427,7 +425,7 @@ class MerginProject:
                 file["checksum"] = checksum
             file["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(file["size"] / UPLOAD_CHUNK_SIZE))]
 
-        # need to check for for real changes in geodiff files using geodiff tool (comparing checksum is not enough)
+        # need to check for real changes in geodiff files using geodiff tool (comparing checksum is not enough)
         not_updated = []
         for file in changes["updated"]:
             path = file["path"]
@@ -688,7 +686,7 @@ class MerginProject:
         """
         For geodiff files update basefiles according to changes pushed to server.
 
-        :param changes: metadata for pulled files
+        :param changes: metadata for pushed files
         :type changes: dict[str, list[dict]]
         """
         for k, v in changes.items():

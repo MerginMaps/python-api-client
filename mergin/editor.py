@@ -1,7 +1,7 @@
 from itertools import filterfalse
 from typing import Callable, Dict, List
 
-from .utils import is_mergin_config, is_qgis_file, is_versioned_file
+from .utils import is_qgis_file
 
 EDITOR_ROLE_NAME = "editor"
 
@@ -38,23 +38,6 @@ def _apply_editor_filters(changes: Dict[str, List[dict]]) -> Dict[str, List[dict
 
     changes["updated"] = list(filterfalse(_disallowed_changes, updated))
     return changes
-
-
-def filter_changes(mc, project_info: dict, changes: Dict[str, List[dict]]) -> Dict[str, List[dict]]:
-    """
-    Filters the given changes dictionary based on the editor's enabled state.
-
-    If the editor is not enabled, the changes dictionary is returned as-is. Otherwise, the changes are passed through the `_apply_editor_filters` method to apply any configured filters.
-
-    Args:
-        changes (dict[str, list[dict]]): A dictionary mapping file paths to lists of change dictionaries.
-
-    Returns:
-        dict[str, list[dict]]: The filtered changes dictionary.
-    """
-    if not is_editor_enabled(mc, project_info):
-        return changes
-    return _apply_editor_filters(changes)
 
 
 def prevent_conflicted_copy(path: str, mc, project_info: dict) -> bool:

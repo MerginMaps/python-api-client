@@ -33,7 +33,7 @@ from .client_pull import (
     download_diffs_finalize,
 )
 from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
-from .client_push import push_project_async, push_project_wait, push_project_finalize
+from .client_push import push_next_change, push_project_wait, push_project_finalize
 from .utils import DateTimeEncoder, get_versions_with_file_changes, int_version, is_version_acceptable
 from .version import __version__
 
@@ -93,7 +93,7 @@ class MerginClient:
         plugin_version=None,
         proxy_config=None,
     ):
-        self.url = url if url is not None else MerginClient.default_url()
+        self.url = (url if url is not None else MerginClient.default_url()).rstrip("/") + "/"
         self._auth_params = None
         self._auth_session = None
         self._user_info = None
@@ -473,7 +473,8 @@ class MerginClient:
 
     def create_project_and_push(self, project_name, directory, is_public=False, namespace=None):
         """
-        Convenience method to create project and push the initial version right after that.
+        Convenience method to create project and push the the files right after that.
+        Creates two versions when directory contains blocking and non-blocking changes.
 
         :param project_name: Project's full name (<namespace>/<name>)
         :type project_name: String
@@ -896,11 +897,12 @@ class MerginClient:
         :param directory: Project's directory
         :type directory: String
         """
-        job = push_project_async(self, directory)
-        if job is None:
-            return  # there is nothing to push (or we only deleted some files)
-        push_project_wait(job)
-        push_project_finalize(job)
+        while True:
+            job = push_next_change(self, directory)
+            if not job:
+                return  # there is nothing to push (or we only deleted some files)
+            push_project_wait(job)
+            push_project_finalize(job)
 
     def pull_project(self, directory):
         """

@@ -15,10 +15,13 @@ import pprint
 import tempfile
 import concurrent.futures
 import os
+from typing import Dict, List, Optional
+import click
 
 from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
-from .editor import filter_changes
+from .editor import is_editor_enabled, _apply_editor_filters
+from .utils import is_qgis_file, is_versioned_file
 
 
 class UploadJob:
@@ -82,8 +85,83 @@ class UploadQueueItem:
                 raise ClientError("Mismatch between uploaded file chunk {} and local one".format(self.chunk_id))
 
 
-def push_project_async(mc, directory):
-    """Starts push of a project and returns pending upload job"""
+class ChangesHandler:
+    """
+    Handles preparation of file changes to be uploaded to the server.
+
+    This class is responsible for:
+    - Filtering project file changes.
+    - Splitting changes into blocking and non-blocking groups.
+    - TODO: Applying limits such as max file count or size to break large uploads into smaller batches.
+    - Generating upload-ready change groups for asynchronous job creation.
+    """
+
+    def __init__(self, client, project_info, changes):
+        self.client = client
+        self.project_info = project_info
+        self._raw_changes = changes
+
+    @staticmethod
+    def is_blocking_file(file):
+        return is_qgis_file(file["path"]) or is_versioned_file(file["path"])
+
+    def _filter_changes(self, changes: Dict[str, List[dict]]) -> Dict[str, List[dict]]:
+        """
+        Filters the given changes dictionary based on the editor's enabled state.
+
+        If the editor is not enabled, the changes dictionary is returned as-is. Otherwise, the changes are passed through the `_apply_editor_filters` method to apply any configured filters.
+
+        Args:
+            changes (dict[str, list[dict]]): A dictionary mapping file paths to lists of change dictionaries.
+
+        Returns:
+            dict[str, list[dict]]: The filtered changes dictionary.
+        """
+        if not is_editor_enabled(self.client, self.project_info):
+            return changes
+        return _apply_editor_filters(changes)
+
+    def _split_by_type(self, changes: Dict[str, List[dict]]) -> List[Dict[str, List[dict]]]:
+        """
+        Split raw filtered changes into two batches:
+        1. Blocking: updated/removed and added files that are blocking
+        2. Non-blocking: added files that are not blocking
+        """
+        blocking_changes = {"added": [], "updated": [], "removed": [], "renamed": []}
+        non_blocking_changes = {"added": [], "updated": [], "removed": [], "renamed": []}
+
+        for f in changes.get("added", []):
+            if self.is_blocking_file(f):
+                blocking_changes["added"].append(f)
+            else:
+                non_blocking_changes["added"].append(f)
+
+        for f in changes.get("updated", []):
+            blocking_changes["updated"].append(f)
+
+        for f in changes.get("removed", []):
+            blocking_changes["removed"].append(f)
+
+        result = []
+        if any(len(v) for v in blocking_changes.values()):
+            result.append(blocking_changes)
+        if any(len(v) for v in non_blocking_changes.values()):
+            result.append(non_blocking_changes)
+
+        return result
+
+    def split(self) -> List[Dict[str, List[dict]]]:
+        """
+        Applies all configured internal filters and returns a list of change ready to be uploaded.
+        """
+        changes = self._filter_changes(self._raw_changes)
+        changes_list = self._split_by_type(changes)
+        # TODO: apply limits; changes = self._limit_by_file_count(changes)
+        return changes_list
+
+
+def push_next_change(mc, directory) -> Optional[UploadJob]:
+    """Starts push of a change of a project and returns pending upload job"""
 
     mp = MerginProject(directory)
     if mp.has_unfinished_pull():
@@ -107,8 +185,8 @@ def push_project_async(mc, directory):
 
     username = mc.username()
     # permissions field contains information about update, delete and upload privileges of the user
-    # on a specific project. This is more accurate information then "writernames" field, as it takes
-    # into account namespace privileges. So we have to check only "permissions", namely "upload" one
+    # on a specific project. This is more accurate information than "writernames" field, as it takes
+    # into account namespace privileges. So we have to check only "permissions", namely "upload" once
     if not mc.has_writing_permissions(project_path):
         mp.log.error(f"--- push {project_path} - username {username} does not have write access")
         raise ClientError(f"You do not seem to have write access to the project (username '{username}')")
@@ -120,9 +198,14 @@ def push_project_async(mc, directory):
             + f"\n\nLocal version: {local_version}\nServer version: {server_version}"
         )
 
-    changes = mp.get_push_changes()
-    changes = filter_changes(mc, project_info, changes)
-    mp.log.debug("push changes:\n" + pprint.pformat(changes))
+    all_changes = mp.get_push_changes()
+    changes_list = ChangesHandler(mc, project_info, all_changes).split()
+    if not changes_list:
+        return None
+
+    # take only the first change
+    change = changes_list[0]
+    mp.log.debug("push change:\n" + pprint.pformat(change))
 
     tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
 
@@ -131,22 +214,22 @@ def push_project_async(mc, directory):
     # That's because if there are pending transactions, checkpointing or switching from WAL mode
     # won't work, and we would end up with some changes left in -wal file which do not get
     # uploaded. The temporary copy using geodiff uses sqlite backup API and should copy everything.
-    for f in changes["updated"]:
+    for f in change["updated"]:
         if mp.is_versioned_file(f["path"]) and "diff" not in f:
             mp.copy_versioned_file_for_upload(f, tmp_dir.name)
 
-    for f in changes["added"]:
+    for f in change["added"]:
         if mp.is_versioned_file(f["path"]):
             mp.copy_versioned_file_for_upload(f, tmp_dir.name)
 
-    if not sum(len(v) for v in changes.values()):
+    if not any(len(v) for v in change.values()):
         mp.log.info(f"--- push {project_path} - nothing to do")
         return
 
     # drop internal info from being sent to server
-    for item in changes["updated"]:
+    for item in change["updated"]:
         item.pop("origin_checksum", None)
-    data = {"version": local_version, "changes": changes}
+    data = {"version": local_version, "changes": change}
 
     try:
         resp = mc.post(
@@ -163,7 +246,7 @@ def push_project_async(mc, directory):
     upload_files = data["changes"]["added"] + data["changes"]["updated"]
 
     transaction_id = server_resp["transaction"] if upload_files else None
-    job = UploadJob(project_path, changes, transaction_id, mp, mc, tmp_dir)
+    job = UploadJob(project_path, change, transaction_id, mp, mc, tmp_dir)
 
     if not upload_files:
         mp.log.info("not uploading any files")
@@ -196,16 +279,16 @@ def push_project_async(mc, directory):
 
         total_size += file_size
 
-    job.total_size = total_size
-    job.upload_queue_items = upload_queue_items
+        job.total_size = total_size
+        job.upload_queue_items = upload_queue_items
 
-    mp.log.info(f"will upload {len(upload_queue_items)} items with total size {total_size}")
+        mp.log.info(f"will upload {len(upload_queue_items)} items with total size {total_size}")
 
-    # start uploads in background
-    job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
-    for item in upload_queue_items:
-        future = job.executor.submit(_do_upload, item, job)
-        job.futures.append(future)
+        # start uploads in background
+        job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+        for item in upload_queue_items:
+            future = job.executor.submit(_do_upload, item, job)
+            job.futures.append(future)
 
     return job
 
