@@ -33,7 +33,7 @@ from .client_pull import (
     download_diffs_finalize,
 )
 from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
-from .client_push import push_project_async, push_project_wait, push_project_finalize
+from .client_push import push_next_change, push_project_wait, push_project_finalize
 from .utils import DateTimeEncoder, get_versions_with_file_changes, int_version, is_version_acceptable
 from .version import __version__
 
@@ -897,10 +897,10 @@ class MerginClient:
         :param directory: Project's directory
         :type directory: String
         """
-        jobs = push_project_async(self, directory)
-        if not jobs:
-            return  # there is nothing to push (or we only deleted some files)
-        for job in jobs:
+        while True:
+            job = push_next_change(self, directory)
+            if not job:
+                return  # there is nothing to push (or we only deleted some files)
             push_project_wait(job)
             push_project_finalize(job)
 

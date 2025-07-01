@@ -129,7 +129,7 @@ def download_project_async(mc, project_path, directory, project_version=None):
     """
 
     if "/" not in project_path:
-        raise ClientError("Project name needs to be fully qualified, e.g. <username>/<projectname>")
+        raise ClientError("Project name needs to be fully qualified, e.g. <workspacename>/<projectname>")
     if os.path.exists(directory):
         raise ClientError("Project directory already exists")
     os.makedirs(directory)
