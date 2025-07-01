@@ -33,7 +33,7 @@ from mergin.client_pull import (
     download_project_is_running,
 )
 from mergin.client_pull import pull_project_async, pull_project_is_running, pull_project_finalize, pull_project_cancel
-from mergin.client_push import push_project_async, push_project_is_running, push_project_finalize, push_project_cancel
+from mergin.client_push import push_next_change, push_project_is_running, push_project_finalize, push_project_cancel
 
 
 from pygeodiff import GeoDiff
@@ -412,18 +412,24 @@ def push(ctx):
         return
     directory = os.getcwd()
     try:
-        jobs = push_project_async(mc, directory)
-        for job in jobs:
-            if job is not None:  # if job is none, we don't upload any files, and the transaction is finished already
-                with click.progressbar(length=job.total_size) as bar:
-                    last_transferred_size = 0
-                    while push_project_is_running(job):
-                        time.sleep(1 / 10)  # 100ms
-                        new_transferred_size = job.transferred_size
-                        bar.update(new_transferred_size - last_transferred_size)  # the update() needs increment only
-                        last_transferred_size = new_transferred_size
-                push_project_finalize(job)
-            click.echo("Done")
+        # keep going until there are no more changes
+        while True:
+            job = push_next_change(mc, directory)
+            if job is None:
+                click.echo("All changes uploaded.")
+                break
+
+            # show progress for this single change upload
+            with click.progressbar(length=job.total_size, label="Uploading change") as bar:
+                last_transferred_size = 0
+                while push_project_is_running(job):
+                    time.sleep(1 / 10)  # 100ms
+                    new_transferred_size = job.transferred_size
+                    bar.update(new_transferred_size - last_transferred_size)  # the update() needs increment only
+                    last_transferred_size = new_transferred_size
+            # finalize this change upload (bump versions on server & locally)
+            push_project_finalize(job)
+            click.echo("Change pushed, checking for more…")
     except InvalidProject as e:
         click.secho("Invalid project directory ({})".format(str(e)), fg="red")
     except ClientError as e:
@@ -431,8 +437,7 @@ def push(ctx):
         return
     except KeyboardInterrupt:
         click.secho("Cancelling...")
-        for job in jobs:
-            push_project_cancel(job)
+        push_project_cancel(job)
     except Exception as e:
         _print_unhandled_exception()
 

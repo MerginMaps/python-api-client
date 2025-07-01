@@ -16,6 +16,7 @@ import tempfile
 import concurrent.futures
 import os
 from typing import Dict, List, Optional
+import click
 
 from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
@@ -154,13 +155,13 @@ class ChangesHandler:
         Applies all configured internal filters and returns a list of change ready to be uploaded.
         """
         changes = self._filter_changes(self._raw_changes)
-        changes = self._split_by_type(changes)
+        changes_list = self._split_by_type(changes)
         # TODO: apply limits; changes = self._limit_by_file_count(changes)
-        return changes
+        return changes_list
 
 
-def push_project_async(mc, directory) -> Optional[List[UploadJob]]:
-    """Starts push of a project and returns pending upload jobs"""
+def push_next_change(mc, directory) -> Optional[UploadJob]:
+    """Starts push of a change of a project and returns pending upload job"""
 
     mp = MerginProject(directory)
     if mp.has_unfinished_pull():
@@ -197,85 +198,86 @@ def push_project_async(mc, directory) -> Optional[List[UploadJob]]:
             + f"\n\nLocal version: {local_version}\nServer version: {server_version}"
         )
 
-    changes = mp.get_push_changes()
-    changes_handler = ChangesHandler(mc, project_info, changes)
-    changes_list = changes_handler.split()
+    all_changes = mp.get_push_changes()
+    changes_list = ChangesHandler(mc, project_info, all_changes).split()
+    if not changes_list:
+        return None
+
+    # take only the first change
+    change = changes_list[0]
+    mp.log.debug("push change:\n" + pprint.pformat(change))
 
     tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
-    jobs = []
 
-    for changes in changes_list:
-        mp.log.debug("push changes:\n" + pprint.pformat(changes))
+    # If there are any versioned files (aka .gpkg) that are not updated through a diff,
+    # we need to make a temporary copy somewhere to be sure that we are uploading full content.
+    # That's because if there are pending transactions, checkpointing or switching from WAL mode
+    # won't work, and we would end up with some changes left in -wal file which do not get
+    # uploaded. The temporary copy using geodiff uses sqlite backup API and should copy everything.
+    for f in change["updated"]:
+        if mp.is_versioned_file(f["path"]) and "diff" not in f:
+            mp.copy_versioned_file_for_upload(f, tmp_dir.name)
 
-        # If there are any versioned files (aka .gpkg) that are not updated through a diff,
-        # we need to make a temporary copy somewhere to be sure that we are uploading full content.
-        # That's because if there are pending transactions, checkpointing or switching from WAL mode
-        # won't work, and we would end up with some changes left in -wal file which do not get
-        # uploaded. The temporary copy using geodiff uses sqlite backup API and should copy everything.
-        for f in changes["updated"]:
-            if mp.is_versioned_file(f["path"]) and "diff" not in f:
-                mp.copy_versioned_file_for_upload(f, tmp_dir.name)
+    for f in change["added"]:
+        if mp.is_versioned_file(f["path"]):
+            mp.copy_versioned_file_for_upload(f, tmp_dir.name)
 
-        for f in changes["added"]:
-            if mp.is_versioned_file(f["path"]):
-                mp.copy_versioned_file_for_upload(f, tmp_dir.name)
+    if not any(len(v) for v in change.values()):
+        mp.log.info(f"--- push {project_path} - nothing to do")
+        return
 
-        if not any(len(v) for v in changes.values()):
-            mp.log.info(f"--- push {project_path} - nothing to do")
-            return
+    # drop internal info from being sent to server
+    for item in change["updated"]:
+        item.pop("origin_checksum", None)
+    data = {"version": local_version, "changes": change}
 
-        # drop internal info from being sent to server
-        for item in changes["updated"]:
-            item.pop("origin_checksum", None)
-        data = {"version": local_version, "changes": changes}
+    try:
+        resp = mc.post(
+            f"/v1/project/push/{project_path}",
+            data,
+            {"Content-Type": "application/json"},
+        )
+    except ClientError as err:
+        mp.log.error("Error starting transaction: " + str(err))
+        mp.log.info("--- push aborted")
+        raise
+    server_resp = json.load(resp)
 
-        try:
-            resp = mc.post(
-                f"/v1/project/push/{project_path}",
-                data,
-                {"Content-Type": "application/json"},
-            )
-        except ClientError as err:
-            mp.log.error("Error starting transaction: " + str(err))
-            mp.log.info("--- push aborted")
-            raise
-        server_resp = json.load(resp)
+    upload_files = data["changes"]["added"] + data["changes"]["updated"]
 
-        upload_files = data["changes"]["added"] + data["changes"]["updated"]
+    transaction_id = server_resp["transaction"] if upload_files else None
+    job = UploadJob(project_path, change, transaction_id, mp, mc, tmp_dir)
 
-        transaction_id = server_resp["transaction"] if upload_files else None
-        job = UploadJob(project_path, changes, transaction_id, mp, mc, tmp_dir)
+    if not upload_files:
+        mp.log.info("not uploading any files")
+        job.server_resp = server_resp
+        push_project_finalize(job)
+        return None  # all done - no pending job
 
-        if not upload_files:
-            mp.log.info("not uploading any files")
-            job.server_resp = server_resp
-            push_project_finalize(job)
-            return None  # all done - no pending job
+    mp.log.info(f"got transaction ID {transaction_id}")
 
-        mp.log.info(f"got transaction ID {transaction_id}")
+    upload_queue_items = []
+    total_size = 0
+    # prepare file chunks for upload
+    for file in upload_files:
+        if "diff" in file:
+            # versioned file - uploading diff
+            file_location = mp.fpath_meta(file["diff"]["path"])
+            file_size = file["diff"]["size"]
+        elif "upload_file" in file:
+            # versioned file - uploading full (a temporary copy)
+            file_location = file["upload_file"]
+            file_size = file["size"]
+        else:
+            # non-versioned file
+            file_location = mp.fpath(file["path"])
+            file_size = file["size"]
 
-        upload_queue_items = []
-        total_size = 0
-        # prepare file chunks for upload
-        for file in upload_files:
-            if "diff" in file:
-                # versioned file - uploading diff
-                file_location = mp.fpath_meta(file["diff"]["path"])
-                file_size = file["diff"]["size"]
-            elif "upload_file" in file:
-                # versioned file - uploading full (a temporary copy)
-                file_location = file["upload_file"]
-                file_size = file["size"]
-            else:
-                # non-versioned file
-                file_location = mp.fpath(file["path"])
-                file_size = file["size"]
+        for chunk_index, chunk_id in enumerate(file["chunks"]):
+            size = min(UPLOAD_CHUNK_SIZE, file_size - chunk_index * UPLOAD_CHUNK_SIZE)
+            upload_queue_items.append(UploadQueueItem(file_location, size, transaction_id, chunk_id, chunk_index))
 
-            for chunk_index, chunk_id in enumerate(file["chunks"]):
-                size = min(UPLOAD_CHUNK_SIZE, file_size - chunk_index * UPLOAD_CHUNK_SIZE)
-                upload_queue_items.append(UploadQueueItem(file_location, size, transaction_id, chunk_id, chunk_index))
-
-            total_size += file_size
+        total_size += file_size
 
         job.total_size = total_size
         job.upload_queue_items = upload_queue_items
@@ -287,8 +289,8 @@ def push_project_async(mc, directory) -> Optional[List[UploadJob]]:
         for item in upload_queue_items:
             future = job.executor.submit(_do_upload, item, job)
             job.futures.append(future)
-        jobs.append(job)
-    return jobs
+
+    return job
 
 
 def push_project_wait(job):
