@@ -230,7 +230,7 @@ class MerginClient:
         except urllib.error.HTTPError as e:
 
             server_code = e.code
-            err_detail = "Unknown error"
+            err_detail = None
             server_response = None
 
             if e.fp:
