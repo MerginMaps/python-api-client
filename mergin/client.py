@@ -229,7 +229,6 @@ class MerginClient:
             return self.opener.open(request)
         except urllib.error.HTTPError as e:
 
-            server_code = e.code
             err_detail = None
             server_response = None
 
@@ -252,7 +251,7 @@ class MerginClient:
             raise ClientError(
                 detail=err_detail,
                 url=request.get_full_url(),
-                server_code=server_code,
+                server_code=e.code,
                 server_response=server_response,
                 http_error=e.code,
                 http_method=request.get_method(),
