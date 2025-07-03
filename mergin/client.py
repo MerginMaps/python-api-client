@@ -240,7 +240,10 @@ class MerginClient:
                     or e.headers.get("Content-Type", "") == "application/json"
                 ):
                     json_response = json.loads(server_response)
-                    err_detail = json_response.get("detail", None)  # `detail` should be present in MM server response
+                    if isinstance(json_response, dict):
+                        err_detail = json_response.get(
+                            "detail", None
+                        )  # `detail` should be present in MM server response
                     if err_detail is None:
                         err_detail = server_response
                 else:
