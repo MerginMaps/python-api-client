@@ -231,6 +231,7 @@ class MerginClient:
 
             err_detail = None
             server_response = None
+            server_code = None
 
             if e.fp:
                 server_response = e.fp.read().decode("utf-8")
@@ -243,6 +244,7 @@ class MerginClient:
                         err_detail = json_response.get(
                             "detail", None
                         )  # `detail` should be present in MM server response
+                        server_code = json_response.get("code", None)
                     if err_detail is None:
                         err_detail = server_response
                 else:
@@ -251,7 +253,7 @@ class MerginClient:
             raise ClientError(
                 detail=err_detail,
                 url=request.get_full_url(),
-                server_code=e.code,
+                server_code=server_code,
                 server_response=server_response,
                 http_error=e.code,
                 http_method=request.get_method(),
