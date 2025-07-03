@@ -20,6 +20,7 @@ from ..client import (
     decode_token_data,
     TokenError,
     ServerType,
+    WorkspaceRole,
 )
 from ..client_push import push_project_async, push_project_cancel
 from ..client_pull import (
@@ -2886,3 +2887,24 @@ def test_mc_without_login():
     # without login should not be able to access workspaces
     with pytest.raises(ClientError, match="Authentication information is missing or invalid."):
         mc.workspaces_list()
+
+
+def test_do_request_error_handling(mc: MerginClient):
+
+    try:
+        mc.get("/v2/sso/connections?email=bad@email.com")
+    except ClientError as e:
+        assert e.http_error == 404
+        assert (
+            e.detail
+            == "The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again."
+        )
+        assert ": 404," in e.server_response
+
+    workspaces = mc.workspaces_list()
+
+    try:
+        mc.create_user("test@email.com", "123", workspace_id=workspaces[0]["id"], workspace_role=WorkspaceRole.GUEST)
+    except ClientError as e:
+        assert e.http_error == 400
+        assert "Passwords must be at least 8 characters long." in e.detail
