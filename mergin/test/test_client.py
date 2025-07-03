@@ -2885,26 +2885,29 @@ def test_mc_without_login():
     assert config["server_configured"]
 
     # without login should not be able to access workspaces
-    with pytest.raises(ClientError, match="Authentication information is missing or invalid."):
+    with pytest.raises(ClientError) as e:
         mc.workspaces_list()
+
+    assert e.value.http_error == 401
+    assert e.value.detail == '"Authentication information is missing or invalid."\n'
 
 
 def test_do_request_error_handling(mc: MerginClient):
 
-    try:
+    with pytest.raises(ClientError) as e:
         mc.get("/v2/sso/connections?email=bad@email.com")
-    except ClientError as e:
-        assert e.http_error == 404
-        assert (
-            e.detail
-            == "The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again."
-        )
-        assert ": 404," in e.server_response
+
+    assert e.value.http_error == 404
+    assert (
+        e.value.detail
+        == "The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again."
+    )
+    assert ": 404," in e.value.server_response
 
     workspaces = mc.workspaces_list()
 
-    try:
+    with pytest.raises(ClientError) as e:
         mc.create_user("test@email.com", "123", workspace_id=workspaces[0]["id"], workspace_role=WorkspaceRole.GUEST)
-    except ClientError as e:
-        assert e.http_error == 400
-        assert "Passwords must be at least 8 characters long." in e.detail
+
+    assert e.value.http_error == 400
+    assert "Passwords must be at least 8 characters long." in e.value.detail
