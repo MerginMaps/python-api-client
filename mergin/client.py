@@ -228,25 +228,23 @@ class MerginClient:
         try:
             return self.opener.open(request)
         except urllib.error.HTTPError as e:
-            server_response = json.load(e)
 
-            err_detail = None
-            server_code = None
-            # Try to get error detail
-            if isinstance(server_response, dict):
-                server_code = server_response.get("code")
-                err_detail = server_response.get("detail")
-                if not err_detail:
-                    # Extract all field-specific errors and format them
-                    err_detail = "\n".join(
-                        f"{key}: {', '.join(map(str, value))}"
-                        for key, value in server_response.items()
-                        if isinstance(value, list)
-                    ) or str(
-                        server_response
-                    )  # Fallback to raw response if structure is unexpected
-            else:
-                err_detail = str(server_response)
+            server_code = e.code
+            err_detail = "Unknown error"
+            server_response = None
+
+            if e.fp:
+                server_response = e.fp.read().decode("utf-8")
+                if (
+                    e.headers.get("Content-Type", "") == "application/problem+json"
+                    or e.headers.get("Content-Type", "") == "application/json"
+                ):
+                    json_response = json.loads(server_response)
+                    err_detail = json_response.get("detail", None)  # `detail` should be present in MM server response
+                    if err_detail is None:
+                        err_detail = server_response
+                else:
+                    err_detail = server_response
 
             raise ClientError(
                 detail=err_detail,
@@ -256,6 +254,7 @@ class MerginClient:
                 http_error=e.code,
                 http_method=request.get_method(),
             )
+
         except urllib.error.URLError as e:
             # e.g. when DNS resolution fails (no internet connection?)
             raise ClientError("Error requesting " + request.full_url + ": " + str(e))
