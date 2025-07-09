@@ -1,3 +1,4 @@
+import concurrent.futures
 import json
 import logging
 import os
@@ -5,8 +6,11 @@ import random
 import tempfile
 import subprocess
 import shutil
+import time
 from collections import defaultdict
 from datetime import datetime, timedelta, date
+from unittest.mock import patch
+
 import pytest
 import pytz
 import sqlite3
@@ -22,7 +26,7 @@ from ..client import (
     TokenError,
     ServerType,
 )
-from ..client_push import push_project_async, push_project_cancel, ChangesHandler
+from ..client_push import push_next_change, push_project_cancel, ChangesHandler, _do_upload
 from ..client_pull import (
     download_project_async,
     download_project_wait,
@@ -394,7 +398,7 @@ def test_cancel_push(mc):
     assert next((f for f in push_changes["updated"] if f["path"] == f_updated), None)
 
     # start pushing and then cancel the job
-    jobs = push_project_async(mc, project_dir)
+    jobs = push_changes(mc, project_dir)
     for job in jobs:
         push_project_cancel(job)
 
@@ -2895,7 +2899,7 @@ def test_mc_without_login():
     with pytest.raises(ClientError, match="Authentication information is missing or invalid."):
         mc.workspaces_list()
 
-def sort_dict_of_files_by_path(d):
+def _sort_dict_of_files_by_path(d):
     return {
         k: sorted(v, key=lambda f: f["path"]) for k, v in d.items()
     }
@@ -2927,5 +2931,133 @@ def test_changes_handler(mc):
     for d in split_changes:
         for k, v in d.items():
             merged[k].extend(v)
-    assert sort_dict_of_files_by_path(merged) == sort_dict_of_files_by_path(mixed_changes)
+    assert _sort_dict_of_files_by_path(merged) == _sort_dict_of_files_by_path(mixed_changes)
+
+
+# import sqlite3
+# import os
+
+def inflate_gpkg(path, blob_size_bytes=1024*1024, rows=50):
+    """
+    Append a table named 'inflate' to the GeoPackage at `path`,
+    then insert `rows` rows each containing a BLOB of size `blob_size_bytes`.
+    This will grow the file by roughly rows * blob_size_bytes.
+    """
+    # make sure file exists
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+    con = sqlite3.connect(path)
+    cur = con.cursor()
+    # 1) create the dummy table if it doesn't already exist
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS inflate (
+            id   INTEGER PRIMARY KEY,
+            data BLOB NOT NULL
+        );
+    """)
+    # 2) prepare one blob of the given size
+    dummy_blob = sqlite3.Binary(b'\x00' * blob_size_bytes)
+    # 3) insert a bunch of rows
+    for _ in range(rows):
+        cur.execute("INSERT INTO inflate (data) VALUES (?);", (dummy_blob,))
+    con.commit()
+    con.close()
+
+
+# def _make_slow_upload(delay: float):
+#     """
+#     Helper to mock up a slow upload
+#     """
+#     def slow_upload(item, job):
+#         time.sleep(delay)  # delay in seconds for each chunk upload
+#         return _do_upload(item, job)
+#     return slow_upload
+#
+#
+# def _delayed_push(mc: MerginClient, directory: str, delay: float):
+#     """
+#     Patches chunks upload during project push
+#     """
+#     with patch("mergin.client_push._do_upload", side_effect=_make_slow_upload(delay)):
+#         return mc.push_project(directory)
+
+
+
+files_to_push = [
+    # ("base.gpkg", "inserted_1_A.gpkg", False),  # both pushes are exclusive, the latter one is refused
+    ("inserted_1_A.gpkg", "test.txt", True),  # the second push is non-exclusive - it is free to go
+    # ("test3.txt", "inserted_1_A_mod.gpkg", True),  # the first push is non-exclusive - it does not block other pushes
+]
+
+@pytest.mark.parametrize("file1,file2,success", files_to_push)
+def test_exclusive_upload(mc, mc2, file1, file2, success):
+    """
+    Test two clients pushing at the same time
+    """
+    test_project_name = "test_exclusive_upload"
+    project_dir1 = os.path.join(TMP_DIR, test_project_name + "_1")
+    project_dir2 = os.path.join(TMP_DIR, test_project_name + "_2")
+
+    project_full_name = API_USER + "/" + test_project_name
+    cleanup(mc, project_full_name, [project_dir1, project_dir2])
+    mc.create_project(test_project_name)
+    project_info = mc.project_info(project_full_name)
+    mc.download_project(project_full_name, project_dir1)
+    mc.add_project_collaborator(project_info["id"], API_USER2, ProjectRole.WRITER)
+    mc2.download_project(project_full_name, project_dir2)
+
+    def push1():
+        mc.push_project(project_dir1)
+
+    def push2():
+        mc2.push_project(project_dir2)
+
+    # with open(os.path.join(project_dir1, file1), "wb") as f:
+    #     f.write(os.urandom(50 * 1024 * 1024))  # 50 MB
+    shutil.copy(os.path.join(TEST_DATA_DIR, file1), project_dir1)
+    shutil.copy(os.path.join(TEST_DATA_DIR, file2), project_dir2)
+    big_gpkg = os.path.join(project_dir1, file1)
+    # this will add ~50 MB of zero‐bytes to the file
+    inflate_gpkg(big_gpkg, blob_size_bytes=1_000_000, rows=50)
+
+    # first_upload_delay = 2
+    # resp1 = _delayed_push(mc, project_dir1, first_upload_delay)
+    # resp2 = _delayed_push(mc, project_dir2, 0)
+    # if not success:
+    #     resp1.
+
+    # run both pushes concurrently
+    # with patch("mergin.client_push._do_upload", side_effect=_slow_upload):
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future1 = executor.submit(push1)
+        future2 = executor.submit(push2)
+        # first_upload_delay = 2
+        # future1 = executor.submit(_delayed_push, mc, project_dir1, first_upload_delay)
+        # future2 = executor.submit(_delayed_push, mc2, project_dir2, 0)
+        # time.sleep(first_upload_delay + 0.2)
+        # assert not future1.exception()
+        exc2 = future2.exception()
+        exc1 = future1.exception()
+        # assert not exc2
+
+        if not success:
+            error = exc1 if exc1 else exc2  # one is uploads is lucky to pass the other was slow
+            assert (exc1 is None or exc2 is None)
+            assert isinstance(error, ClientError)
+            assert error.detail == "Another process is running. Please try later."
+
+            # assert type(exc1) is ClientError
+            # assert exc1.http_error == 400
+            # assert exc1.detail == "Another process is running. Please try later."
+        else:
+            # assert not exc1
+            assert not (exc1 or exc2)
+        # assert (exc1 is None and isinstance(exc2, ClientError) or (exc2 is None and isinstance(exc1, ClientError)))
+        # if not success:
+        #     assert type(exc2) is ClientError
+        #     assert exc2.http_error == 400
+        #     assert exc2.detail == "Another process is running. Please try later."
+        # else:
+        #     assert not exc2
+
 

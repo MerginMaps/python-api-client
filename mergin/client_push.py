@@ -15,8 +15,7 @@ import pprint
 import tempfile
 import concurrent.futures
 import os
-from typing import Dict, List, Optional
-import click
+from typing import Dict, List, Optional, Tuple
 
 from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
@@ -27,7 +26,7 @@ from .utils import is_qgis_file, is_versioned_file
 class UploadJob:
     """Keeps all the important data about a pending upload job"""
 
-    def __init__(self, project_path, changes, transaction_id, mp, mc, tmp_dir):
+    def __init__(self, project_path, changes, transaction_id, mp, mc, tmp_dir, exclusive: bool):
         self.project_path = project_path  # full project name ("username/projectname")
         self.changes = changes  # dictionary of local changes to the project
         self.transaction_id = transaction_id  # ID of the transaction assigned by the server
@@ -37,6 +36,7 @@ class UploadJob:
         self.mp = mp  # MerginProject instance
         self.mc = mc  # MerginClient instance
         self.tmp_dir = tmp_dir  # TemporaryDirectory instance for any temp file we need
+        self.exclusive = exclusive  # flag whether this upload blocks other uploads
         self.is_cancelled = False  # whether upload has been cancelled
         self.executor = None  # ThreadPoolExecutor that manages background upload tasks
         self.futures = []  # list of futures submitted to the executor
@@ -160,7 +160,7 @@ class ChangesHandler:
         return changes_list
 
 
-def push_next_change(mc, directory) -> Optional[UploadJob]:
+def push_project_async(mc, directory) -> Optional[UploadJob]:
     """Starts push of a change of a project and returns pending upload job"""
 
     mp = MerginProject(directory)
@@ -198,14 +198,8 @@ def push_next_change(mc, directory) -> Optional[UploadJob]:
             + f"\n\nLocal version: {local_version}\nServer version: {server_version}"
         )
 
-    all_changes = mp.get_push_changes()
-    changes_list = ChangesHandler(mc, project_info, all_changes).split()
-    if not changes_list:
-        return None
-
-    # take only the first change
-    change = changes_list[0]
-    mp.log.debug("push change:\n" + pprint.pformat(change))
+    changes = change_batch or mp.get_push_changes()
+    mp.log.debug("push change:\n" + pprint.pformat(changes))
 
     tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
 
@@ -214,22 +208,22 @@ def push_next_change(mc, directory) -> Optional[UploadJob]:
     # That's because if there are pending transactions, checkpointing or switching from WAL mode
     # won't work, and we would end up with some changes left in -wal file which do not get
     # uploaded. The temporary copy using geodiff uses sqlite backup API and should copy everything.
-    for f in change["updated"]:
+    for f in changes["updated"]:
         if mp.is_versioned_file(f["path"]) and "diff" not in f:
             mp.copy_versioned_file_for_upload(f, tmp_dir.name)
 
-    for f in change["added"]:
+    for f in changes["added"]:
         if mp.is_versioned_file(f["path"]):
             mp.copy_versioned_file_for_upload(f, tmp_dir.name)
 
-    if not any(len(v) for v in change.values()):
+    if not any(len(v) for v in changes.values()):
         mp.log.info(f"--- push {project_path} - nothing to do")
         return
 
     # drop internal info from being sent to server
-    for item in change["updated"]:
+    for item in changes["updated"]:
         item.pop("origin_checksum", None)
-    data = {"version": local_version, "changes": change}
+    data = {"version": local_version, "changes": changes}
 
     try:
         resp = mc.post(
@@ -246,7 +240,8 @@ def push_next_change(mc, directory) -> Optional[UploadJob]:
     upload_files = data["changes"]["added"] + data["changes"]["updated"]
 
     transaction_id = server_resp["transaction"] if upload_files else None
-    job = UploadJob(project_path, change, transaction_id, mp, mc, tmp_dir)
+    exclusive = server_resp.get("exclusive", True)
+    job = UploadJob(project_path, changes, transaction_id, mp, mc, tmp_dir, exclusive)
 
     if not upload_files:
         mp.log.info("not uploading any files")
@@ -254,7 +249,7 @@ def push_next_change(mc, directory) -> Optional[UploadJob]:
         push_project_finalize(job)
         return None  # all done - no pending job
 
-    mp.log.info(f"got transaction ID {transaction_id}")
+    mp.log.info(f"got transaction ID {transaction_id}, {'exclusive' if exclusive else 'non-exclusive'} upload")
 
     upload_queue_items = []
     total_size = 0
@@ -347,7 +342,7 @@ def push_project_finalize(job):
 
     if with_upload_of_files:
         try:
-            job.mp.log.info(f"Finishing transaction {job.transaction_id}")
+            job.mp.log.info(f"Finishing {'exclusive' if job.exclusive else 'non-exclusive'} transaction {job.transaction_id}")
             resp = job.mc.post("/v1/project/push/finish/%s" % job.transaction_id)
             job.server_resp = json.load(resp)
         except ClientError as err:
@@ -417,3 +412,10 @@ def remove_diff_files(job) -> None:
             diff_file = job.mp.fpath_meta(change["diff"]["path"])
             if os.path.exists(diff_file):
                 os.remove(diff_file)
+
+def get_next_batch(project_dir) -> Tuple[Dict[str], bool]:
+    """
+    Return the next dictionary with changes, similar to changes[0] in push_project_async.
+    """
+    # TODO
+    return {"added": [], "updated": [], "removed": []}, True

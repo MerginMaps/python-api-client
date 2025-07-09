@@ -19,6 +19,7 @@ import warnings
 
 from typing import List
 
+from .client_sync import Syncer
 from .common import ClientError, LoginError, WorkspaceRole, ProjectRole, LOG_FILE_SIZE_TO_SEND, MERGIN_DEFAULT_LOGS_URL
 from .merginproject import MerginProject
 from .client_pull import (
@@ -33,7 +34,7 @@ from .client_pull import (
     download_diffs_finalize,
 )
 from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
-from .client_push import push_next_change, push_project_wait, push_project_finalize
+from .client_push import push_next_change, push_project_wait, push_project_finalize, push_project_async
 from .utils import DateTimeEncoder, get_versions_with_file_changes, int_version, is_version_acceptable
 from .version import __version__
 
@@ -890,6 +891,11 @@ class MerginClient:
         result["readers"] = access.get("readersnames", [])
         return result
 
+
+
+
+
+
     def push_project(self, directory):
         """
         Upload local changes to the repository.
@@ -897,12 +903,12 @@ class MerginClient:
         :param directory: Project's directory
         :type directory: String
         """
-        while True:
-            job = push_next_change(self, directory)
-            if not job:
-                return  # there is nothing to push (or we only deleted some files)
-            push_project_wait(job)
-            push_project_finalize(job)
+        # while True:
+        job = push_project_async(self, directory)
+        if not job:
+            return  # there is nothing to push (or we only deleted some files)
+        push_project_wait(job)
+        push_project_finalize(job)
 
     def pull_project(self, directory):
         """
@@ -916,6 +922,25 @@ class MerginClient:
             return  # project is up to date
         pull_project_wait(job)
         return pull_project_finalize(job)
+
+
+    def sync_project(self, directory):
+
+        syncer = Syncer(self, directory)
+        syncer.sync_loop()
+
+        # self.pull_project(directory)
+        #
+        # mp = MerginProject(directory)
+        # changes = mp.get_push_changes()
+        #
+        # if not changes:
+        #     return
+        #
+        # push_changes(self, mp, changes)
+        #
+        # self.sync_project(directory)
+
 
     def clone_project(self, source_project_path, cloned_project_name, cloned_project_namespace=None):
         """

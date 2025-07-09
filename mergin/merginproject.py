@@ -1,5 +1,7 @@
 import json
 import logging
+import pprint
+
 import math
 import os
 import re
@@ -7,7 +9,7 @@ import shutil
 import uuid
 import tempfile
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from dateutil.tz import tzlocal
 
 from .editor import prevent_conflicted_copy
@@ -462,6 +464,10 @@ class MerginProject:
                 pass
 
         changes["updated"] = [f for f in changes["updated"] if f not in not_updated]
+        if changes:
+            self.log.debug(f"All local changes:\n" + pprint.pformat(changes))
+        else:
+            self.log.debug("No local changes. Nothing to upload.")
         return changes
 
     def copy_versioned_file_for_upload(self, f, tmp_dir):
