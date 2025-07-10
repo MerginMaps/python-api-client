@@ -94,7 +94,7 @@ class MerginClient:
         proxy_config=None,
     ):
         self.url = url if url is not None else MerginClient.default_url()
-        self._auth_params = None
+        self._auth_params = {}
         self._auth_session = None
         self._user_info = None
         self._server_type = None
@@ -102,6 +102,7 @@ class MerginClient:
         self.client_version = "Python-client/" + __version__
         if plugin_version is not None:  # this could be e.g. "Plugin/2020.1 QGIS/3.14"
             self.client_version += " " + plugin_version
+        self._has_auth = auth_token is not None or login is not None or password is not None
         self.setup_logging()
         if auth_token:
             try:
@@ -196,7 +197,10 @@ class MerginClient:
         """Wrapper for creating/renewing authorization token."""
 
         def wrapper(self, *args):
-            if self._auth_params:
+
+            # if user has not provided auth information (token or login/password) it does not make sense to try these checks
+            # the client without auth can still be used to access public information like server config
+            if self._has_auth:
                 if self._auth_session:
                     # Refresh auth token if it expired or will expire very soon
                     delta = self._auth_session["expire"] - datetime.now(timezone.utc)
@@ -209,7 +213,7 @@ class MerginClient:
                             raise AuthTokenExpiredError("Token has expired - please re-login")
                 else:
                     # Create a new authorization token
-                    self.log.info(f"No token - login user: {self._auth_params['login']}")
+                    self.log.info(f"No token - login user: {self._auth_params.get('login', None)}")
                     if self._auth_params.get("login", None) and self._auth_params.get("password", None):
                         self.login(self._auth_params["login"], self._auth_params["password"])
                     else:
