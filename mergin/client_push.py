@@ -96,10 +96,10 @@ class ChangesHandler:
     - Generating upload-ready change groups for asynchronous job creation.
     """
 
-    def __init__(self, client, project_info, changes):
+    def __init__(self, client, mp):
         self.client = client
-        self.project_info = project_info
-        self._raw_changes = changes
+        self.mp = MerginProject(mp)
+        self._raw_changes = self.mp.get_push_changes()
 
     @staticmethod
     def is_blocking_file(file):
@@ -117,7 +117,12 @@ class ChangesHandler:
         Returns:
             dict[str, list[dict]]: The filtered changes dictionary.
         """
-        if not is_editor_enabled(self.client, self.project_info):
+        project_name = self.mp.project_full_name()
+        try:
+            project_info = self.client.project_info(project_name)
+        except Exception as e:
+            self.mp.log.error(f"Failed to get project info for project {project_name}: {e}")
+        if not is_editor_enabled(self.client, project_info):
             return changes
         return _apply_editor_filters(changes)
 
@@ -159,8 +164,17 @@ class ChangesHandler:
         # TODO: apply limits; changes = self._limit_by_file_count(changes)
         return changes_list
 
+    def get_change_batch(self) -> Tuple[Optional[Dict[str, List[dict]]], bool]:
+        """
+        Return the next changes dictionary and flag if there are more changes
+        """
+        changes_list = self.split()
+        if not changes_list:
+            return None, False
+        return changes_list[0], len(changes_list) > 1
 
-def push_project_async(mc, directory) -> Optional[UploadJob]:
+
+def push_project_async(mc, directory, change_batch=None) -> Optional[UploadJob]:
     """Starts push of a change of a project and returns pending upload job"""
 
     mp = MerginProject(directory)
@@ -413,9 +427,15 @@ def remove_diff_files(job) -> None:
             if os.path.exists(diff_file):
                 os.remove(diff_file)
 
-def get_next_batch(project_dir) -> Tuple[Dict[str], bool]:
+
+def total_upload_size(directory) -> int:
     """
-    Return the next dictionary with changes, similar to changes[0] in push_project_async.
+    Total up the number of bytes that need to be uploaded.
     """
-    # TODO
-    return {"added": [], "updated": [], "removed": []}, True
+    mp = MerginProject(directory)
+    changes = mp.get_push_changes()
+    files = changes.get("added", []) + changes.get("updated", [])
+    return sum(
+        f.get("diff", {}).get("size", f.get("size", 0))
+        for f in files
+    )

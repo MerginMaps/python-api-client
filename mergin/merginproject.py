@@ -9,7 +9,7 @@ import shutil
 import uuid
 import tempfile
 from datetime import datetime
-from typing import List, Dict, Tuple
+from typing import List, Dict
 from dateutil.tz import tzlocal
 
 from .editor import prevent_conflicted_copy

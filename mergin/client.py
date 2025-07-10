@@ -1,4 +1,6 @@
 import logging
+from time import sleep
+
 import math
 import os
 import json
@@ -19,7 +21,6 @@ import warnings
 
 from typing import List
 
-from .client_sync import Syncer
 from .common import ClientError, LoginError, WorkspaceRole, ProjectRole, LOG_FILE_SIZE_TO_SEND, MERGIN_DEFAULT_LOGS_URL
 from .merginproject import MerginProject
 from .client_pull import (
@@ -32,9 +33,13 @@ from .client_pull import (
     download_project_finalize,
     download_project_wait,
     download_diffs_finalize,
+    pull_project_is_running,
+    pull_project_async,
+    pull_project_wait,
+    pull_project_finalize
 )
-from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
-from .client_push import push_next_change, push_project_wait, push_project_finalize, push_project_async
+from .client_push import push_project_wait, push_project_finalize, push_project_async, push_project_is_running, \
+    ChangesHandler
 from .utils import DateTimeEncoder, get_versions_with_file_changes, int_version, is_version_acceptable
 from .version import __version__
 
@@ -104,6 +109,8 @@ class MerginClient:
         if plugin_version is not None:  # this could be e.g. "Plugin/2020.1 QGIS/3.14"
             self.client_version += " " + plugin_version
         self.setup_logging()
+        self.pull_job = None
+        self.push_job = None
         if auth_token:
             try:
                 token_data = decode_token_data(auth_token)
@@ -891,11 +898,6 @@ class MerginClient:
         result["readers"] = access.get("readersnames", [])
         return result
 
-
-
-
-
-
     def push_project(self, directory):
         """
         Upload local changes to the repository.
@@ -923,23 +925,56 @@ class MerginClient:
         pull_project_wait(job)
         return pull_project_finalize(job)
 
+    def sync_project(self, project_dir):
+        """
+        Syncs project by loop with these steps:
+        1. Pull server version
+        2. Get local changes
+        3. Push first change batch
+        Repeat if there are more changes pending.
+        """
+        has_more_changes = True
+        while has_more_changes:
+            self.pull_job = pull_project_async(self, project_dir)
+            pull_project_wait(self.pull_job)
+            pull_project_finalize(self.pull_job)
 
-    def sync_project(self, directory):
+            changes_handler = ChangesHandler(self, project_dir)
+            changes_batch, has_more_changes = changes_handler.get_change_batch()
 
-        syncer = Syncer(self, directory)
-        syncer.sync_loop()
+            self.push_job = push_project_async(project_dir, changes_batch)
+            push_project_wait(self.push_job)
+            push_project_finalize(self.push_job)
 
-        # self.pull_project(directory)
-        #
-        # mp = MerginProject(directory)
-        # changes = mp.get_push_changes()
-        #
-        # if not changes:
-        #     return
-        #
-        # push_changes(self, mp, changes)
-        #
-        # self.sync_project(directory)
+    def sync_project_with_callback(self, project_dir, progress_callback=None, sleep_time=100):
+        """
+        Syncs project while sending push progress info as callback.
+        Sync is done in this loop:
+            Pending changes? -> Pull -> Push change batch -> repeat
+        """
+        has_more_changes = True
+        while has_more_changes:
+            changes_handler = ChangesHandler(self, project_dir)
+
+            self.pull_job = pull_project_async(self, project_dir)
+            if self.pull_job is None:
+                return
+            pull_project_wait(self.pull_job)
+            pull_project_finalize(self.pull_job)
+
+            changes_batch, has_more_changes = changes_handler.get_change_batch()
+
+            self.push_job = push_project_async(self, project_dir, changes_batch)
+            if not self.push_job:
+                return
+
+            last = 0
+            while push_project_is_running(self.push_job):
+                sleep(sleep_time)
+                now = self.push_job.transferred_size
+                progress_callback(last, now)
+                last = now
+            push_project_finalize(self.push_job)
 
 
     def clone_project(self, source_project_path, cloned_project_name, cloned_project_namespace=None):

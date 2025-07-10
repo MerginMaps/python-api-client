@@ -33,8 +33,7 @@ from mergin.client_pull import (
     download_project_is_running,
 )
 from mergin.client_pull import pull_project_async, pull_project_is_running, pull_project_finalize, pull_project_cancel
-from mergin.client_push import push_next_change, push_project_is_running, push_project_finalize, push_project_cancel, push_project_async
-from mergin.client_sync import Syncer, calculate_uploads_size
+from mergin.client_push import push_project_is_running, push_project_finalize, push_project_cancel, push_project_async, total_upload_size
 
 from pygeodiff import GeoDiff
 
@@ -411,8 +410,8 @@ def sync(ctx):
     if mc is None:
         return
     directory = os.getcwd()
-    syncer = Syncer(mc, directory)
-    size = syncer.estimate_total_upload()
+
+    size = total_upload_size(directory)
     if size == 0:
         click.secho("Already up to date.", fg="green")
         return
@@ -428,8 +427,8 @@ def sync(ctx):
                 uploaded_so_far += delta
                 bar.update(delta)
 
-            # run pull → push cycles
-            syncer.sync_loop(progress_callback=on_progress)
+            # run pull & push cycles
+            mc.sync_project_with_callback(directory, progress_callback=on_progress)
 
         click.secho("Sync complete.", fg="green")
 
@@ -440,7 +439,8 @@ def sync(ctx):
         return
     except KeyboardInterrupt:
         click.secho("Cancelling...")
-        syncer.cancel()
+        push_project_cancel(mc.upload_job)
+        pull_project_cancel(mc.download_job)
     except Exception as e:
         _print_unhandled_exception()
 
