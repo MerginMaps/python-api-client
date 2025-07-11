@@ -96,35 +96,14 @@ class ChangesHandler:
     - Generating upload-ready change groups for asynchronous job creation.
     """
 
-    def __init__(self, client, mp):
+    def __init__(self, client, project_dir):
         self.client = client
-        self.mp = MerginProject(mp)
+        self.mp = MerginProject(project_dir)
         self._raw_changes = self.mp.get_push_changes()
 
     @staticmethod
     def is_blocking_file(file):
         return is_qgis_file(file["path"]) or is_versioned_file(file["path"])
-
-    def _filter_changes(self, changes: Dict[str, List[dict]]) -> Dict[str, List[dict]]:
-        """
-        Filters the given changes dictionary based on the editor's enabled state.
-
-        If the editor is not enabled, the changes dictionary is returned as-is. Otherwise, the changes are passed through the `_apply_editor_filters` method to apply any configured filters.
-
-        Args:
-            changes (dict[str, list[dict]]): A dictionary mapping file paths to lists of change dictionaries.
-
-        Returns:
-            dict[str, list[dict]]: The filtered changes dictionary.
-        """
-        project_name = self.mp.project_full_name()
-        try:
-            project_info = self.client.project_info(project_name)
-        except Exception as e:
-            self.mp.log.error(f"Failed to get project info for project {project_name}: {e}")
-        if not is_editor_enabled(self.client, project_info):
-            return changes
-        return _apply_editor_filters(changes)
 
     def _split_by_type(self, changes: Dict[str, List[dict]]) -> List[Dict[str, List[dict]]]:
         """
@@ -159,10 +138,33 @@ class ChangesHandler:
         """
         Applies all configured internal filters and returns a list of change ready to be uploaded.
         """
-        changes = self._filter_changes(self._raw_changes)
+        project_name = self.mp.project_full_name()
+        try:
+            project_info = self.client.project_info(project_name)
+        except ClientError as e:
+            self.mp.log.error(f"Failed to get project info for project {project_name}: {e}")
+            raise
+        changes = self.filter_changes(self.client, project_info, self._raw_changes)
         changes_list = self._split_by_type(changes)
         # TODO: apply limits; changes = self._limit_by_file_count(changes)
         return changes_list
+
+
+def filter_changes(mc, project_info, changes: Dict[str, List[dict]]) -> Dict[str, List[dict]]:
+    """
+    Filters the given changes dictionary based on the editor's enabled state.
+
+    If the editor is not enabled, the changes dictionary is returned as-is. Otherwise, the changes are passed through the `_apply_editor_filters` method to apply any configured filters.
+
+    Args:
+        changes (dict[str, list[dict]]): A dictionary mapping file paths to lists of change dictionaries.
+
+    Returns:
+        dict[str, list[dict]]: The filtered changes dictionary.
+    """
+    if is_editor_enabled(mc, project_info):
+        changes = _apply_editor_filters(changes)
+    return changes
 
 
 def get_change_batch(mc, project_dir) -> Tuple[Optional[Dict[str, List[dict]]], bool]:
@@ -176,13 +178,14 @@ def get_change_batch(mc, project_dir) -> Tuple[Optional[Dict[str, List[dict]]], 
     return changes_list[0], non_empty_length > 1
 
 
-def push_project_async(mc, directory, change_batch=None) -> Optional[UploadJob]:
+def push_project_async(mc, directory, changes=None) -> Optional[UploadJob]:
     """
     Starts push in background and returns pending upload job.
     Pushes all project changes unless change_batch is provided.
     When specific change is provided, initial version check is skipped (the pull has just been done).
 
-    :param change_batch: A dictionary of changes that was split to blocking and non-blocking.
+    :param changes: The changes to upload are either (1) provided (and already split to blocking and bob-blocking batches)
+        or (2) all local changes are retrieved to upload
     Pushing only non-blocking changes results in non-exclusive upload which server allows to be concurrent.
     """
 
@@ -197,7 +200,7 @@ def push_project_async(mc, directory, change_batch=None) -> Optional[UploadJob]:
     mp.log.info(f"--- start push {project_path}")
 
     # if we have specific change to push we don't need version check
-    if not change_batch:
+    if not changes:
         try:
             project_info = mc.project_info(project_path)
         except ClientError as err:
@@ -222,8 +225,8 @@ def push_project_async(mc, directory, change_batch=None) -> Optional[UploadJob]:
                 "There is a new version of the project on the server. Please update your local copy."
                 + f"\n\nLocal version: {local_version}\nServer version: {server_version}"
             )
+        changes = filter_changes(mc, project_info, mp.get_push_changes())
 
-    changes = change_batch or mp.get_push_changes()
     mp.log.debug("push change:\n" + pprint.pformat(changes))
 
     tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")

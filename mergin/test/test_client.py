@@ -1,4 +1,3 @@
-import concurrent.futures
 import json
 import logging
 import os
@@ -8,11 +7,11 @@ import subprocess
 import shutil
 from collections import defaultdict
 from datetime import datetime, timedelta, date
-
 import pytest
 import pytz
 import sqlite3
 import glob
+import concurrent.futures
 
 from .. import InvalidProject
 from ..client import (
@@ -24,7 +23,7 @@ from ..client import (
     TokenError,
     ServerType,
 )
-from ..client_push import push_project_cancel, ChangesHandler
+from ..client_push import push_project_cancel, ChangesHandler, push_project_async, filter_changes
 from ..client_pull import (
     download_project_async,
     download_project_wait,
@@ -88,7 +87,7 @@ def mcStorage(request):
     client_workspace_storage = client_workspace["storage"]
 
     def teardown():
-        # back to original values... (2 projects, api allowed ...)
+        # back to original values... (1 project, api allowed ...)
         client.patch(
             f"/v1/tests/workspaces/{client_workspace_id}",
             {"limits_override": get_limit_overrides(client_workspace_storage)},
@@ -236,18 +235,18 @@ def test_create_remote_project_from_local(mc):
     assert source_mp.project_full_name() == f"{API_USER}/{test_project}"
     assert source_mp.project_name() == test_project
     assert source_mp.workspace_name() == API_USER
-    assert source_mp.version() == "v2"  # data was split to two pushes - blocking and non-blocking
+    assert source_mp.version() == "v1"
 
     # check basic metadata about created project
     project_info = mc.project_info(project)
-    assert project_info["version"] == "v2"
+    assert project_info["version"] == "v1"
     assert project_info["name"] == test_project
     assert project_info["namespace"] == API_USER
     assert project_info["id"] == source_mp.project_id()
 
     # check project metadata retrieval by id
     project_info = mc.project_info(source_mp.project_id())
-    assert project_info["version"] == "v2"
+    assert project_info["version"] == "v1"
     assert project_info["name"] == test_project
     assert project_info["namespace"] == API_USER
     assert project_info["id"] == source_mp.project_id()
@@ -288,7 +287,7 @@ def test_push_pull_changes(mc):
     assert mp2.project_full_name() == f"{API_USER}/{test_project}"
     assert mp2.project_name() == test_project
     assert mp2.workspace_name() == API_USER
-    assert mp2.version() == "v2"  # two pushes - blocking and non-blocking
+    assert mp2.version() == "v1"
 
     # test push changes (add, remove, rename, update)
     f_added = "new.txt"
@@ -307,7 +306,7 @@ def test_push_pull_changes(mc):
 
     # check changes before applied
     pull_changes, push_changes, _ = mc.project_status(project_dir)
-    assert not any(len(v) for v in pull_changes.values())
+    assert not sum(len(v) for v in pull_changes.values())
     assert next((f for f in push_changes["added"] if f["path"] == f_added), None)
     assert next((f for f in push_changes["removed"] if f["path"] == f_removed), None)
     assert next((f for f in push_changes["updated"] if f["path"] == f_updated), None)
@@ -320,10 +319,10 @@ def test_push_pull_changes(mc):
 
     mp = MerginProject(project_dir)
     assert mp.project_full_name() == f"{API_USER}/{test_project}"
-    assert mp.version() == "v4"
+    assert mp.version() == "v2"
 
     project_info = mc.project_info(project)
-    assert project_info["version"] == "v4"
+    assert project_info["version"] == "v2"
     assert not next((f for f in project_info["files"] if f["path"] == f_removed), None)
     assert not next((f for f in project_info["files"] if f["path"] == f_renamed), None)
     assert next((f for f in project_info["files"] if f["path"] == "renamed.txt"), None)
@@ -332,7 +331,7 @@ def test_push_pull_changes(mc):
     assert generate_checksum(os.path.join(project_dir, f_updated)) == f_remote_checksum
     assert project_info["id"] == mp.project_id()
     assert len(project_info["files"]) == len(mp.inspect_files())
-    project_version = mc.project_version_info(project_info["id"], "v3")
+    project_version = mc.project_version_info(project_info["id"], "v2")
     updated_file = [f for f in project_version["changes"]["updated"] if f["path"] == f_updated][0]
     assert "origin_checksum" not in updated_file  # internal client info
 
@@ -358,9 +357,9 @@ def test_push_pull_changes(mc):
     assert not os.path.exists(os.path.join(project_dir_2, f_removed))
     assert not os.path.exists(os.path.join(project_dir_2, f_renamed))
     assert os.path.exists(os.path.join(project_dir_2, "renamed.txt"))
-    assert os.path.exists(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 2)))
+    assert os.path.exists(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 1)))
     assert (
-        generate_checksum(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 2)))
+        generate_checksum(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 1)))
         == f_conflict_checksum
     )
     assert generate_checksum(os.path.join(project_dir_2, f_updated)) == f_remote_checksum
@@ -391,14 +390,13 @@ def test_cancel_push(mc):
 
     # check changes before applied
     pull_changes, push_changes, _ = mc.project_status(project_dir)
-    assert not any(len(v) for v in pull_changes.values())
+    assert not sum(len(v) for v in pull_changes.values())
     assert next((f for f in push_changes["added"] if f["path"] == f_added), None)
     assert next((f for f in push_changes["updated"] if f["path"] == f_updated), None)
 
     # start pushing and then cancel the job
-    jobs = push_changes(mc, project_dir)
-    for job in jobs:
-        push_project_cancel(job)
+    job = push_project_async(mc, project_dir)
+    push_project_cancel(job)
 
     # if cancelled properly, we should be now able to do the push without any problem
     mc.push_project(project_dir)
@@ -406,7 +404,7 @@ def test_cancel_push(mc):
     # download the project to a different directory and check the version and content
     mc.download_project(project, project_dir_2)
     mp = MerginProject(project_dir_2)
-    assert mp.version() == "v4"  # 2 pushes when created + 2 when modified with add and update changes
+    assert mp.version() == "v2"
     assert os.path.exists(os.path.join(project_dir_2, f_added))
     with open(os.path.join(project_dir_2, f_updated), "r") as f:
         assert f.read() == modification
@@ -468,7 +466,7 @@ def test_sync_diff(mc):
 
     # check project after push
     project_info = mc.project_info(project)
-    assert project_info["version"] == "v4"  # 2 pushes when project was created
+    assert project_info["version"] == "v3"
     assert project_info["id"] == mp.project_id()
     f_remote = next((f for f in project_info["files"] if f["path"] == f_updated), None)
     assert next((f for f in project_info["files"] if f["path"] == "renamed.gpkg"), None)
@@ -566,9 +564,7 @@ def test_force_gpkg_update(mc):
 
     # check project after push
     project_info = mc.project_info(project)
-    assert (
-        project_info["version"] == "v3"
-    )  # two pushes while creating the project with blocking and non-blocking change
+    assert project_info["version"] == "v2"
     f_remote = next((f for f in project_info["files"] if f["path"] == f_updated), None)
     assert "diff" not in f_remote
 
@@ -966,19 +962,19 @@ def test_download_versions(mc):
 
     mc.push_project(project_dir)
     project_info = mc.project_info(project)
-    assert project_info["version"] == "v3"  # 2 versions created with initial push of blocking and non-blocking files
+    assert project_info["version"] == "v2"
 
-    mc.download_project(project, project_dir_v1, "v2")
+    mc.download_project(project, project_dir_v1, "v1")
     assert os.path.exists(os.path.join(project_dir_v1, "base.gpkg"))
-    assert not os.path.exists(os.path.join(project_dir_v2, f_added))  # added only in v3
+    assert not os.path.exists(os.path.join(project_dir_v2, f_added))  # added only in v2
 
-    mc.download_project(project, project_dir_v2, "v3")
+    mc.download_project(project, project_dir_v2, "v2")
     assert os.path.exists(os.path.join(project_dir_v2, f_added))
-    assert os.path.exists(os.path.join(project_dir_v1, "base.gpkg"))  # added in v1 but still present in v3
+    assert os.path.exists(os.path.join(project_dir_v1, "base.gpkg"))  # added in v1 but still present in v2
 
     # try to download not-existing version
     with pytest.raises(ClientError):
-        mc.download_project(project, project_dir_v3, "v4")
+        mc.download_project(project, project_dir_v3, "v3")
 
 
 def test_paginated_project_list(mc):
@@ -1072,13 +1068,11 @@ def create_versioned_project(mc, project_name, project_dir, updated_file, remove
 
     # create remote project
     shutil.copytree(TEST_DATA_DIR, project_dir)
-    mc.create_project_and_push(
-        project, project_dir
-    )  # creates two versions because push was split to blocking and non-blocking
+    mc.create_project_and_push(project, project_dir)
 
     mp = MerginProject(project_dir)
 
-    # create versions 3-6
+    # create versions 2-4
     changes = (
         "inserted_1_A.gpkg",
         "inserted_1_A_mod.gpkg",
@@ -1117,7 +1111,7 @@ def test_get_versions_with_file_changes(mc):
     mp = create_versioned_project(mc, test_project, project_dir, f_updated, remove=False)
 
     project_info = mc.project_info(project)
-    assert project_info["version"] == "v5"
+    assert project_info["version"] == "v4"
     assert project_info["id"] == mp.project_id()
     file_history = mc.project_file_history_info(project, f_updated)
 
@@ -1127,21 +1121,21 @@ def test_get_versions_with_file_changes(mc):
             project,
             f_updated,
             version_from="v1",
-            version_to="v6",
+            version_to="v5",
             file_history=file_history,
         )
-    assert "Wrong version parameters: 1-6" in str(e.value)
-    assert "Available versions: [1, 3, 4, 5]" in str(e.value)
+    assert "Wrong version parameters: 1-5" in str(e.value)
+    assert "Available versions: [1, 2, 3, 4]" in str(e.value)
 
     mod_versions = get_versions_with_file_changes(
         mc,
         project,
         f_updated,
-        version_from="v3",
-        version_to="v5",
+        version_from="v2",
+        version_to="v4",
         file_history=file_history,
     )
-    assert mod_versions == [f"v{i}" for i in range(3, 6)]
+    assert mod_versions == [f"v{i}" for i in range(2, 5)]
 
 
 def check_gpkg_same_content(mergin_project, gpkg_path_1, gpkg_path_2):
@@ -1162,7 +1156,7 @@ def test_download_file(mc):
     mp = create_versioned_project(mc, test_project, project_dir, f_updated)
 
     project_info = mc.project_info(project)
-    assert project_info["version"] == "v6"
+    assert project_info["version"] == "v5"
     assert project_info["id"] == mp.project_id()
 
     # Versioned file should have the following content at versions 2-4
@@ -1174,14 +1168,14 @@ def test_download_file(mc):
 
     # Download the base file at versions 2-4 and check the changes
     f_downloaded = os.path.join(project_dir, f_updated)
-    for ver in range(3, 6):
+    for ver in range(2, 5):
         mc.download_file(project_dir, f_updated, f_downloaded, version=f"v{ver}")
-        expected = os.path.join(TEST_DATA_DIR, expected_content[ver - 3])  # GeoPackage with expected content
+        expected = os.path.join(TEST_DATA_DIR, expected_content[ver - 2])  # GeoPackage with expected content
         assert check_gpkg_same_content(mp, f_downloaded, expected)
 
     # make sure there will be exception raised if a file doesn't exist in the version
-    with pytest.raises(ClientError, match=f"No \\[{f_updated}\\] exists at version v6"):
-        mc.download_file(project_dir, f_updated, f_downloaded, version="v6")
+    with pytest.raises(ClientError, match=f"No \\[{f_updated}\\] exists at version v5"):
+        mc.download_file(project_dir, f_updated, f_downloaded, version="v5")
 
 
 def test_download_diffs(mc):
@@ -1196,24 +1190,24 @@ def test_download_diffs(mc):
     mp = create_versioned_project(mc, test_project, project_dir, f_updated, remove=False)
 
     project_info = mc.project_info(project)
-    assert project_info["version"] == "v5"
+    assert project_info["version"] == "v4"
     assert project_info["id"] == mp.project_id()
 
-    # Download diffs of updated file between versions 1 and 3
-    mc.get_file_diff(project_dir, f_updated, diff_file, "v1", "v3")
+    # Download diffs of updated file between versions 1 and 2
+    mc.get_file_diff(project_dir, f_updated, diff_file, "v1", "v2")
     assert os.path.exists(diff_file)
     assert mp.geodiff.has_changes(diff_file)
     assert mp.geodiff.changes_count(diff_file) == 1
-    changes_file = diff_file + ".changes1-3"
+    changes_file = diff_file + ".changes1-2"
     mp.geodiff.list_changes_summary(diff_file, changes_file)
     with open(changes_file, "r") as f:
         changes = json.loads(f.read())["geodiff_summary"][0]
         assert changes["insert"] == 1
         assert changes["update"] == 0
 
-    # Download diffs of updated file between versions 3 and 5
-    mc.get_file_diff(project_dir, f_updated, diff_file, "v3", "v5")
-    changes_file = diff_file + ".changes3-5"
+    # Download diffs of updated file between versions 2 and 4
+    mc.get_file_diff(project_dir, f_updated, diff_file, "v2", "v4")
+    changes_file = diff_file + ".changes2-4"
     mp.geodiff.list_changes_summary(diff_file, changes_file)
     with open(changes_file, "r") as f:
         changes = json.loads(f.read())["geodiff_summary"][0]
@@ -1221,14 +1215,14 @@ def test_download_diffs(mc):
         assert changes["update"] == 1
 
     with pytest.raises(ClientError) as e:
-        mc.get_file_diff(project_dir, f_updated, diff_file, "v5", "v1")
+        mc.get_file_diff(project_dir, f_updated, diff_file, "v4", "v1")
     assert "Wrong version parameters" in str(e.value)
     assert "version_from needs to be smaller than version_to" in str(e.value)
 
     with pytest.raises(ClientError) as e:
-        mc.get_file_diff(project_dir, f_updated, diff_file, "v5", "v6")
+        mc.get_file_diff(project_dir, f_updated, diff_file, "v4", "v5")
     assert "Wrong version parameters" in str(e.value)
-    assert "Available versions: [1, 3, 4, 5]" in str(e.value)
+    assert "Available versions: [1, 2, 3, 4]" in str(e.value)
 
 
 def test_modify_project_permissions(mc):
@@ -1995,13 +1989,13 @@ def test_project_versions_list(mc):
     project_dir = os.path.join(TMP_DIR, test_project)
     create_versioned_project(mc, test_project, project_dir, "base.gpkg")
     project_info = mc.project_info(project)
-    assert project_info["version"] == "v6"
+    assert project_info["version"] == "v5"
 
     # get all versions
     versions = mc.project_versions(project)
-    assert len(versions) == 6
+    assert len(versions) == 5
     assert versions[0]["name"] == "v1"
-    assert versions[-1]["name"] == "v6"
+    assert versions[-1]["name"] == "v5"
 
     # get first 3 versions
     versions = mc.project_versions(project, to="v3")
@@ -2010,7 +2004,7 @@ def test_project_versions_list(mc):
 
     # get last 2 versions
     versions = mc.project_versions(project, since="v4")
-    assert len(versions) == 3
+    assert len(versions) == 2
     assert versions[0]["name"] == "v4"
 
     # get range v2-v4
@@ -2020,11 +2014,11 @@ def test_project_versions_list(mc):
     assert versions[-1]["name"] == "v4"
 
     versions_count = mc.project_versions_count(project)
-    assert versions_count == 6
+    assert versions_count == 5
 
     versions, _ = mc.paginated_project_versions(project, page=1, descending=True)
-    assert len(versions) == 6
-    assert versions[0]["name"] == "v6"
+    assert len(versions) == 5
+    assert versions[0]["name"] == "v5"
     assert versions[-1]["name"] == "v1"
 
 
@@ -2035,10 +2029,10 @@ def test_report(mc):
     f_updated = "base.gpkg"
     mp = create_versioned_project(mc, test_project, project_dir, f_updated, remove=False, overwrite=True)
 
-    # create report for between versions 3 and 5
+    # create report for between versions 2 and 4
     directory = mp.dir
-    since = "v3"
-    to = "v5"
+    since = "v2"
+    to = "v4"
     proj_name = project.replace(os.path.sep, "-")
     report_file = os.path.join(TMP_DIR, "report", f"{proj_name}-{since}-{to}.csv")
     if os.path.exists(report_file):
@@ -2065,7 +2059,7 @@ def test_report(mc):
         )
         assert headers in content
         assert f"base.gpkg,simple,{API_USER}" in content
-        assert "v4,update,,,2" in content
+        assert "v3,update,,,2" in content
         # files not edited are not in reports
         assert "inserted_1_A.gpkg" not in content
 
@@ -2074,7 +2068,7 @@ def test_report(mc):
     assert warnings
 
     # do report for v1 with added files and v5 with overwritten file
-    warnings = create_report(mc, directory, "v1", "v6", report_file)
+    warnings = create_report(mc, directory, "v1", "v5", report_file)
     assert warnings
 
     # rm local Mergin Maps project and try again
@@ -2182,11 +2176,11 @@ def test_changesets_download(mc):
     mp = MerginProject(project_dir)
 
     os.makedirs(download_dir, exist_ok=True)
-    diff_file = os.path.join(download_dir, "base-v1-3.diff")
-    mc.get_file_diff(project_dir, test_gpkg, diff_file, "v1", "v3")
+    diff_file = os.path.join(download_dir, "base-v1-2.diff")
+    mc.get_file_diff(project_dir, test_gpkg, diff_file, "v1", "v2")
     assert os.path.exists(diff_file)
     assert mp.geodiff.has_changes(diff_file)
-    assert mp.geodiff.changes_count(diff_file) == 3
+    assert mp.geodiff.changes_count(diff_file) == 1
 
     diff_file = os.path.join(download_dir, "base-v2-3.diff")
     mc.get_file_diff(project_dir, test_gpkg, diff_file, "v2", "v3")
@@ -2223,10 +2217,10 @@ def test_version_info(mc):
     shutil.copy(os.path.join(TEST_DATA_DIR, "inserted_1_A_mod.gpkg"), file_path)
     mc.push_project(project_dir)
     project_info = mc.project_info(project)
-    info = mc.project_version_info(project_info.get("id"), "v3")
+    info = mc.project_version_info(project_info.get("id"), "v2")
     assert info["namespace"] == API_USER
     assert info["project_name"] == test_project
-    assert info["name"] == "v3"
+    assert info["name"] == "v2"
     assert info["author"] == API_USER
     created = datetime.strptime(info["created"], "%Y-%m-%dT%H:%M:%SZ")
     assert created.date() == date.today()
@@ -2352,8 +2346,8 @@ def test_reset_local_changes(mc: MerginClient):
     os.remove(mp.fpath("test.txt"))
     os.remove(mp.fpath("test_dir/test2.txt"))
 
-    # download version 3 and create MerginProject for it
-    mc.download_project(project, project_dir_2, version="v3")
+    # download version 2 and create MerginProject for it
+    mc.download_project(project, project_dir_2, version="v2")
     mp = MerginProject(project_dir_2)
 
     # make some changes
@@ -2368,7 +2362,7 @@ def test_reset_local_changes(mc: MerginClient):
     assert len(push_changes["removed"]) == 2
     assert len(push_changes["updated"]) == 0
 
-    # reset back to original version we had - v3
+    # reset back to original version we had - v2
     mc.reset_local_changes(project_dir_2)
 
     # push changes after the reset - should be none
@@ -2448,7 +2442,7 @@ def test_project_rename(mc: MerginClient):
 
     # validate project info
     project_info = mc.project_info(project_renamed)
-    assert project_info["version"] == "v2"  # teo version created in initial push
+    assert project_info["version"] == "v1"
     assert project_info["name"] == test_project_renamed
     assert project_info["namespace"] == API_USER
     with pytest.raises(ClientError, match="The requested URL was not found on the server"):
@@ -2489,7 +2483,7 @@ def test_download_files(mc: MerginClient):
     mp = create_versioned_project(mc, test_project, project_dir, f_updated)
 
     project_info = mc.project_info(project)
-    assert project_info["version"] == "v6"
+    assert project_info["version"] == "v5"
     assert project_info["id"] == mp.project_id()
 
     # Versioned file should have the following content at versions 2-4
@@ -2502,15 +2496,15 @@ def test_download_files(mc: MerginClient):
     downloaded_file = os.path.join(download_dir, f_updated)
 
     # if output_paths is specified look at that location
-    for ver in range(3, 6):
+    for ver in range(2, 5):
         mc.download_files(project_dir, [f_updated], [downloaded_file], version=f"v{ver}")
-        expected = os.path.join(TEST_DATA_DIR, expected_content[ver - 3])  # GeoPackage with expected content
+        expected = os.path.join(TEST_DATA_DIR, expected_content[ver - 2])  # GeoPackage with expected content
         assert check_gpkg_same_content(mp, downloaded_file, expected)
 
     # if output_paths is not specified look in the mergin project folder
-    for ver in range(3, 6):
+    for ver in range(2, 5):
         mc.download_files(project_dir, [f_updated], version=f"v{ver}")
-        expected = os.path.join(TEST_DATA_DIR, expected_content[ver - 3])  # GeoPackage with expected content
+        expected = os.path.join(TEST_DATA_DIR, expected_content[ver - 2])  # GeoPackage with expected content
         assert check_gpkg_same_content(mp, mp.fpath(f_updated), expected)
 
     # download two files from v1 and check their content
@@ -2521,7 +2515,7 @@ def test_download_files(mc: MerginClient):
         project_dir,
         [f_updated, file_2],
         [downloaded_file, downloaded_file_2],
-        version="v2",
+        version="v1",
     )
     assert check_gpkg_same_content(mp, downloaded_file, os.path.join(TEST_DATA_DIR, f_updated))
 
@@ -2533,11 +2527,11 @@ def test_download_files(mc: MerginClient):
     assert content_exp == content
 
     # make sure there will be exception raised if a file doesn't exist in the version
-    with pytest.raises(ClientError, match=f"No \\[{f_updated}\\] exists at version v6"):
-        mc.download_files(project_dir, [f_updated], version="v6")
+    with pytest.raises(ClientError, match=f"No \\[{f_updated}\\] exists at version v5"):
+        mc.download_files(project_dir, [f_updated], version="v5")
 
-    with pytest.raises(ClientError, match=f"No \\[non_existing\\.file\\] exists at version v4"):
-        mc.download_files(project_dir, [f_updated, "non_existing.file"], version="v4")
+    with pytest.raises(ClientError, match=f"No \\[non_existing\\.file\\] exists at version v3"):
+        mc.download_files(project_dir, [f_updated, "non_existing.file"], version="v3")
 
 
 def test_download_failure(mc):
@@ -2594,16 +2588,6 @@ def test_editor(mc: MerginClient):
     project_info["role"] = EDITOR_ROLE_NAME
     assert is_editor_enabled(mc, project_info) is True
 
-    # unit test for editor methods
-    qgs_changeset = {
-        "added": [{"path": "/folder/project.new.Qgz"}],
-        "updated": [{"path": "/folder/project.updated.Qgs"}],
-        "removed": [{"path": "/folder/project.removed.qgs"}],
-    }
-    changes_handler = ChangesHandler(mc, project_info, qgs_changeset)
-    qgs_changeset = changes_handler._filter_changes(qgs_changeset)
-    assert sum(len(v) for v in qgs_changeset.values()) == 2
-
 
 def test_editor_push(mc: MerginClient, mc2: MerginClient):
     """Test push with editor"""
@@ -2638,8 +2622,8 @@ def test_editor_push(mc: MerginClient, mc2: MerginClient):
     assert any(file["path"] == txt_file_name for file in project_info.get("files")) is True
     assert any(file["path"] == gpkg_file_name for file in project_info.get("files")) is True
     pull_changes, push_changes, push_changes_summary = mc.project_status(project_dir)
-    assert not any(len(v) for v in pull_changes.values())
-    assert not any(len(v) for v in push_changes.values())
+    assert not sum(len(v) for v in pull_changes.values())
+    assert not sum(len(v) for v in push_changes.values())
 
     # editor is trying to push row to gpkg file -> it's possible
     shutil.copy(
@@ -2690,7 +2674,6 @@ def test_editor_push(mc: MerginClient, mc2: MerginClient):
 def test_error_push_already_named_project(mc: MerginClient):
     test_project = "test_push_already_existing"
     project_dir = os.path.join(TMP_DIR, test_project)
-    cleanup(mc, test_project, [project_dir])
 
     with pytest.raises(ClientError) as e:
         mc.create_project_and_push(test_project, project_dir)
@@ -2894,8 +2877,11 @@ def test_mc_without_login():
     assert config["server_configured"]
 
     # without login should not be able to access workspaces
-    with pytest.raises(ClientError, match="Authentication information is missing or invalid."):
+    with pytest.raises(ClientError) as e:
         mc.workspaces_list()
+
+    assert e.value.http_error == 401
+    assert e.value.detail == "Authentication information is missing or invalid."
 
 
 def _sort_dict_of_files_by_path(d):
@@ -2918,7 +2904,7 @@ def test_changes_handler(mc):
     mp.write_metadata(project_dir, project_info)
 
     mixed_changes = mp.get_push_changes()
-    changes_handler = ChangesHandler(mc, project_info, mixed_changes)
+    changes_handler = ChangesHandler(mc, project_dir)
     split_changes = changes_handler._split_by_type(mixed_changes)
     assert len(split_changes) == 2
     # all blocking files in the first dict and no blocking file in the second dict
@@ -2931,38 +2917,15 @@ def test_changes_handler(mc):
             merged[k].extend(v)
     assert _sort_dict_of_files_by_path(merged) == _sort_dict_of_files_by_path(mixed_changes)
 
-
-# import sqlite3
-# import os
-
-
-def inflate_gpkg(path, blob_size_bytes=1024 * 1024, rows=50):
-    """
-    Append a table named 'inflate' to the GeoPackage at `path`,
-    then insert `rows` rows each containing a BLOB of size `blob_size_bytes`.
-    This will grow the file by roughly rows * blob_size_bytes.
-    """
-    # make sure file exists
-    if not os.path.exists(path):
-        raise FileNotFoundError(path)
-    con = sqlite3.connect(path)
-    cur = con.cursor()
-    # 1) create the dummy table if it doesn't already exist
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS inflate (
-            id   INTEGER PRIMARY KEY,
-            data BLOB NOT NULL
-        );
-    """
-    )
-    # 2) prepare one blob of the given size
-    dummy_blob = sqlite3.Binary(b"\x00" * blob_size_bytes)
-    # 3) insert a bunch of rows
-    for _ in range(rows):
-        cur.execute("INSERT INTO inflate (data) VALUES (?);", (dummy_blob,))
-    con.commit()
-    con.close()
+    # test filter_changes
+    project_info = {"role": EDITOR_ROLE_NAME}
+    qgs_changeset = {
+        "added": [{"path": "/folder/project.new.Qgz"}],
+        "updated": [{"path": "/folder/project.updated.Qgs"}],
+        "removed": [{"path": "/folder/project.removed.qgs"}],
+    }
+    qgs_changeset = filter_changes(mc, project_info, qgs_changeset)
+    assert sum(len(v) for v in qgs_changeset.values()) == 2
 
 
 def create_dummy_photos(dir_path, count=20, size_kb=5000):
