@@ -144,7 +144,7 @@ class ChangesHandler:
         except ClientError as e:
             self.mp.log.error(f"Failed to get project info for project {project_name}: {e}")
             raise
-        changes = self.filter_changes(self.client, project_info, self._raw_changes)
+        changes = filter_changes(self.client, project_info, self._raw_changes)
         changes_list = self._split_by_type(changes)
         # TODO: apply limits; changes = self._limit_by_file_count(changes)
         return changes_list

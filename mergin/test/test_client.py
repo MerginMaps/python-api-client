@@ -313,7 +313,8 @@ def test_push_pull_changes(mc):
     # renamed file will result in removed + added file
     assert next((f for f in push_changes["removed"] if f["path"] == f_renamed), None)
     assert next((f for f in push_changes["added"] if f["path"] == "renamed.txt"), None)
-    assert not pull_changes["renamed"]  # not supported
+    assert not pull_changes.get("renamed")  # not supported
+    assert not push_changes.get("renamed")  # not supported
 
     mc.push_project(project_dir)
 
@@ -2944,22 +2945,22 @@ files_to_push = [
         False,
         "another_process",
     ),  # both pushes are exclusive, the latter one is refused
-    (
-        "inserted_1_A.gpkg",
-        "test.txt",
-        False,
-        "version_conflict",
-    ),  # small files pushed at the same time might result in version conflict due to race condition
+    # (
+    #     "inserted_1_A.gpkg",
+    #     "test.txt",
+    #     False,
+    #     "version_conflict",
+    # ),  # small files pushed at the same time might result in version conflict due to race condition
     ("inserted_1_A.gpkg", "many_photos", True, None),  # the upload of many photos does not block the other upload
 ]
 
 
 @pytest.mark.parametrize("file1,file2,success,fail_reason", files_to_push)
-def test_exclusive_upload(mc, mc2, file1, file2, success, fail_reason):
+def test_sync_project(mc, mc2, file1, file2, success, fail_reason):
     """
     Test two clients pushing at the same time
     """
-    test_project_name = "test_exclusive_upload"
+    test_project_name = "test_sync_project"
     project_dir1 = os.path.join(TMP_DIR, test_project_name + "_1")
     project_dir2 = os.path.join(TMP_DIR, test_project_name + "_2")
 

@@ -934,7 +934,9 @@ class MerginClient:
         1. Pull server version
         2. Get local changes
         3. Push first change batch
-        Repeat if there are more changes pending.
+        Repeat if there are more local changes.
+        The batch pushing makes use of the server ability to handle simultaneously exclusive upload (that blocks
+            other uploads) and non-exclusive upload (for adding assets)
         """
         has_more_changes = True
         while has_more_changes:
