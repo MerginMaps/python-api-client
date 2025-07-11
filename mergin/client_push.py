@@ -132,8 +132,8 @@ class ChangesHandler:
         1. Blocking: updated/removed and added files that are blocking
         2. Non-blocking: added files that are not blocking
         """
-        blocking_changes = {"added": [], "updated": [], "removed": [], "renamed": []}
-        non_blocking_changes = {"added": [], "updated": [], "removed": [], "renamed": []}
+        blocking_changes = {"added": [], "updated": [], "removed": []}
+        non_blocking_changes = {"added": [], "updated": [], "removed": []}
 
         for f in changes.get("added", []):
             if self.is_blocking_file(f):
@@ -164,18 +164,26 @@ class ChangesHandler:
         # TODO: apply limits; changes = self._limit_by_file_count(changes)
         return changes_list
 
-    def get_change_batch(self) -> Tuple[Optional[Dict[str, List[dict]]], bool]:
-        """
-        Return the next changes dictionary and flag if there are more changes
-        """
-        changes_list = self.split()
-        if not changes_list:
-            return None, False
-        return changes_list[0], len(changes_list) > 1
+def get_change_batch(mc, project_dir) -> Tuple[Optional[Dict[str, List[dict]]], bool]:
+    """
+    Return the next changes dictionary and flag if there are more changes (to be uploaded in the next upload job)
+    """
+    changes_list = ChangesHandler(mc, project_dir).split()
+    if not changes_list:
+        return None, False
+    non_empty_length = sum(any(v for v in d.values()) for d in changes_list)
+    return changes_list[0], non_empty_length > 1
 
 
 def push_project_async(mc, directory, change_batch=None) -> Optional[UploadJob]:
-    """Starts push of a change of a project and returns pending upload job"""
+    """
+    Starts push in background and returns pending upload job.
+    Pushes all project changes unless change_batch is provided.
+    When specific change is provided, initial version check is skipped (the pull has just been done).
+
+    :param change_batch: A dictionary of changes that was split to blocking and non-blocking.
+    Pushing only non-blocking changes results in non-exclusive upload which server allows to be concurrent.
+    """
 
     mp = MerginProject(directory)
     if mp.has_unfinished_pull():
@@ -187,30 +195,32 @@ def push_project_async(mc, directory, change_batch=None) -> Optional[UploadJob]:
     mp.log.info("--- version: " + mc.user_agent_info())
     mp.log.info(f"--- start push {project_path}")
 
-    try:
-        project_info = mc.project_info(project_path)
-    except ClientError as err:
-        mp.log.error("Error getting project info: " + str(err))
-        mp.log.info("--- push aborted")
-        raise
-    server_version = project_info["version"] if project_info["version"] else "v0"
+    # if we have specific change to push we don't need version check
+    if not change_batch:
+        try:
+            project_info = mc.project_info(project_path)
+        except ClientError as err:
+            mp.log.error("Error getting project info: " + str(err))
+            mp.log.info("--- push aborted")
+            raise
+        server_version = project_info["version"] if project_info["version"] else "v0"
 
-    mp.log.info(f"got project info: local version {local_version} / server version {server_version}")
+        mp.log.info(f"got project info: local version {local_version} / server version {server_version}")
 
-    username = mc.username()
-    # permissions field contains information about update, delete and upload privileges of the user
-    # on a specific project. This is more accurate information than "writernames" field, as it takes
-    # into account namespace privileges. So we have to check only "permissions", namely "upload" once
-    if not mc.has_writing_permissions(project_path):
-        mp.log.error(f"--- push {project_path} - username {username} does not have write access")
-        raise ClientError(f"You do not seem to have write access to the project (username '{username}')")
+        username = mc.username()
+        # permissions field contains information about update, delete and upload privileges of the user
+        # on a specific project. This is more accurate information than "writernames" field, as it takes
+        # into account namespace privileges. So we have to check only "permissions", namely "upload" once
+        if not mc.has_writing_permissions(project_path):
+            mp.log.error(f"--- push {project_path} - username {username} does not have write access")
+            raise ClientError(f"You do not seem to have write access to the project (username '{username}')")
 
-    if local_version != server_version:
-        mp.log.error(f"--- push {project_path} - not up to date (local {local_version} vs server {server_version})")
-        raise ClientError(
-            "There is a new version of the project on the server. Please update your local copy."
-            + f"\n\nLocal version: {local_version}\nServer version: {server_version}"
-        )
+        if local_version != server_version:
+            mp.log.error(f"--- push {project_path} - not up to date (local {local_version} vs server {server_version})")
+            raise ClientError(
+                "There is a new version of the project on the server. Please update your local copy."
+                + f"\n\nLocal version: {local_version}\nServer version: {server_version}"
+            )
 
     changes = change_batch or mp.get_push_changes()
     mp.log.debug("push change:\n" + pprint.pformat(changes))
@@ -288,16 +298,16 @@ def push_project_async(mc, directory, change_batch=None) -> Optional[UploadJob]:
 
         total_size += file_size
 
-        job.total_size = total_size
-        job.upload_queue_items = upload_queue_items
+    job.total_size = total_size
+    job.upload_queue_items = upload_queue_items
 
-        mp.log.info(f"will upload {len(upload_queue_items)} items with total size {total_size}")
+    mp.log.info(f"will upload {len(upload_queue_items)} items with total size {total_size}")
 
-        # start uploads in background
-        job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
-        for item in upload_queue_items:
-            future = job.executor.submit(_do_upload, item, job)
-            job.futures.append(future)
+    # start uploads in background
+    job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+    for item in upload_queue_items:
+        future = job.executor.submit(_do_upload, item, job)
+        job.futures.append(future)
 
     return job
 
@@ -435,7 +445,9 @@ def total_upload_size(directory) -> int:
     mp = MerginProject(directory)
     changes = mp.get_push_changes()
     files = changes.get("added", []) + changes.get("updated", [])
-    return sum(
+    size = sum(
         f.get("diff", {}).get("size", f.get("size", 0))
         for f in files
     )
+    mp.log.info(f"Upload size of all files is {size}")
+    return size

@@ -411,23 +411,13 @@ def sync(ctx):
         return
     directory = os.getcwd()
 
-    size = total_upload_size(directory)
-    if size == 0:
-        click.secho("Already up to date.", fg="green")
-        return
-
     try:
-        uploaded_so_far = 0
+        size = total_upload_size(directory)
+        with click.progressbar(length=size, label="Syncing") as bar:
+            def on_progress(increment):
+                bar.update(increment)
 
-        with click.progressbar(length=size, label="Uploading changes") as bar:
-            # updates the progress bar
-            def on_progress(last, now):
-                nonlocal uploaded_so_far
-                delta = now - last
-                uploaded_so_far += delta
-                bar.update(delta)
-
-            # run pull & push cycles
+            # run pull & push cycles until there are no local changes
             mc.sync_project_with_callback(directory, progress_callback=on_progress)
 
         click.secho("Sync complete.", fg="green")
@@ -439,8 +429,10 @@ def sync(ctx):
         return
     except KeyboardInterrupt:
         click.secho("Cancelling...")
-        push_project_cancel(mc.upload_job)
-        pull_project_cancel(mc.download_job)
+        if mc.pull_job:
+            pull_project_cancel(mc.pull_job)
+        if mc.push_job:
+            push_project_cancel(mc.push_job)
     except Exception as e:
         _print_unhandled_exception()
 

@@ -33,13 +33,12 @@ from .client_pull import (
     download_project_finalize,
     download_project_wait,
     download_diffs_finalize,
-    pull_project_is_running,
     pull_project_async,
     pull_project_wait,
     pull_project_finalize
 )
 from .client_push import push_project_wait, push_project_finalize, push_project_async, push_project_is_running, \
-    ChangesHandler
+    ChangesHandler, get_change_batch
 from .utils import DateTimeEncoder, get_versions_with_file_changes, int_version, is_version_acceptable
 from .version import __version__
 
@@ -936,45 +935,48 @@ class MerginClient:
         has_more_changes = True
         while has_more_changes:
             self.pull_job = pull_project_async(self, project_dir)
-            pull_project_wait(self.pull_job)
-            pull_project_finalize(self.pull_job)
+            if self.pull_job is not None:
+                pull_project_wait(self.pull_job)
+                pull_project_finalize(self.pull_job)
 
-            changes_handler = ChangesHandler(self, project_dir)
-            changes_batch, has_more_changes = changes_handler.get_change_batch()
+            changes_batch, has_more_changes = get_change_batch(self, project_dir)
+            if not changes_batch:  # no changes to upload, quit sync
+                return
 
-            self.push_job = push_project_async(project_dir, changes_batch)
-            push_project_wait(self.push_job)
-            push_project_finalize(self.push_job)
+            self.push_job = push_project_async(self, project_dir, changes_batch)
+            if self.push_job:
+                push_project_wait(self.push_job)
+                push_project_finalize(self.push_job)
 
-    def sync_project_with_callback(self, project_dir, progress_callback=None, sleep_time=100):
+    def sync_project_with_callback(self, project_dir, progress_callback=None, sleep_time=0.1):
         """
         Syncs project while sending push progress info as callback.
         Sync is done in this loop:
-            Pending changes? -> Pull -> Push change batch -> repeat
+            Pending changes? -> Pull -> Get changes batch -> Push the changes -> repeat
+
+        :param progress_callback: updates the progress bar in CLI, on_progress(increment)
+        :param sleep_time: sleep time between calling the callback function
         """
         has_more_changes = True
         while has_more_changes:
-            changes_handler = ChangesHandler(self, project_dir)
-
             self.pull_job = pull_project_async(self, project_dir)
-            if self.pull_job is None:
-                return
-            pull_project_wait(self.pull_job)
-            pull_project_finalize(self.pull_job)
+            if self.pull_job is not None:
+                pull_project_wait(self.pull_job)
+                pull_project_finalize(self.pull_job)
 
-            changes_batch, has_more_changes = changes_handler.get_change_batch()
+            changes_batch, has_more_changes = get_change_batch(self, project_dir)
+            if not changes_batch:  # no changes to upload, quit sync
+                return
 
             self.push_job = push_project_async(self, project_dir, changes_batch)
-            if not self.push_job:
-                return
-
-            last = 0
-            while push_project_is_running(self.push_job):
-                sleep(sleep_time)
-                now = self.push_job.transferred_size
-                progress_callback(last, now)
-                last = now
-            push_project_finalize(self.push_job)
+            if self.push_job:
+                last = 0
+                while push_project_is_running(self.push_job):
+                    sleep(sleep_time)
+                    now = self.push_job.transferred_size
+                    progress_callback(now - last)  # update progressbar with transferred size increment
+                    last = now
+                push_project_finalize(self.push_job)
 
 
     def clone_project(self, source_project_path, cloned_project_name, cloned_project_namespace=None):

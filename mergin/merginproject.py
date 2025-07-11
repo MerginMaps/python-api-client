@@ -464,10 +464,6 @@ class MerginProject:
                 pass
 
         changes["updated"] = [f for f in changes["updated"] if f not in not_updated]
-        if changes:
-            self.log.debug(f"All local changes:\n" + pprint.pformat(changes))
-        else:
-            self.log.debug("No local changes. Nothing to upload.")
         return changes
 
     def copy_versioned_file_for_upload(self, f, tmp_dir):
