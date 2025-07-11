@@ -6,10 +6,8 @@ import random
 import tempfile
 import subprocess
 import shutil
-import time
 from collections import defaultdict
 from datetime import datetime, timedelta, date
-from unittest.mock import patch
 
 import pytest
 import pytz
