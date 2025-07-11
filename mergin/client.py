@@ -192,27 +192,35 @@ class MerginClient:
             system_version = platform.mac_ver()[0]
         return f"{self.client_version} ({platform.system()}/{system_version})"
 
-    def _check_token(f):
-        """Wrapper for creating/renewing authorization token."""
+    def validate_auth(self):
+        """Validate that client has valid auth token or can be logged in."""
 
-        def wrapper(self, *args, **kwargs):
-            if self._auth_session:
-                # Refresh auth token if it expired or will expire very soon
-                delta = self._auth_session["expire"] - datetime.now(timezone.utc)
-                if delta.total_seconds() < 5:
-                    self.log.info("Token has expired - refreshing...")
-                    if self._auth_params.get("login", None) and self._auth_params.get("password", None):
-                        self.log.info("Token has expired - refreshing...")
-                        self.login(self._auth_params["login"], self._auth_params["password"])
-                    else:
-                        raise AuthTokenExpiredError("Token has expired - please re-login")
-            else:
-                # Create a new authorization token
-                self.log.info(f"No token - login user: {self._auth_params.get('login', None)}")
+        if self._auth_session:
+            # Refresh auth token if it expired or will expire very soon
+            delta = self._auth_session["expire"] - datetime.now(timezone.utc)
+            if delta.total_seconds() < 5:
+                self.log.info("Token has expired - refreshing...")
                 if self._auth_params.get("login", None) and self._auth_params.get("password", None):
+                    self.log.info("Token has expired - refreshing...")
                     self.login(self._auth_params["login"], self._auth_params["password"])
                 else:
-                    raise ClientError("Missing login or password")
+                    raise AuthTokenExpiredError("Token has expired - please re-login")
+        else:
+            # Create a new authorization token
+            self.log.info(f"No token - login user: {self._auth_params.get('login', None)}")
+            if self._auth_params.get("login", None) and self._auth_params.get("password", None):
+                self.login(self._auth_params["login"], self._auth_params["password"])
+            else:
+                raise ClientError("Missing login or password")
+
+    @staticmethod
+    def _check_token(f):
+        """Wrapper for creating/renewing authorization token.
+        Every function that requires authentication should be decorated with this as @_check_token."""
+
+        def wrapper(self, *args, **kwargs):
+            # functions that run prior to required function using this decorator
+            self.validate_auth()
 
             return f(self, *args, **kwargs)
 
