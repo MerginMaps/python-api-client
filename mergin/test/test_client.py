@@ -26,7 +26,7 @@ from ..client import (
     TokenError,
     ServerType,
 )
-from ..client_push import push_next_change, push_project_cancel, ChangesHandler, _do_upload
+from ..client_push import push_project_cancel, ChangesHandler
 from ..client_pull import (
     download_project_async,
     download_project_wait,
@@ -2899,10 +2899,10 @@ def test_mc_without_login():
     with pytest.raises(ClientError, match="Authentication information is missing or invalid."):
         mc.workspaces_list()
 
+
 def _sort_dict_of_files_by_path(d):
-    return {
-        k: sorted(v, key=lambda f: f["path"]) for k, v in d.items()
-    }
+    return {k: sorted(v, key=lambda f: f["path"]) for k, v in d.items()}
+
 
 def test_changes_handler(mc):
     """
@@ -2937,7 +2937,8 @@ def test_changes_handler(mc):
 # import sqlite3
 # import os
 
-def inflate_gpkg(path, blob_size_bytes=1024*1024, rows=50):
+
+def inflate_gpkg(path, blob_size_bytes=1024 * 1024, rows=50):
     """
     Append a table named 'inflate' to the GeoPackage at `path`,
     then insert `rows` rows each containing a BLOB of size `blob_size_bytes`.
@@ -2949,14 +2950,16 @@ def inflate_gpkg(path, blob_size_bytes=1024*1024, rows=50):
     con = sqlite3.connect(path)
     cur = con.cursor()
     # 1) create the dummy table if it doesn't already exist
-    cur.execute("""
+    cur.execute(
+        """
         CREATE TABLE IF NOT EXISTS inflate (
             id   INTEGER PRIMARY KEY,
             data BLOB NOT NULL
         );
-    """)
+    """
+    )
     # 2) prepare one blob of the given size
-    dummy_blob = sqlite3.Binary(b'\x00' * blob_size_bytes)
+    dummy_blob = sqlite3.Binary(b"\x00" * blob_size_bytes)
     # 3) insert a bunch of rows
     for _ in range(rows):
         cur.execute("INSERT INTO inflate (data) VALUES (?);", (dummy_blob,))
@@ -2964,33 +2967,34 @@ def inflate_gpkg(path, blob_size_bytes=1024*1024, rows=50):
     con.close()
 
 
-# def _make_slow_upload(delay: float):
-#     """
-#     Helper to mock up a slow upload
-#     """
-#     def slow_upload(item, job):
-#         time.sleep(delay)  # delay in seconds for each chunk upload
-#         return _do_upload(item, job)
-#     return slow_upload
-#
-#
-# def _delayed_push(mc: MerginClient, directory: str, delay: float):
-#     """
-#     Patches chunks upload during project push
-#     """
-#     with patch("mergin.client_push._do_upload", side_effect=_make_slow_upload(delay)):
-#         return mc.push_project(directory)
-
+def create_dummy_photos(dir_path, count=20, size_kb=5000):
+    """Create `count` dummy JPG files in `dir_path` with ~`size_kb` each."""
+    os.makedirs(dir_path, exist_ok=True)
+    for i in range(count):
+        filename = os.path.join(dir_path, f"photo_{i:03}.jpg")
+        with open(filename, "wb") as f:
+            f.write(os.urandom(size_kb * 1024))  # Random bytes to simulate real file
 
 
 files_to_push = [
-    # ("base.gpkg", "inserted_1_A.gpkg", False),  # both pushes are exclusive, the latter one is refused
-    ("inserted_1_A.gpkg", "test.txt", True),  # the second push is non-exclusive - it is free to go
-    # ("test3.txt", "inserted_1_A_mod.gpkg", True),  # the first push is non-exclusive - it does not block other pushes
+    (
+        "base.gpkg",
+        "inserted_1_A.gpkg",
+        False,
+        "another_process",
+    ),  # both pushes are exclusive, the latter one is refused
+    (
+        "inserted_1_A.gpkg",
+        "test.txt",
+        False,
+        "version_conflict",
+    ),  # small files pushed at the same time might result in version conflict due to race condition
+    ("inserted_1_A.gpkg", "many_photos", True, None),  # the upload of many photos does not block the other upload
 ]
 
-@pytest.mark.parametrize("file1,file2,success", files_to_push)
-def test_exclusive_upload(mc, mc2, file1, file2, success):
+
+@pytest.mark.parametrize("file1,file2,success,fail_reason", files_to_push)
+def test_exclusive_upload(mc, mc2, file1, file2, success, fail_reason):
     """
     Test two clients pushing at the same time
     """
@@ -3006,58 +3010,33 @@ def test_exclusive_upload(mc, mc2, file1, file2, success):
     mc.add_project_collaborator(project_info["id"], API_USER2, ProjectRole.WRITER)
     mc2.download_project(project_full_name, project_dir2)
 
-    def push1():
-        mc.push_project(project_dir1)
+    def sync1():
+        mc.sync_project(project_dir1)
 
-    def push2():
-        mc2.push_project(project_dir2)
+    def sync2():
+        mc2.sync_project(project_dir2)
 
-    # with open(os.path.join(project_dir1, file1), "wb") as f:
-    #     f.write(os.urandom(50 * 1024 * 1024))  # 50 MB
     shutil.copy(os.path.join(TEST_DATA_DIR, file1), project_dir1)
-    shutil.copy(os.path.join(TEST_DATA_DIR, file2), project_dir2)
-    big_gpkg = os.path.join(project_dir1, file1)
-    # this will add ~50 MB of zero‐bytes to the file
-    inflate_gpkg(big_gpkg, blob_size_bytes=1_000_000, rows=50)
+    if file2 == "many_photos":
+        create_dummy_photos(project_dir2)
+    else:
+        shutil.copy(os.path.join(TEST_DATA_DIR, file2), project_dir2)
 
-    # first_upload_delay = 2
-    # resp1 = _delayed_push(mc, project_dir1, first_upload_delay)
-    # resp2 = _delayed_push(mc, project_dir2, 0)
-    # if not success:
-    #     resp1.
-
-    # run both pushes concurrently
-    # with patch("mergin.client_push._do_upload", side_effect=_slow_upload):
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        future1 = executor.submit(push1)
-        future2 = executor.submit(push2)
-        # first_upload_delay = 2
-        # future1 = executor.submit(_delayed_push, mc, project_dir1, first_upload_delay)
-        # future2 = executor.submit(_delayed_push, mc2, project_dir2, 0)
-        # time.sleep(first_upload_delay + 0.2)
-        # assert not future1.exception()
+        future1 = executor.submit(sync1)
+        future2 = executor.submit(sync2)
         exc2 = future2.exception()
         exc1 = future1.exception()
-        # assert not exc2
 
         if not success:
             error = exc1 if exc1 else exc2  # one is uploads is lucky to pass the other was slow
-            assert (exc1 is None or exc2 is None)
+            assert exc1 is None or exc2 is None
             assert isinstance(error, ClientError)
-            assert error.detail == "Another process is running. Please try later."
-
-            # assert type(exc1) is ClientError
-            # assert exc1.http_error == 400
-            # assert exc1.detail == "Another process is running. Please try later."
-        else:
-            # assert not exc1
-            assert not (exc1 or exc2)
-        # assert (exc1 is None and isinstance(exc2, ClientError) or (exc2 is None and isinstance(exc1, ClientError)))
-        # if not success:
-        #     assert type(exc2) is ClientError
-        #     assert exc2.http_error == 400
-        #     assert exc2.detail == "Another process is running. Please try later."
-        # else:
-        #     assert not exc2
-
-
+            if fail_reason == "another_process":
+                assert error.http_error == 400
+                assert error.detail == "Another process is running. Please try later."
+            elif fail_reason == "version_conflict":
+                assert error.http_error == 409
+                assert error.detail == "There is already version with this name v1"
+            else:
+                assert not (exc1 or exc2)

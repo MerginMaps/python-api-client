@@ -33,7 +33,13 @@ from mergin.client_pull import (
     download_project_is_running,
 )
 from mergin.client_pull import pull_project_async, pull_project_is_running, pull_project_finalize, pull_project_cancel
-from mergin.client_push import push_project_is_running, push_project_finalize, push_project_cancel, push_project_async, total_upload_size
+from mergin.client_push import (
+    push_project_is_running,
+    push_project_finalize,
+    push_project_cancel,
+    push_project_async,
+    total_upload_size,
+)
 
 from pygeodiff import GeoDiff
 
@@ -414,6 +420,7 @@ def sync(ctx):
     try:
         size = total_upload_size(directory)
         with click.progressbar(length=size, label="Syncing") as bar:
+
             def on_progress(increment):
                 bar.update(increment)
 
@@ -435,6 +442,7 @@ def sync(ctx):
             push_project_cancel(mc.push_job)
     except Exception as e:
         _print_unhandled_exception()
+
 
 @cli.command()
 @click.pass_context

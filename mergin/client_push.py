@@ -164,6 +164,7 @@ class ChangesHandler:
         # TODO: apply limits; changes = self._limit_by_file_count(changes)
         return changes_list
 
+
 def get_change_batch(mc, project_dir) -> Tuple[Optional[Dict[str, List[dict]]], bool]:
     """
     Return the next changes dictionary and flag if there are more changes (to be uploaded in the next upload job)
@@ -264,7 +265,7 @@ def push_project_async(mc, directory, change_batch=None) -> Optional[UploadJob]:
     upload_files = data["changes"]["added"] + data["changes"]["updated"]
 
     transaction_id = server_resp["transaction"] if upload_files else None
-    exclusive = server_resp.get("exclusive", True)
+    exclusive = server_resp.get("blocking", True)
     job = UploadJob(project_path, changes, transaction_id, mp, mc, tmp_dir, exclusive)
 
     if not upload_files:
@@ -366,7 +367,9 @@ def push_project_finalize(job):
 
     if with_upload_of_files:
         try:
-            job.mp.log.info(f"Finishing {'exclusive' if job.exclusive else 'non-exclusive'} transaction {job.transaction_id}")
+            job.mp.log.info(
+                f"Finishing {'exclusive' if job.exclusive else 'non-exclusive'} transaction {job.transaction_id}"
+            )
             resp = job.mc.post("/v1/project/push/finish/%s" % job.transaction_id)
             job.server_resp = json.load(resp)
         except ClientError as err:
@@ -445,9 +448,6 @@ def total_upload_size(directory) -> int:
     mp = MerginProject(directory)
     changes = mp.get_push_changes()
     files = changes.get("added", []) + changes.get("updated", [])
-    size = sum(
-        f.get("diff", {}).get("size", f.get("size", 0))
-        for f in files
-    )
+    size = sum(f.get("diff", {}).get("size", f.get("size", 0)) for f in files)
     mp.log.info(f"Upload size of all files is {size}")
     return size
