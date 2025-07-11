@@ -309,24 +309,12 @@ class MerginClient:
         self._auth_session = None
         self.log.info(f"Going to log in user {login}")
         try:
-            self._auth_params = params
-            url = urllib.parse.urljoin(self.url, urllib.parse.quote("/v1/auth/login"))
-            data = json.dumps(self._auth_params, cls=DateTimeEncoder).encode("utf-8")
-            request = urllib.request.Request(url, data, {"Content-Type": "application/json"}, method="POST")
-            request.add_header("User-Agent", self.user_agent_info())
-            resp = self.opener.open(request)
+            resp = self.post("/v1/auth/login", data=params, headers={"Content-Type": "application/json"})
             data = json.load(resp)
             session = data["session"]
-        except urllib.error.HTTPError as e:
-            if e.headers.get("Content-Type", "") == "application/problem+json":
-                info = json.load(e)
-                self.log.info(f"Login problem: {info.get('detail')}")
-                raise LoginError(info.get("detail"))
-            self.log.info(f"Login problem: {e.read().decode('utf-8')}")
-            raise LoginError(e.read().decode("utf-8"))
-        except urllib.error.URLError as e:
-            # e.g. when DNS resolution fails (no internet connection?)
-            raise ClientError("failure reason: " + str(e.reason))
+        except ClientError as e:
+            self.log.info(f"Login problem: {e.detail}")
+            raise LoginError(e.detail)
         self._auth_session = {
             "token": "Bearer %s" % session["token"],
             "expire": dateutil.parser.parse(session["expire"]),
