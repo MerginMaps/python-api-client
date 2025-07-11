@@ -2888,8 +2888,7 @@ def test_mc_without_login():
     with pytest.raises(ClientError) as e:
         mc.workspaces_list()
 
-    assert e.value.http_error == 401
-    assert e.value.detail == '"Authentication information is missing or invalid."\n'
+    assert e.value.detail == "Missing login or password"
 
 
 def test_do_request_error_handling(mc: MerginClient):
