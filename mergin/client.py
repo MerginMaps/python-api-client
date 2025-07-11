@@ -316,7 +316,7 @@ class MerginClient:
             self.log.info(f"Login problem: {e.detail}")
             raise LoginError(e.detail)
         self._auth_session = {
-            "token": "Bearer %s" % session["token"],
+            "token": f"Bearer {session['token']}",
             "expire": dateutil.parser.parse(session["expire"]),
         }
         self._user_info = {"username": data["username"]}
