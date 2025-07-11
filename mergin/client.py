@@ -218,7 +218,6 @@ class MerginClient:
 
         return wrapper
 
-    @_check_token
     def _do_request(self, request):
         """General server request method."""
         if self._auth_session:
