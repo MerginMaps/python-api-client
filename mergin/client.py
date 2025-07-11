@@ -214,7 +214,7 @@ class MerginClient:
                 else:
                     raise ClientError("Missing login or password")
 
-            return f(self, *args)
+            return f(self, *args, **kwargs)
 
         return wrapper
 
