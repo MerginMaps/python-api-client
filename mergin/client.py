@@ -213,21 +213,11 @@ class MerginClient:
             else:
                 raise ClientError("Missing login or password")
 
-    @staticmethod
-    def check_token(f):
-        """Wrapper for creating/renewing authorization token.
-        Every function that requires authentication should be decorated with this as @check_token."""
-
-        def wrapper(self, *args, **kwargs):
-            # functions that run prior to required function using this decorator
+    def _do_request(self, request, validate_auth=True):
+        """General server request method."""
+        if validate_auth:
             self.validate_auth()
 
-            return f(self, *args, **kwargs)
-
-        return wrapper
-
-    def _do_request(self, request):
-        """General server request method."""
         if self._auth_session:
             request.add_header("Authorization", self._auth_session["token"])
         request.add_header("User-Agent", self.user_agent_info())
@@ -269,31 +259,31 @@ class MerginClient:
             # e.g. when DNS resolution fails (no internet connection?)
             raise ClientError("Error requesting " + request.full_url + ": " + str(e))
 
-    def get(self, path, data=None, headers={}):
+    def get(self, path, data=None, headers={}, validate_auth=True):
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         if data:
             url += "?" + urllib.parse.urlencode(data)
         request = urllib.request.Request(url, headers=headers)
-        return self._do_request(request)
+        return self._do_request(request, validate_auth=validate_auth)
 
-    def post(self, path, data=None, headers={}):
+    def post(self, path, data=None, headers={}, validate_auth=True):
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         if headers.get("Content-Type", None) == "application/json":
             data = json.dumps(data, cls=DateTimeEncoder).encode("utf-8")
         request = urllib.request.Request(url, data, headers, method="POST")
-        return self._do_request(request)
+        return self._do_request(request, validate_auth=validate_auth)
 
-    def patch(self, path, data=None, headers={}):
+    def patch(self, path, data=None, headers={}, validate_auth=True):
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         if headers.get("Content-Type", None) == "application/json":
             data = json.dumps(data, cls=DateTimeEncoder).encode("utf-8")
         request = urllib.request.Request(url, data, headers, method="PATCH")
-        return self._do_request(request)
+        return self._do_request(request, validate_auth=validate_auth)
 
-    def delete(self, path):
+    def delete(self, path, validate_auth=True):
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         request = urllib.request.Request(url, method="DELETE")
-        return self._do_request(request)
+        return self._do_request(request, validate_auth=validate_auth)
 
     def login(self, login, password):
         """
@@ -309,7 +299,9 @@ class MerginClient:
         self._auth_session = None
         self.log.info(f"Going to log in user {login}")
         try:
-            resp = self.post("/v1/auth/login", data=params, headers={"Content-Type": "application/json"})
+            resp = self.post(
+                "/v1/auth/login", data=params, headers={"Content-Type": "application/json"}, validate_auth=False
+            )
             data = json.load(resp)
             session = data["session"]
         except ClientError as e:
@@ -329,7 +321,6 @@ class MerginClient:
             return None  # not authenticated
         return self._user_info["username"]
 
-    @check_token
     def workspace_service(self, workspace_id):
         """
         This Requests information about a workspace service from /workspace/{id}/service endpoint,
@@ -340,7 +331,6 @@ class MerginClient:
         resp = self.get(f"/v1/workspace/{workspace_id}/service")
         return json.load(resp)
 
-    @check_token
     def workspace_usage(self, workspace_id):
         """
         This Requests information about a workspace usage from /workspace/{id}/usage endpoint,
@@ -363,7 +353,7 @@ class MerginClient:
         """
         if not self._server_type:
             try:
-                resp = self.get("/config")
+                resp = self.get("/config", validate_auth=False)
                 config = json.load(resp)
                 if config["server_type"] == "ce":
                     self._server_type = ServerType.CE
@@ -385,7 +375,7 @@ class MerginClient:
         """
         if self._server_version is None:
             try:
-                resp = self.get("/config")
+                resp = self.get("/config", validate_auth=False)
                 config = json.load(resp)
                 self._server_version = config["version"]
             except (ClientError, KeyError):
@@ -393,7 +383,6 @@ class MerginClient:
 
         return self._server_version
 
-    @check_token
     def workspaces_list(self):
         """
         Find all available workspaces
@@ -404,7 +393,6 @@ class MerginClient:
         workspaces = json.load(resp)
         return workspaces
 
-    @check_token
     def create_workspace(self, workspace_name):
         """
         Create new workspace for currently active user.
@@ -423,7 +411,6 @@ class MerginClient:
             e.extra = f"Workspace name: {workspace_name}"
             raise e
 
-    @check_token
     def create_project(self, project_name, is_public=False, namespace=None):
         """
         Create new project repository in user namespace on Mergin Maps server.
@@ -473,7 +460,6 @@ class MerginClient:
             e.extra = f"Namespace: {namespace}, project name: {project_name}"
             raise e
 
-    @check_token
     def create_project_and_push(self, project_name, directory, is_public=False, namespace=None):
         """
         Convenience method to create project and push the initial version right after that.
@@ -519,7 +505,6 @@ class MerginClient:
             if mp.inspect_files():
                 self.push_project(directory)
 
-    @check_token
     def paginated_projects_list(
         self,
         page=1,
@@ -593,7 +578,6 @@ class MerginClient:
         projects = json.load(resp)
         return projects
 
-    @check_token
     def projects_list(
         self,
         tags=None,
@@ -663,7 +647,6 @@ class MerginClient:
                 break
         return projects
 
-    @check_token
     def project_info(self, project_path_or_id, since=None, version=None):
         """
         Fetch info about project.
@@ -687,7 +670,6 @@ class MerginClient:
             resp = self.get("/v1/project/{}".format(project_path_or_id), params)
         return json.load(resp)
 
-    @check_token
     def paginated_project_versions(self, project_path, page, per_page=100, descending=False):
         """
         Get records of project's versions (history) using calculated pagination.
@@ -709,7 +691,6 @@ class MerginClient:
         resp_json = json.load(resp)
         return resp_json["versions"], resp_json["count"]
 
-    @check_token
     def project_versions_count(self, project_path):
         """
         return the total count of versions
@@ -725,7 +706,6 @@ class MerginClient:
         resp_json = json.load(resp)
         return resp_json["count"]
 
-    @check_token
     def project_versions(self, project_path, since=1, to=None):
         """
         Get records of project's versions (history) in ascending order.
@@ -773,7 +753,6 @@ class MerginClient:
         filtered_versions = list(filter(lambda v: (num_since <= int_version(v["name"]) <= num_to), versions))
         return filtered_versions
 
-    @check_token
     def download_project(self, project_path, directory, version=None):
         """
         Download project into given directory. If version is not specified, latest version is downloaded
@@ -791,7 +770,6 @@ class MerginClient:
         download_project_wait(job)
         download_project_finalize(job)
 
-    @check_token
     def user_info(self):
         server_type = self.server_type()
         if server_type == ServerType.OLD:
@@ -800,7 +778,6 @@ class MerginClient:
             resp = self.get("/v1/user/profile")
         return json.load(resp)
 
-    @check_token
     def set_project_access(self, project_path, access):
         """
         Updates access for given project.
@@ -824,7 +801,6 @@ class MerginClient:
             e.extra = f"Project path: {project_path}"
             raise e
 
-    @check_token
     def add_user_permissions_to_project(self, project_path, usernames, permission_level):
         """
         Add specified permissions to specified users to project
@@ -858,7 +834,6 @@ class MerginClient:
             category=DeprecationWarning,
         )
 
-    @check_token
     def remove_user_permissions_from_project(self, project_path, usernames):
         """
         Removes specified users from project
@@ -883,7 +858,6 @@ class MerginClient:
             category=DeprecationWarning,
         )
 
-    @check_token
     def project_user_permissions(self, project_path):
         """
         Returns permissions for project
@@ -904,7 +878,6 @@ class MerginClient:
         result["readers"] = access.get("readersnames", [])
         return result
 
-    @check_token
     def push_project(self, directory):
         """
         Upload local changes to the repository.
@@ -918,7 +891,6 @@ class MerginClient:
         push_project_wait(job)
         push_project_finalize(job)
 
-    @check_token
     def pull_project(self, directory):
         """
         Fetch and apply changes from repository.
@@ -932,7 +904,6 @@ class MerginClient:
         pull_project_wait(job)
         return pull_project_finalize(job)
 
-    @check_token
     def clone_project(self, source_project_path, cloned_project_name, cloned_project_namespace=None):
         """
         Clone project on server.
@@ -978,7 +949,6 @@ class MerginClient:
         request = urllib.request.Request(url, data=json.dumps(data).encode(), headers=json_headers, method="POST")
         self._do_request(request)
 
-    @check_token
     def delete_project_now(self, project_path):
         """
         Delete project repository on server immediately.
@@ -1002,7 +972,6 @@ class MerginClient:
         request = urllib.request.Request(url, method="DELETE")
         self._do_request(request)
 
-    @check_token
     def delete_project(self, project_path):
         """
         Delete project repository on server. Newer servers since 2023
@@ -1027,7 +996,6 @@ class MerginClient:
         request = urllib.request.Request(url, method="DELETE")
         self._do_request(request)
 
-    @check_token
     def project_status(self, directory):
         """
         Get project status, e.g. server and local changes.
@@ -1047,27 +1015,23 @@ class MerginClient:
 
         return pull_changes, push_changes, push_changes_summary
 
-    @check_token
     def project_version_info(self, project_id, version):
         """Returns JSON with detailed information about a single project version"""
         resp = self.get(f"/v1/project/version/{project_id}/{version}")
         return json.load(resp)
 
-    @check_token
     def project_file_history_info(self, project_path, file_path):
         """Returns JSON with full history of a single file within a project"""
         params = {"path": file_path}
         resp = self.get("/v1/resource/history/{}".format(project_path), params)
         return json.load(resp)
 
-    @check_token
     def project_file_changeset_info(self, project_path, file_path, version):
         """Returns JSON with changeset details of a particular version of a file within a project"""
         params = {"path": file_path}
         resp = self.get("/v1/resource/changesets/{}/{}".format(project_path, version), params)
         return json.load(resp)
 
-    @check_token
     def get_projects_by_names(self, projects):
         """Returns JSON with projects' info for list of required projects.
         The schema of the returned information is the same as the response from projects_list().
@@ -1082,7 +1046,6 @@ class MerginClient:
         resp = self.post("/v1/project/by_names", {"projects": projects}, {"Content-Type": "application/json"})
         return json.load(resp)
 
-    @check_token
     def download_file(self, project_dir, file_path, output_filename, version=None):
         """
         Download project file at specified version. Get the latest if no version specified.
@@ -1136,7 +1099,6 @@ class MerginClient:
             elif len(diffs) == 1:
                 shutil.copy(diffs[0], output_diff)
 
-    @check_token
     def download_file_diffs(self, project_dir, file_path, versions):
         """Download file diffs for specified versions if they are not present
         in the cache.
@@ -1213,7 +1175,6 @@ class MerginClient:
         info = self.project_info(project_path)
         return info["permissions"]["upload"]
 
-    @check_token
     def rename_project(self, project_path: str, new_project_name: str) -> None:
         """
         Rename project on server.
@@ -1285,7 +1246,6 @@ class MerginClient:
         if files_download:
             self.download_files(directory, files_download, version=current_version)
 
-    @check_token
     def download_files(
         self, project_dir: str, file_paths: typing.List[str], output_paths: typing.List[str] = None, version: str = None
     ):
@@ -1311,7 +1271,6 @@ class MerginClient:
         """
         return is_version_acceptable(self.server_version(), "2024.4.0")
 
-    @check_token
     def create_user(
         self,
         email: str,
@@ -1343,7 +1302,6 @@ class MerginClient:
         user_info = self.post("v2/users", params, json_headers)
         return json.load(user_info)
 
-    @check_token
     def get_workspace_member(self, workspace_id: int, user_id: int) -> dict:
         """
         Get a workspace member detail
@@ -1351,7 +1309,6 @@ class MerginClient:
         resp = self.get(f"v2/workspaces/{workspace_id}/members/{user_id}")
         return json.load(resp)
 
-    @check_token
     def list_workspace_members(self, workspace_id: int) -> List[dict]:
         """
         Get a list of workspace members
@@ -1359,7 +1316,6 @@ class MerginClient:
         resp = self.get(f"v2/workspaces/{workspace_id}/members")
         return json.load(resp)
 
-    @check_token
     def update_workspace_member(
         self, workspace_id: int, user_id: int, workspace_role: WorkspaceRole, reset_projects_roles: bool = False
     ) -> dict:
@@ -1375,14 +1331,12 @@ class MerginClient:
         workspace_member = self.patch(f"v2/workspaces/{workspace_id}/members/{user_id}", params, json_headers)
         return json.load(workspace_member)
 
-    @check_token
     def remove_workspace_member(self, workspace_id: int, user_id: int):
         """
         Remove a user from workspace members
         """
         self.delete(f"v2/workspaces/{workspace_id}/members/{user_id}")
 
-    @check_token
     def list_project_collaborators(self, project_id: str) -> List[dict]:
         """
         Get a list of project collaborators
@@ -1390,7 +1344,6 @@ class MerginClient:
         project_collaborators = self.get(f"v2/projects/{project_id}/collaborators")
         return json.load(project_collaborators)
 
-    @check_token
     def add_project_collaborator(self, project_id: str, user: str, project_role: ProjectRole) -> dict:
         """
         Add a user to project collaborators and grant them a project role.
@@ -1402,7 +1355,6 @@ class MerginClient:
         project_collaborator = self.post(f"v2/projects/{project_id}/collaborators", params, json_headers)
         return json.load(project_collaborator)
 
-    @check_token
     def update_project_collaborator(self, project_id: str, user_id: int, project_role: ProjectRole) -> dict:
         """
         Update project role of the existing project collaborator.
@@ -1412,7 +1364,6 @@ class MerginClient:
         project_collaborator = self.patch(f"v2/projects/{project_id}/collaborators/{user_id}", params, json_headers)
         return json.load(project_collaborator)
 
-    @check_token
     def remove_project_collaborator(self, project_id: str, user_id: int):
         """
         Remove a user from project collaborators
@@ -1421,10 +1372,9 @@ class MerginClient:
 
     def server_config(self) -> dict:
         """Get server configuration as dictionary."""
-        response = self.get("/config")
+        response = self.get("/config", validate_auth=False)
         return json.load(response)
 
-    @check_token
     def send_logs(
         self,
         logfile: str,
