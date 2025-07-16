@@ -5,7 +5,7 @@ import random
 import tempfile
 import subprocess
 import shutil
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 import pytest
 import pytz
 import sqlite3
@@ -14,6 +14,7 @@ import glob
 from .. import InvalidProject
 from ..client import (
     MerginClient,
+    AuthTokenExpiredError,
     ClientError,
     MerginProject,
     LoginError,
@@ -2888,8 +2889,7 @@ def test_mc_without_login():
     with pytest.raises(ClientError) as e:
         mc.workspaces_list()
 
-    assert e.value.http_error == 401
-    assert e.value.detail == '"Authentication information is missing or invalid."\n'
+    assert e.value.detail == "Missing login or password"
 
 
 def test_do_request_error_handling(mc: MerginClient):
@@ -2911,3 +2911,61 @@ def test_do_request_error_handling(mc: MerginClient):
 
     assert e.value.http_error == 400
     assert "Passwords must be at least 8 characters long." in e.value.detail
+
+
+def test_validate_auth(mc: MerginClient):
+    """Test validate authentication under different scenarios."""
+
+    # ----- Client without authentication -----
+    mc_not_auth = MerginClient(SERVER_URL)
+
+    with pytest.raises(ClientError) as e:
+        mc_not_auth.validate_auth()
+
+    assert e.value.detail == "Missing login or password"
+
+    # ----- Client with token -----
+    # create a client with valid auth token based on other MerginClient instance, but not with username/password
+    mc_auth_token = MerginClient(SERVER_URL, auth_token=mc._auth_session["token"])
+
+    # this should pass and not raise an error
+    mc_auth_token.validate_auth()
+
+    # manually set expire date to the past to simulate expired token
+    mc_auth_token._auth_session["expire"] = datetime.now(timezone.utc) - timedelta(days=1)
+
+    # check that this raises an error
+    with pytest.raises(AuthTokenExpiredError):
+        mc_auth_token.validate_auth()
+
+    # ----- Client with token and username/password -----
+    # create a client with valid auth token based on other MerginClient instance with username/password that allows relogin if the token is expired
+    mc_auth_token_login = MerginClient(
+        SERVER_URL, auth_token=mc._auth_session["token"], login=API_USER, password=USER_PWD
+    )
+
+    # this should pass and not raise an error
+    mc_auth_token_login.validate_auth()
+
+    # manually set expire date to the past to simulate expired token
+    mc_auth_token_login._auth_session["expire"] = datetime.now(timezone.utc) - timedelta(days=1)
+
+    # this should pass and not raise an error, as the client is able to re-login
+    mc_auth_token_login.validate_auth()
+
+    # ----- Client with token and username/WRONG password -----
+    # create a client with valid auth token based on other MerginClient instance with username and WRONG password
+    # that does NOT allow relogin if the token is expired
+    mc_auth_token_login_wrong_password = MerginClient(
+        SERVER_URL, auth_token=mc._auth_session["token"], login=API_USER, password="WRONG_PASSWORD"
+    )
+
+    # this should pass and not raise an error
+    mc_auth_token_login_wrong_password.validate_auth()
+
+    # manually set expire date to the past to simulate expired token
+    mc_auth_token_login_wrong_password._auth_session["expire"] = datetime.now(timezone.utc) - timedelta(days=1)
+
+    # this should pass and not raise an error, as the client is able to re-login
+    with pytest.raises(LoginError):
+        mc_auth_token_login_wrong_password.validate_auth()
