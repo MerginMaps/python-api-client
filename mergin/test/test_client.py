@@ -20,7 +20,6 @@ from ..client import (
     decode_token_data,
     TokenError,
     ServerType,
-    WorkspaceRole,
 )
 from ..client_push import push_project_async, push_project_cancel
 from ..client_pull import (
@@ -2911,3 +2910,20 @@ def test_do_request_error_handling(mc: MerginClient):
 
     assert e.value.http_error == 400
     assert "Passwords must be at least 8 characters long." in e.value.detail
+
+
+def test_creat_invitation(mc: MerginClient):
+    """Test client method to create workspace invitation"""
+    workspace_id = next((w["id"] for w in mc.workspaces_list() if w["name"] == mc.username()))
+    role = WorkspaceRole.WRITER
+    email = "invitation@client.py"
+    inv = mc.create_invitation(workspace_id, email, role)
+    assert inv["email"] == email
+    assert inv["role"] == role.value
+    mc.delete(f"v1/workspace/invitation/{inv['id']}")  # resolves invitation to allow another invitation to the email
+    role = WorkspaceRole.GUEST
+    inv = mc.create_invitation(workspace_id, email, role)
+    assert inv["email"] == email
+    assert "projects" not in inv
+    mc.delete(f"v1/workspace/invitation/{inv['id']}")
+

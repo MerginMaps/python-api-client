@@ -1444,3 +1444,11 @@ class MerginClient:
         else:
             request = urllib.request.Request(url, data=payload, headers=header)
             return self._do_request(request)
+
+    def create_invitation(self, workspace_id: int, email: str, workspace_role: WorkspaceRole):
+        """
+        Create invitation to workspace for specific role
+        """
+        params = {"email": email, "role": workspace_role.value}
+        ws_inv = self.post(f"v2/workspaces/{workspace_id}/invitations", params, json_headers)
+        return json.load(ws_inv)
