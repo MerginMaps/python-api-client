@@ -2926,4 +2926,3 @@ def test_creat_invitation(mc: MerginClient):
     assert inv["email"] == email
     assert "projects" not in inv
     mc.delete(f"v1/workspace/invitation/{inv['id']}")
-
