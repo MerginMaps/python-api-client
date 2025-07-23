@@ -413,7 +413,8 @@ def pull_project_async(mc, directory):
     # then we just download the whole file
     _pulling_file_with_diffs = lambda f: "diffs" in f and len(f["diffs"]) != 0
 
-    temp_dir = mp.fpath_meta(f"fetch_{local_version}-{server_version}")
+    temp_dir_mergin = os.path.join(tempfile.gettempdir(), f"mergin-{mp.project_id()}")
+    temp_dir = os.path.join(temp_dir_mergin, f"fetch_{local_version}-{server_version}")
     os.makedirs(temp_dir, exist_ok=True)
     pull_changes = mp.get_pull_changes(server_info["files"])
     mp.log.debug("pull changes:\n" + pprint.pformat(pull_changes))
