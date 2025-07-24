@@ -2912,7 +2912,7 @@ def test_do_request_error_handling(mc: MerginClient):
     assert "Passwords must be at least 8 characters long." in e.value.detail
 
 
-def test_creat_invitation(mc: MerginClient):
+def test_create_invitation(mc: MerginClient):
     """Test client method to create workspace invitation"""
     workspace_id = next((w["id"] for w in mc.workspaces_list() if w["name"] == mc.username()))
     role = WorkspaceRole.WRITER

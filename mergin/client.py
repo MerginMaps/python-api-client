@@ -1449,6 +1449,9 @@ class MerginClient:
         """
         Create invitation to workspace for specific role
         """
+        min_version = "2025.6.1"
+        if not is_version_acceptable(self.server_version(), min_version):
+            raise NotImplementedError(f"This needs server at version {min_version} or later")
         params = {"email": email, "role": workspace_role.value}
         ws_inv = self.post(f"v2/workspaces/{workspace_id}/invitations", params, json_headers)
         return json.load(ws_inv)
