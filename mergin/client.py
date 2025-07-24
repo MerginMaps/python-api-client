@@ -1288,7 +1288,6 @@ class MerginClient:
     def check_collaborators_members_support(self):
         """
         Check if the server is compatible with v2 endpoints for project collaborators and workspace members
-        https://github.com/MerginMaps/server-private/releases/tag/2025.1.0
         """
         min_version = "2025.1.0"
         if not is_version_acceptable(self.server_version(), f"{min_version}"):
