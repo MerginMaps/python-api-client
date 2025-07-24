@@ -19,7 +19,14 @@ import warnings
 
 from typing import List
 
-from .common import ClientError, LoginError, WorkspaceRole, ProjectRole, MAX_LOG_FILE_SIZE_TO_SEND, MERGIN_DEFAULT_LOGS_URL
+from .common import (
+    ClientError,
+    LoginError,
+    WorkspaceRole,
+    ProjectRole,
+    MAX_LOG_FILE_SIZE_TO_SEND,
+    MERGIN_DEFAULT_LOGS_URL,
+)
 from .merginproject import MerginProject
 from .client_pull import (
     download_file_finalize,
