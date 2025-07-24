@@ -19,7 +19,14 @@ import warnings
 
 from typing import List
 
-from .common import ClientError, LoginError, WorkspaceRole, ProjectRole, LOG_FILE_SIZE_TO_SEND, MERGIN_DEFAULT_LOGS_URL
+from .common import (
+    ClientError,
+    LoginError,
+    WorkspaceRole,
+    ProjectRole,
+    MAX_LOG_FILE_SIZE_TO_SEND,
+    MERGIN_DEFAULT_LOGS_URL,
+)
 from .merginproject import MerginProject
 from .client_pull import (
     download_file_finalize,
@@ -1410,16 +1417,20 @@ class MerginClient:
                 platform.system(), self.url, self.username()
             )
 
+        # We send more from the local logs
+        global_logs_file_size_to_send = MAX_LOG_FILE_SIZE_TO_SEND * 0.2
+        local_logs_file_size_to_send = MAX_LOG_FILE_SIZE_TO_SEND * 0.8
+
         global_logs = b""
         if global_log_file and os.path.exists(global_log_file):
             with open(global_log_file, "rb") as f:
-                if os.path.getsize(global_log_file) > LOG_FILE_SIZE_TO_SEND:
-                    f.seek(-LOG_FILE_SIZE_TO_SEND, os.SEEK_END)
+                if os.path.getsize(global_log_file) > global_logs_file_size_to_send:
+                    f.seek(-global_logs_file_size_to_send, os.SEEK_END)
                 global_logs = f.read() + b"\n--------------------------------\n\n"
 
         with open(logfile, "rb") as f:
-            if os.path.getsize(logfile) > 512 * 1024:
-                f.seek(-512 * 1024, os.SEEK_END)
+            if os.path.getsize(logfile) > local_logs_file_size_to_send:
+                f.seek(-local_logs_file_size_to_send, os.SEEK_END)
             logs = f.read()
 
         payload = meta.encode() + global_logs + logs
