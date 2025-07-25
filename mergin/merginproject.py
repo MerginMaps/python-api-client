@@ -42,6 +42,8 @@ class MerginProject:
     """
 
     def __init__(self, directory):
+        if not isinstance(directory, str):
+            raise ClientError("'directory' must be a str")
         self.dir = os.path.abspath(directory)
         if not os.path.exists(self.dir):
             raise InvalidProject("Project directory does not exist")
