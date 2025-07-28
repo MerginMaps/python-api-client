@@ -2927,7 +2927,7 @@ def test_create_invitation(mc: MerginClient):
     assert "projects" not in inv
     mc.delete(f"v1/workspace/invitation/{inv['id']}")
 
-    
+
 def test_validate_auth(mc: MerginClient):
     """Test validate authentication under different scenarios."""
 
