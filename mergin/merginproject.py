@@ -86,7 +86,7 @@ class MerginProject:
 
     def setup_logging(self, logger_name):
         """Setup logging into project directory's .mergin/client-log.txt file."""
-        self.log = logging.getLogger("mergin.project." + logger_name)
+        self.log = logging.getLogger("mergin.project." + str(logger_name))
         self.log.setLevel(logging.DEBUG)  # log everything (it would otherwise log just warnings+errors)
         if not self.log.handlers:
             # we only need to set the handler once
