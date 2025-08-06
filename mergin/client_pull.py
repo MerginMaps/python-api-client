@@ -164,11 +164,13 @@ def download_project_async(mc, project_path, directory, project_version=None):
 
     mp.log.info(f"got project info. version {version}")
 
+    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
+
     # prepare download
     update_tasks = []  # stuff to do at the end of download
     for file in project_info["files"]:
         file["version"] = version
-        items = _download_items(file, directory)
+        items = _download_items(file, tmp_dir.name)
         is_latest_version = project_version == latest_proj_info["version"]
         update_tasks.append(UpdateTask(file["path"], items, latest_version=is_latest_version))
 
@@ -182,7 +184,9 @@ def download_project_async(mc, project_path, directory, project_version=None):
 
     mp.log.info(f"will download {len(update_tasks)} files in {len(download_list)} chunks, total size {total_size}")
 
-    job = DownloadJob(project_path, total_size, version, update_tasks, download_list, directory, mp, project_info)
+    job = DownloadJob(
+        project_path, total_size, version, update_tasks, download_list, directory, mp, project_info, tmp_dir
+    )
 
     # start download
     job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
