@@ -1422,7 +1422,7 @@ class MerginClient:
         if is_version_acceptable(self.server_version(), "2025.4.1") and (
             diagnostic_logs_url is None or diagnostic_logs_url == ""
         ):
-            url = "v2/diagnostic-logs" + "?" + urllib.parse.urlencode(params)
+            url = "v2/diagnostic-logs"
             use_server_api = True
         else:
             if diagnostic_logs_url:
@@ -1456,7 +1456,7 @@ class MerginClient:
         header = {"content-type": "text/plain"}
 
         if use_server_api:
-            return self.post(url, data=payload, headers=header)
+            return self.post(url, data=payload, headers=header, query_params=params)
         else:
             request = urllib.request.Request(url, data=payload, headers=header)
             return self._do_request(request)
