@@ -273,8 +273,10 @@ class MerginClient:
         request = urllib.request.Request(url, headers=headers)
         return self._do_request(request, validate_auth=validate_auth)
 
-    def post(self, path, data=None, headers={}, validate_auth=True):
+    def post(self, path, data=None, headers={}, validate_auth=True, query_params: dict[str, str] = None):
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
+        if query_params:
+            url += "?" + urllib.parse.urlencode(query_params)
         if headers.get("Content-Type", None) == "application/json":
             data = json.dumps(data, cls=DateTimeEncoder).encode("utf-8")
         request = urllib.request.Request(url, data, headers, method="POST")
