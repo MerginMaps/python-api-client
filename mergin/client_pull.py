@@ -146,6 +146,8 @@ def download_project_async(mc, project_path, directory, project_version=None):
     mp.log.info("--- version: " + mc.user_agent_info())
     mp.log.info(f"--- start download {project_path}")
 
+    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
+
     try:
         # check whether we download the latest version or not
         latest_proj_info = mc.project_info(project_path)
@@ -155,14 +157,12 @@ def download_project_async(mc, project_path, directory, project_version=None):
             project_info = latest_proj_info
 
     except ClientError:
-        _cleanup_failed_download(directory, mp)
+        _cleanup_failed_download(tmp_dir.name, mp)
         raise
 
     version = project_info["version"] if project_info["version"] else "v0"
 
     mp.log.info(f"got project info. version {version}")
-
-    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
 
     # prepare download
     update_tasks = []  # stuff to do at the end of download
@@ -182,9 +182,7 @@ def download_project_async(mc, project_path, directory, project_version=None):
 
     mp.log.info(f"will download {len(update_tasks)} files in {len(download_list)} chunks, total size {total_size}")
 
-    job = DownloadJob(
-        project_path, total_size, version, update_tasks, download_list, directory, mp, project_info, tmp_dir
-    )
+    job = DownloadJob(project_path, total_size, version, update_tasks, download_list, tmp_dir, mp, project_info)
 
     # start download
     job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
