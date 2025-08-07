@@ -213,7 +213,7 @@ def download_project_is_running(job):
             traceback_lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
             job.mp.log.error("Error while downloading project: " + "".join(traceback_lines))
             job.mp.log.info("--- download aborted")
-            job.failure_log_file = _cleanup_failed_download(job.directory, job.mp)
+            job.failure_log_file = _cleanup_failed_download(job.directory.name, job.mp)
             raise future.exception()
         if future.running():
             return True
@@ -239,7 +239,7 @@ def download_project_finalize(job):
             traceback_lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
             job.mp.log.error("Error while downloading project: " + "".join(traceback_lines))
             job.mp.log.info("--- download aborted")
-            job.failure_log_file = _cleanup_failed_download(job.directory, job.mp)
+            job.failure_log_file = _cleanup_failed_download(job.directory.name, job.mp)
             raise future.exception()
 
     job.mp.log.info("--- download finished")
@@ -251,8 +251,7 @@ def download_project_finalize(job):
     # final update of project metadata
     job.mp.update_metadata(job.project_info)
 
-    if job.download_tmp_dir:
-        job.download_tmp_dir.cleanup()
+    job.directory.cleanup()
 
 
 def download_project_cancel(job):
