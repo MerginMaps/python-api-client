@@ -368,7 +368,7 @@ class PullJob:
         self.version = version
         self.files_to_merge = files_to_merge  # list of FileToMerge instances
         self.download_queue_items = download_queue_items
-        self.temp_dir = temp_dir  # full path to temporary directory where we store downloaded files
+        self.temp_dir = temp_dir  # TemporaryDirectory instance where we store downloaded files
         self.mp = mp  # MerginProject instance
         self.is_cancelled = False
         self.project_info = project_info  # parsed JSON with project info returned from the server
@@ -430,8 +430,7 @@ def pull_project_async(mc, directory):
     # then we just download the whole file
     _pulling_file_with_diffs = lambda f: "diffs" in f and len(f["diffs"]) != 0
 
-    temp_dir = mp.fpath_meta(f"fetch_{local_version}-{server_version}")
-    os.makedirs(temp_dir, exist_ok=True)
+    temp_dir = tempfile.TemporaryDirectory(prefix="mm-pull-", ignore_cleanup_errors=True, delete=True)
     pull_changes = mp.get_pull_changes(server_info["files"])
     mp.log.debug("pull changes:\n" + pprint.pformat(pull_changes))
     fetch_files = []
@@ -458,10 +457,10 @@ def pull_project_async(mc, directory):
 
     for file in fetch_files:
         diff_only = _pulling_file_with_diffs(file)
-        items = _download_items(file, temp_dir, diff_only)
+        items = _download_items(file, temp_dir.name, diff_only)
 
         # figure out destination path for the file
-        file_dir = os.path.dirname(os.path.normpath(os.path.join(temp_dir, file["path"])))
+        file_dir = os.path.dirname(os.path.normpath(os.path.join(temp_dir.name, file["path"])))
         basename = os.path.basename(file["diff"]["path"]) if diff_only else os.path.basename(file["path"])
         dest_file_path = os.path.join(file_dir, basename)
         os.makedirs(file_dir, exist_ok=True)
@@ -482,8 +481,8 @@ def pull_project_async(mc, directory):
             file_path = file["path"]
             mp.log.info(f"missing base file for {file_path} -> going to download it (version {server_version})")
             file["version"] = server_version
-            items = _download_items(file, temp_dir, diff_only=False)
-            dest_file_path = mp.fpath(file["path"], temp_dir)
+            items = _download_items(file, temp_dir.name, diff_only=False)
+            dest_file_path = mp.fpath(file["path"], temp_dir.name)
             # dest_file_path = os.path.join(os.path.dirname(os.path.normpath(os.path.join(temp_dir, file['path']))), os.path.basename(file['path']))
             files_to_merge.append(FileToMerge(dest_file_path, items))
             continue
@@ -621,10 +620,10 @@ def pull_project_finalize(job: PullJob):
     # download their full versions so we have them up-to-date for applying changes
     for file_path, file_diffs in job.basefiles_to_patch:
         basefile = job.mp.fpath_meta(file_path)
-        server_file = job.mp.fpath(file_path, job.temp_dir)
+        server_file = job.mp.fpath(file_path, job.temp_dir.name)
 
         shutil.copy(basefile, server_file)
-        diffs = [job.mp.fpath(f, job.temp_dir) for f in file_diffs]
+        diffs = [job.mp.fpath(f, job.temp_dir.name) for f in file_diffs]
         patch_error = job.mp.apply_diffs(server_file, diffs)
         if patch_error:
             # that's weird that we are unable to apply diffs to the basefile!
@@ -640,7 +639,7 @@ def pull_project_finalize(job: PullJob):
             raise ClientError("Cannot patch basefile {}! Please try syncing again.".format(basefile))
 
     try:
-        conflicts = job.mp.apply_pull_changes(job.pull_changes, job.temp_dir, job.project_info, job.mc)
+        conflicts = job.mp.apply_pull_changes(job.pull_changes, job.temp_dir.name, job.project_info, job.mc)
     except Exception as e:
         job.mp.log.error("Failed to apply pull changes: " + str(e))
         job.mp.log.info("--- pull aborted")
@@ -653,7 +652,7 @@ def pull_project_finalize(job: PullJob):
     else:
         job.mp.log.info("--- pull finished -- at version " + job.mp.version())
 
-    shutil.rmtree(job.temp_dir)
+    job.temp_dir.cleanup()  # delete our temporary dir and all its content
     return conflicts
 
 
