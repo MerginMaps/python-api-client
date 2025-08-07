@@ -50,10 +50,9 @@ class DownloadJob:
         version,
         update_tasks,
         download_queue_items,
-        directory,
+        directory: tempfile.TemporaryDirectory,
         mp,
         project_info,
-        download_tmp_dir: typing.Optional[tempfile.TemporaryDirectory] = None,
     ):
         self.project_path = project_path
         self.total_size = total_size  # size of data to download (in bytes)
@@ -66,7 +65,6 @@ class DownloadJob:
         self.is_cancelled = False
         self.project_info = project_info  # parsed JSON with project info returned from the server
         self.failure_log_file = None  # log file, copied from the project directory if download fails
-        self.download_tmp_dir = download_tmp_dir  # temporary directory for downloads if specified
 
     def dump(self):
         print("--- JOB ---", self.total_size, "bytes")
