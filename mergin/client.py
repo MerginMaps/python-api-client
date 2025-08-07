@@ -1437,8 +1437,8 @@ class MerginClient:
             )
 
         # We send more from the local logs
-        global_logs_file_size_to_send = MAX_LOG_FILE_SIZE_TO_SEND * 0.2
-        local_logs_file_size_to_send = MAX_LOG_FILE_SIZE_TO_SEND * 0.8
+        global_logs_file_size_to_send = int(MAX_LOG_FILE_SIZE_TO_SEND * 0.2)
+        local_logs_file_size_to_send = int(MAX_LOG_FILE_SIZE_TO_SEND * 0.8)
 
         global_logs = b""
         if global_log_file and os.path.exists(global_log_file):
