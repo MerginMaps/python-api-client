@@ -146,7 +146,7 @@ def download_project_async(mc, project_path, directory, project_version=None):
     mp.log.info("--- version: " + mc.user_agent_info())
     mp.log.info(f"--- start download {project_path}")
 
-    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
+    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-", ignore_cleanup_errors=True, delete=True)
 
     try:
         # check whether we download the latest version or not
