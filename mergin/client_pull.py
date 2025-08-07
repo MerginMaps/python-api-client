@@ -250,7 +250,7 @@ def download_project_finalize(job):
 
     for task in job.update_tasks:
         # right now only copy tasks...
-        task.apply(job.directory, job.mp)
+        task.apply(job.mp.dir, job.mp)
 
     # final update of project metadata
     job.mp.update_metadata(job.project_info)
