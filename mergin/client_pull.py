@@ -117,7 +117,7 @@ def _cleanup_failed_download(directory, mergin_project=None):
         mergin_project.remove_logging_handler()
 
     # keep log file as it might contain useful debug info
-    log_file = os.path.join(directory, ".mergin", "client-log.txt")
+    log_file = os.path.join(mergin_project.dir, ".mergin", "client-log.txt")
     dest_path = None
 
     if os.path.exists(log_file):
