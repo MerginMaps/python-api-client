@@ -40,7 +40,7 @@ from .client_pull import (
     download_diffs_finalize,
 )
 from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
-from .client_push import push_project_async, push_project_wait, push_project_finalize
+from .client_push import push_project_async, push_project_wait, push_project_finalize, UploadChunksCache
 from .utils import DateTimeEncoder, get_versions_with_file_changes, int_version, is_version_acceptable
 from .version import __version__
 
@@ -106,6 +106,8 @@ class MerginClient:
         self._user_info = None
         self._server_type = None
         self._server_version = None
+        self._feature_flags = {}
+        self.upload_chunks_cache = UploadChunksCache()
         self.client_version = "Python-client/" + __version__
         if plugin_version is not None:  # this could be e.g. "Plugin/2020.1 QGIS/3.14"
             self.client_version += " " + plugin_version
@@ -362,8 +364,7 @@ class MerginClient:
         """
         if not self._server_type:
             try:
-                resp = self.get("/config", validate_auth=False)
-                config = json.load(resp)
+                config = self.server_config()
                 if config["server_type"] == "ce":
                     self._server_type = ServerType.CE
                 elif config["server_type"] == "ee":
@@ -384,13 +385,25 @@ class MerginClient:
         """
         if self._server_version is None:
             try:
-                resp = self.get("/config", validate_auth=False)
-                config = json.load(resp)
+                config = self.server_config()
                 self._server_version = config["version"]
             except (ClientError, KeyError):
                 self._server_version = ""
 
         return self._server_version
+
+    def server_features(self):
+        """
+        Returns feature flags of the server.
+        """
+        if self._feature_flags:
+            return self._feature_flags
+        config = self.server_config()
+        return {
+            "v2_push_enabled": config.get("v2_push_enabled", False)
+            and is_version_acceptable(self.server_version(), "2025.6.2"),
+            "v2_pull_enabled": config.get("v2_pull_enabled", False),
+        }
 
     def workspaces_list(self):
         """
