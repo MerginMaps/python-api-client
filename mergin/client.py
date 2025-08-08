@@ -273,8 +273,10 @@ class MerginClient:
         request = urllib.request.Request(url, headers=headers)
         return self._do_request(request, validate_auth=validate_auth)
 
-    def post(self, path, data=None, headers={}, validate_auth=True):
+    def post(self, path, data=None, headers={}, validate_auth=True, query_params: dict[str, str] = None):
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
+        if query_params:
+            url += "?" + urllib.parse.urlencode(query_params)
         if headers.get("Content-Type", None) == "application/json":
             data = json.dumps(data, cls=DateTimeEncoder).encode("utf-8")
         request = urllib.request.Request(url, data, headers, method="POST")
@@ -1420,7 +1422,7 @@ class MerginClient:
         if is_version_acceptable(self.server_version(), "2025.4.1") and (
             diagnostic_logs_url is None or diagnostic_logs_url == ""
         ):
-            url = "v2/diagnostic-logs" + "?" + urllib.parse.urlencode(params)
+            url = "v2/diagnostic-logs"
             use_server_api = True
         else:
             if diagnostic_logs_url:
@@ -1435,8 +1437,8 @@ class MerginClient:
             )
 
         # We send more from the local logs
-        global_logs_file_size_to_send = MAX_LOG_FILE_SIZE_TO_SEND * 0.2
-        local_logs_file_size_to_send = MAX_LOG_FILE_SIZE_TO_SEND * 0.8
+        global_logs_file_size_to_send = int(MAX_LOG_FILE_SIZE_TO_SEND * 0.2)
+        local_logs_file_size_to_send = int(MAX_LOG_FILE_SIZE_TO_SEND * 0.8)
 
         global_logs = b""
         if global_log_file and os.path.exists(global_log_file):
@@ -1454,7 +1456,7 @@ class MerginClient:
         header = {"content-type": "text/plain"}
 
         if use_server_api:
-            return self.post(url, data=payload, headers=header)
+            return self.post(url, data=payload, headers=header, query_params=params)
         else:
             request = urllib.request.Request(url, data=payload, headers=header)
             return self._do_request(request)

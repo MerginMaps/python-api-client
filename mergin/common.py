@@ -7,7 +7,7 @@ CHUNK_SIZE = 100 * 1024 * 1024
 UPLOAD_CHUNK_SIZE = 10 * 1024 * 1024
 
 # size of the log file part to send (if file is larger only this size from end will be sent)
-MAX_LOG_FILE_SIZE_TO_SEND = 8 * 1024 * 1024
+MAX_LOG_FILE_SIZE_TO_SEND = 5 * 1024 * 1024
 
 # default URL for submitting logs
 MERGIN_DEFAULT_LOGS_URL = "https://g4pfq226j0.execute-api.eu-west-1.amazonaws.com/mergin_client_log_submit"
