@@ -23,6 +23,14 @@ from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
 from .editor import filter_changes
 
+def _do_upload(item, job):
+    """runs in worker thread, have to be defined here to avoid worker threads repeating this function"""
+    if job.is_cancelled:
+        return
+
+    item.upload_blocking()
+    job.transferred_size += item.size
+
 
 class UploadChunksCache:
     """A cache for uploaded chunks to avoid re-uploading them, using checksum as key."""
@@ -101,14 +109,12 @@ class UploadQueueItem:
             checksum_str = checksum.hexdigest()
 
             self.mp.log.debug(f"Uploading {self.file_path} part={self.chunk_index}")
-
             if self.mc.server_features().get("v2_push_enabled"):
                 # use v2 API for uploading chunks
                 self.upload_chunk_v2_api(data, checksum_str)
             else:
                 # use v1 API for uploading chunks
                 self.upload_chunk(data, checksum_str)
-            self.mc.upload_chunks_cache.add(checksum_str, self.chunk_id)
 
             self.mp.log.debug(f"Upload chunk finished: {self.file_path}")
 
@@ -138,17 +144,10 @@ class UploadJob:
             print("- {} {} {}".format(item.file_path, item.chunk_index, item.size))
         print("--- END ---")
 
-    def __upload_item(self, item: UploadQueueItem):
-        """Upload a single item in the background"""
-        if self.is_cancelled:
-            return
-
-        item.upload_blocking()
-        self.transferred_size += item.size
 
     def submit_item_to_thread(self, item: UploadQueueItem):
         """Upload a single item in the background"""
-        feature = self.executor.submit(self.__upload_item, item)
+        feature = self.executor.submit(_do_upload, item, self)
         self.futures.append(feature)
 
     def add_items(self, items: List[UploadQueueItem], total_size: int):

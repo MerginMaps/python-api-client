@@ -106,7 +106,7 @@ class MerginClient:
         self._user_info = None
         self._server_type = None
         self._server_version = None
-        self._feature_flags = {}
+        self._server_features = {}
         self.upload_chunks_cache = UploadChunksCache()
         self.client_version = "Python-client/" + __version__
         if plugin_version is not None:  # this could be e.g. "Plugin/2020.1 QGIS/3.14"
@@ -396,14 +396,15 @@ class MerginClient:
         """
         Returns feature flags of the server.
         """
-        if self._feature_flags:
-            return self._feature_flags
+        if self._server_features:
+            return self._server_features
         config = self.server_config()
-        return {
+        self._server_features = {
             "v2_push_enabled": config.get("v2_push_enabled", False)
-            and is_version_acceptable(self.server_version(), "2025.6.2"),
+            and is_version_acceptable(self.server_version(), "2025.6.1"),
             "v2_pull_enabled": config.get("v2_pull_enabled", False),
         }
+        return self._server_features
 
     def workspaces_list(self):
         """
