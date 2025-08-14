@@ -34,7 +34,6 @@ try:
 except (ImportError, ModuleNotFoundError):
     import pygeodiff
 
-
 class MerginProject:
     """Base class for Mergin Maps local projects.
 
@@ -440,6 +439,7 @@ class MerginProject:
             diff_id = str(uuid.uuid4())
             diff_name = path + "-diff-" + diff_id
             diff_file = self.fpath_meta(diff_name)
+            print(f"Creating changeset for {path} - {diff_name}")
             try:
                 self.geodiff.create_changeset(origin_file, current_file, diff_file)
                 if self.geodiff.has_changes(diff_file):

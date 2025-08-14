@@ -9,19 +9,22 @@ push_project_wait(job) that will block the current thread (not good for GUI).
 To finish the upload job, we have to call push_project_finalize(job).
 """
 
+from dataclasses import asdict
 import json
 import hashlib
 import pprint
 import tempfile
 import concurrent.futures
 import os
-import math
+import time
 from typing import List, Tuple, Optional
-import uuid
+
+from .local_changes import LocalChange, LocalChanges
 
 from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
 from .editor import filter_changes
+
 
 def _do_upload(item, job):
     """runs in worker thread, have to be defined here to avoid worker threads repeating this function"""
@@ -45,17 +48,24 @@ class UploadChunksCache:
         """Get chunk_id by checksum, or None if not present."""
         return self.cache.get(checksum)
 
+    def clear(self):
+        """Clear the cache."""
+        self.cache.clear()
+
 
 class UploadQueueItem:
     """A single chunk of data that needs to be uploaded"""
 
-    def __init__(self, mc, mp, file_path, size, file_checksum, chunk_id, chunk_index):
+    def __init__(
+        self, mc, mp: MerginProject, file_path: str, size: int, file_checksum: str, chunk_id: str, chunk_index: int
+    ):
         self.mc = mc  # MerginClient instance, set when uploading
         self.mp: MerginProject = mp  # MerginProject instance, set when uploading
         self.file_path = file_path  # full path to the file
         self.size = size  # size of the chunk in bytes
-        self.file_checksum = file_checksum  # checksum of the file, set when uploading
+        self.file_checksum = file_checksum  # checksum of the file uploaded file
         self.chunk_id = chunk_id  # ID of the chunk within transaction
+        self.server_chunk_id = None  # ID of the chunk on the server, set when uploading
         self.chunk_index = chunk_index  # index (starting from zero) of the chunk within the file
         self.transaction_id = ""  # ID of the transaction, assigned by the server when starting the upload
 
@@ -87,8 +97,8 @@ class UploadQueueItem:
         # try to lookup the chunk in the cache, if yes use it.
         cached_chunk_id = self.mc.upload_chunks_cache.get_chunk_id(checksum)
         if cached_chunk_id:
-            self.chunk_id = cached_chunk_id
-            self.mp.log.debug(f"Chunk {self.chunk_id} already uploaded, skipping upload")
+            self.server_chunk_id = cached_chunk_id
+            self.mp.log.debug(f"Chunk {self.server_chunk_id} already uploaded, skipping upload")
             return
         project_id = self.mp.project_id()
         resp = self.mc.post(
@@ -97,7 +107,8 @@ class UploadQueueItem:
             self._request_headers,
         )
         resp_dict = json.load(resp)
-        self.chunk_id = resp_dict.get("id")
+        self.server_chunk_id = resp_dict.get("id")
+        self.mc.upload_chunks_cache.add(checksum, self.server_chunk_id)
         self.mp.log.debug(f"Upload chunk finished: {self.file_path}")
 
     def upload_blocking(self):
@@ -109,12 +120,22 @@ class UploadQueueItem:
             checksum_str = checksum.hexdigest()
 
             self.mp.log.debug(f"Uploading {self.file_path} part={self.chunk_index}")
-            if self.mc.server_features().get("v2_push_enabled"):
-                # use v2 API for uploading chunks
-                self.upload_chunk_v2_api(data, checksum_str)
-            else:
-                # use v1 API for uploading chunks
-                self.upload_chunk(data, checksum_str)
+            attempts = 2
+            for attempt in range(attempts):
+                try:
+                    if self.mc.server_features().get("v2_push_enabled"):
+                        # use v2 API for uploading chunks
+                        self.upload_chunk_v2_api(data, checksum_str)
+                    else:
+                        # use v1 API for uploading chunks
+                        self.upload_chunk(data, checksum_str)
+                    break  # exit loop if upload was successful
+                except ClientError as e:
+                    if e.http_error == 409 and attempt < attempts - 1:
+                        # retry on conflict, e.g. when server has changes that we do not have yet
+                        time.sleep(5)
+                        continue
+                    raise
 
             self.mp.log.debug(f"Upload chunk finished: {self.file_path}")
 
@@ -122,14 +143,16 @@ class UploadQueueItem:
 class UploadJob:
     """Keeps all the important data about a pending upload job"""
 
-    def __init__(self, version: str, changes: dict, transaction_id: Optional[str], mp: MerginProject, mc, tmp_dir):
+    def __init__(
+        self, version: str, changes: LocalChanges, transaction_id: Optional[str], mp: MerginProject, mc, tmp_dir
+    ):
         # self.project_path = project_path  # full project name ("username/projectname")
         self.version = version
-        self.changes = changes  # dictionary of local changes to the project
+        self.changes: LocalChanges = changes  # dictionary of local changes to the project
         self.transaction_id = transaction_id  # ID of the transaction assigned by the server
         self.total_size = 0  # size of data to upload (in bytes)
         self.transferred_size = 0  # size of data already uploaded (in bytes)
-        self.upload_queue_items = []  # list of items to upload in the background
+        self.upload_queue_items: List[UploadQueueItem] = []  # list of items to upload in the background
         self.mp = mp  # MerginProject instance
         self.mc = mc  # MerginClient instance
         self.tmp_dir = tmp_dir  # TemporaryDirectory instance for any temp file we need
@@ -143,7 +166,6 @@ class UploadJob:
         for item in self.upload_queue_items:
             print("- {} {} {}".format(item.file_path, item.chunk_index, item.size))
         print("--- END ---")
-
 
     def submit_item_to_thread(self, item: UploadQueueItem):
         """Upload a single item in the background"""
@@ -160,11 +182,16 @@ class UploadJob:
         # start uploads in background
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
         for item in items:
-            item.transaction_id = self.transaction_id  # ensure transaction ID is set
+            if self.transaction_id:
+                item.transaction_id = self.transaction_id
             self.submit_item_to_thread(item)
 
+    def update_chunks_from_items(self):
+        """Update chunks in LocalChanges from the upload queue items."""
+        self.changes.update_chunks([(item.file_checksum, item.server_chunk_id) for item in self.upload_queue_items])
 
-def create_upload_chunks(mc, mp: MerginProject, files: dict) -> Tuple[List[UploadQueueItem], int]:
+
+def create_upload_chunks(mc, mp: MerginProject, local_changes: List[LocalChange]) -> Tuple[List[UploadQueueItem], int]:
     """
     Create a list of UploadQueueItem objects from the changes dictionary and calculate total size of files.
     This is used to prepare the upload queue for the upload job.
@@ -172,22 +199,23 @@ def create_upload_chunks(mc, mp: MerginProject, files: dict) -> Tuple[List[Uploa
     upload_queue_items = []
     total_size = 0
     # prepare file chunks for upload
-    for file in files:
-        file_checksum = file.get("checksum")
-        if "diff" in file:
+    for change in local_changes:
+        file_checksum = change.checksum
+        diff = change.get_diff()
+        if diff:
             # versioned file - uploading diff
-            file_location = mp.fpath_meta(file["diff"]["path"])
-            file_size = file["diff"]["size"]
-        elif "upload_file" in file:
+            file_location = mp.fpath_meta(diff.path)
+            file_size = diff.size
+        elif change.upload_file:
             # versioned file - uploading full (a temporary copy)
-            file_location = file["upload_file"]
-            file_size = file["size"]
+            file_location = change.upload_file
+            file_size = change.size
         else:
             # non-versioned file
-            file_location = mp.fpath(file["path"])
-            file_size = file["size"]
+            file_location = mp.fpath(change.path)
+            file_size = change.size
 
-        for chunk_index, chunk_id in enumerate(file["chunks"]):
+        for chunk_index, chunk_id in enumerate(change.chunks):
             size = min(UPLOAD_CHUNK_SIZE, file_size - chunk_index * UPLOAD_CHUNK_SIZE)
             upload_queue_items.append(
                 UploadQueueItem(mc, mp, file_location, size, file_checksum, chunk_id, chunk_index)
@@ -198,11 +226,16 @@ def create_upload_chunks(mc, mp: MerginProject, files: dict) -> Tuple[List[Uploa
     return upload_queue_items, total_size
 
 
-def create_upload_job(mc, mp: MerginProject, changes: dict, tmp_dir: tempfile.TemporaryDirectory):
+def create_upload_job(
+    mc, mp: MerginProject, changes: LocalChanges, tmp_dir: tempfile.TemporaryDirectory
+) -> Optional[UploadJob]:
+    """
+    Prepare transaction and create an upload job for the project using the v1 API.
+    """
     project_path = mp.project_full_name()
     local_version = mp.version()
 
-    data = {"version": local_version, "changes": changes}
+    data = {"version": local_version, "changes": changes.get_server_request()}
     try:
         resp = mc.post(
             f"/v1/project/push/{project_path}",
@@ -213,58 +246,66 @@ def create_upload_job(mc, mp: MerginProject, changes: dict, tmp_dir: tempfile.Te
         mp.log.error("Error starting transaction: " + str(err))
         mp.log.info("--- push aborted")
         raise
-    server_resp = json.load(resp)
+    push_start_resp = json.load(resp)
 
-    upload_files = data["changes"]["added"] + data["changes"]["updated"]
-
-    transaction_id = server_resp["transaction"] if upload_files else None
+    upload_changes = changes.get_upload_changes()
+    transaction_id = push_start_resp["transaction"] if upload_changes else None
     job = UploadJob(local_version, changes, transaction_id, mp, mc, tmp_dir)
 
-    if not upload_files:
+    if not upload_changes:
         mp.log.info("not uploading any files")
-        job.server_resp = server_resp
+        job.server_resp = push_start_resp
         push_project_finalize(job)
-        return None  # all done - no pending job
+        return  # all done - no pending job
 
     mp.log.info(f"got transaction ID {transaction_id}")
 
     # prepare file chunks for upload
-    upload_queue_items, total_size = create_upload_chunks(mc, mp, upload_files)
+    upload_queue_items, total_size = create_upload_chunks(mc, mp, upload_changes)
     job.add_items(upload_queue_items, total_size)
     return job
 
 
-def create_upload_job_v2_api(mc, mp: MerginProject, changes: dict, tmp_dir: tempfile.TemporaryDirectory):
+def create_upload_job_v2_api(
+    mc, mp: MerginProject, changes: LocalChanges, tmp_dir: tempfile.TemporaryDirectory
+) -> Optional[UploadJob]:
+    """
+    Call checkonly endpoint to check compatibility of the project with the server
+    and prepare an upload job for the project using the v2 API.
+    """
     project_id = mp.project_id()
     local_version = mp.version()
 
-    data = {"version": local_version, "changes": changes}
+    data = {"version": local_version, "changes": changes.get_server_request()}
     try:
-        resp = mc.post(
+        mc.post(
             f"/v2/projects/{project_id}/versions",
             {**data, "check_only": True},
             {"Content-Type": "application/json"},
         )
     except ClientError as err:
-        mp.log.error("Error starting transaction: " + str(err))
-        mp.log.info("--- push aborted")
-        raise
+        # ignore 409 error, it means that the project is already in a transaction
+        # but we still want to continue with the upload
+        if err.http_error not in [409]:
+            mp.log.error("Error doing push check compatibility: " + str(err))
+            mp.log.error("--- push aborted")
+            raise
+        else:
+            mp.log.info("Project version exists or another upload is running, continuing with upload.")
 
-    upload_files = data["changes"]["added"] + data["changes"]["updated"]
-
+    upload_changes = changes.get_upload_changes()
     job = UploadJob(local_version, changes, None, mp, mc, tmp_dir)
+    upload_queue_items, total_size = create_upload_chunks(mc, mp, upload_changes)
+    job.add_items(upload_queue_items, total_size)
 
-    if not upload_files:
+    if not upload_queue_items:
         mp.log.info("not uploading any files")
-        job.server_resp = resp
         push_project_finalize(job)
         return None  # all done - no pending job
 
     mp.log.info(f"Starting upload chunks for project {project_id}")
 
     # prepare file chunks for upload
-    upload_queue_items, total_size = create_upload_chunks(mc, mp, upload_files)
-    job.add_items(upload_queue_items, total_size)
     return job
 
 
@@ -299,12 +340,13 @@ def push_project_async(mc, directory) -> Optional[UploadJob]:
         mp.log.error(f"--- push {project_path} - username {username} does not have write access")
         raise ClientError(f"You do not seem to have write access to the project (username '{username}')")
 
-    if local_version != server_version:
-        mp.log.error(f"--- push {project_path} - not up to date (local {local_version} vs server {server_version})")
-        raise ClientError(
-            "There is a new version of the project on the server. Please update your local copy."
-            + f"\n\nLocal version: {local_version}\nServer version: {server_version}"
-        )
+    # DISCUSSION: do we want to check if the project is up to date before pushing? For now, we removed this part
+    # if local_version != server_version:
+    #     mp.log.error(f"--- push {project_path} - not up to date (local {local_version} vs server {server_version})")
+    #     raise ClientError(
+    #         "There is a new version of the project on the server. Please update your local copy."
+    #         + f"\n\nLocal version: {local_version}\nServer version: {server_version}"
+    #     )
 
     changes = mp.get_push_changes()
     changes = filter_changes(mc, project_info, changes)
@@ -329,17 +371,19 @@ def push_project_async(mc, directory) -> Optional[UploadJob]:
         mp.log.info(f"--- push {project_path} - nothing to do")
         return
 
-    # drop internal info from being sent to server
-    for item in changes["updated"]:
-        item.pop("origin_checksum", None)
     server_feaure_flags = mc.server_features()
     job = None
+    local_changes = LocalChanges(
+        added=[LocalChange(**change) for change in changes["added"]],
+        updated=[LocalChange(**change) for change in changes["updated"]],
+        removed=[LocalChange(**change) for change in changes["removed"]],
+    )
     if server_feaure_flags.get("v2_push_enabled"):
         # v2 push uses a different endpoint
-        job = create_upload_job_v2_api(mc, mp, changes, tmp_dir)
+        job = create_upload_job_v2_api(mc, mp, local_changes, tmp_dir)
     else:
         # v1 push uses the old endpoint
-        job = create_upload_job(mc, mp, changes, tmp_dir)
+        job = create_upload_job(mc, mp, local_changes, tmp_dir)
     return job
 
 
@@ -349,7 +393,7 @@ def push_project_wait(job):
     concurrent.futures.wait(job.futures)
 
 
-def push_project_is_running(job):
+def push_project_is_running(job: UploadJob):
     """
     Returns true/false depending on whether we have some pending uploads
 
@@ -396,74 +440,62 @@ def push_project_finalize(job: UploadJob):
         job.mp.log.error("--- push finish failed! " + error_msg)
         raise ClientError("Upload error: " + error_msg)
 
-    # map chunk ids to file checksums
-    change_keys = ["added", "updated"]
-    for key in change_keys:
-        if (key not in job.changes):
-            continue
-        uploaded_chunks = []
-        for change in job.changes.get(key, []):
-            change["chunks"] = [
-                upload.chunk_id for upload in job.upload_queue_items if upload.file_checksum == change.get("checksum")
-            ]
-            uploaded_chunks.append(change)
-            print(change)
-        job.changes[key] = uploaded_chunks
+    job.update_chunks_from_items()
 
-    if with_upload_of_files:
-        if server_features.get("v2_push_enabled"):
-            # v2 push uses a different endpoint
-            try:
-                job.mp.log.info(f"Finishing transaction for project {job.mp.project_full_name()}")
-                job.mc.post(
-                    f"/v2/projects/{job.mp.project_id()}/versions",
-                    data={
-                        "version": job.version,
-                        "changes": job.changes,
-                    },
-                    headers={"Content-Type": "application/json"},
-                )
-                project_info = job.mc.project_info(job.mp.project_id())
-                job.server_resp = project_info
-            except ClientError as err:
-                job.mp.log.error("--- push finish failed! " + str(err))
-                raise err
-        else:
-            try:
-                job.mp.log.info(f"Finishing transaction {job.transaction_id}")
-                resp = job.mc.post("/v1/project/push/finish/%s" % job.transaction_id)
-                job.server_resp = json.load(resp)
-            except ClientError as err:
-                # server returns various error messages with filename or something generic
-                # it would be better if it returned list of failed files (and reasons) whenever possible
-                job.mp.log.error("--- push finish failed! " + str(err))
+    if server_features.get("v2_push_enabled"):
+        # v2 push uses a different endpoint
+        try:
+            job.mp.log.info(f"Finishing transaction for project {job.mp.project_full_name()}")
+            job.mc.post(
+                f"/v2/projects/{job.mp.project_id()}/versions",
+                data={
+                    "version": job.version,
+                    "changes": job.changes.get_server_request(),
+                },
+                headers={"Content-Type": "application/json"},
+            )
+            project_info = job.mc.project_info(job.mp.project_id())
+            job.server_resp = project_info
+        except ClientError as err:
+            job.mp.log.error("--- push finish failed! " + str(err))
+            raise err
+    elif with_upload_of_files:
+        try:
+            job.mp.log.info(f"Finishing transaction {job.transaction_id}")
+            resp = job.mc.post("/v1/project/push/finish/%s" % job.transaction_id)
+            job.server_resp = json.load(resp)
+        except ClientError as err:
+            # server returns various error messages with filename or something generic
+            # it would be better if it returned list of failed files (and reasons) whenever possible
+            job.mp.log.error("--- push finish failed! " + str(err))
 
-                # if push finish fails, the transaction is not killed, so we
-                # need to cancel it so it does not block further uploads
-                job.mp.log.info("canceling the pending transaction...")
-                try:
-                    resp_cancel = job.mc.post("/v1/project/push/cancel/%s" % job.transaction_id)
-                    job.mp.log.info("cancel response: " + resp_cancel.msg)
-                except ClientError as err2:
-                    job.mp.log.info("cancel response: " + str(err2))
-                raise err
+            # if push finish fails, the transaction is not killed, so we
+            # need to cancel it so it does not block further uploads
+            job.mp.log.info("canceling the pending transaction...")
+            try:
+                resp_cancel = job.mc.post("/v1/project/push/cancel/%s" % job.transaction_id)
+                job.mp.log.info("cancel response: " + resp_cancel.msg)
+            except ClientError as err2:
+                job.mp.log.info("cancel response: " + str(err2))
+            raise err
 
     job.mp.update_metadata(job.server_resp)
     try:
-        job.mp.apply_push_changes(job.changes)
+        job.mp.apply_push_changes(asdict(job.changes))
     except Exception as e:
         job.mp.log.error("Failed to apply push changes: " + str(e))
         job.mp.log.info("--- push aborted")
         raise ClientError("Failed to apply push changes: " + str(e))
 
     job.tmp_dir.cleanup()  # delete our temporary dir and all its content
+    job.mc.upload_chunks_cache.clear()  # clear the upload chunks cache
 
     remove_diff_files(job)
 
     job.mp.log.info("--- push finished - new project version " + job.server_resp["version"])
 
 
-def push_project_cancel(job):
+def push_project_cancel(job: UploadJob):
     """
     To be called (from main thread) to cancel a job that has uploads in progress.
     Returns once all background tasks have exited (may block for a bit of time).
@@ -474,6 +506,9 @@ def push_project_cancel(job):
     job.is_cancelled = True
 
     job.executor.shutdown(wait=True)
+    if not job.transaction_id:
+        job.mp.log.info("--- push cancelled")
+        return
     try:
         resp_cancel = job.mc.post("/v1/project/push/cancel/%s" % job.transaction_id)
         job.server_resp = resp_cancel.msg
@@ -483,11 +518,12 @@ def push_project_cancel(job):
     job.mp.log.info("--- push cancel response: " + str(job.server_resp))
 
 
-def remove_diff_files(job) -> None:
+def remove_diff_files(job: UploadJob) -> None:
     """Looks for diff files in the job and removes them."""
 
-    for change in job.changes["updated"]:
-        if "diff" in change.keys():
-            diff_file = job.mp.fpath_meta(change["diff"]["path"])
+    for change in job.changes.updated:
+        diff = change.get_diff()
+        if diff:
+            diff_file = job.mp.fpath_meta(diff.path)
             if os.path.exists(diff_file):
                 os.remove(diff_file)

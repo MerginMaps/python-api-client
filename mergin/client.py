@@ -3,6 +3,7 @@ import math
 import os
 import json
 import shutil
+import time
 import zlib
 import base64
 import urllib.parse
@@ -400,8 +401,7 @@ class MerginClient:
             return self._server_features
         config = self.server_config()
         self._server_features = {
-            "v2_push_enabled": config.get("v2_push_enabled", False)
-            and is_version_acceptable(self.server_version(), "2025.6.1"),
+            "v2_push_enabled": config.get("v2_push_enabled", False),
             "v2_pull_enabled": config.get("v2_pull_enabled", False),
         }
         return self._server_features
@@ -1485,3 +1485,33 @@ class MerginClient:
         params = {"email": email, "role": workspace_role.value}
         ws_inv = self.post(f"v2/workspaces/{workspace_id}/invitations", params, json_headers)
         return json.load(ws_inv)
+
+    def sync_project(self, project_dir):
+        """
+        Syncs project by loop with these steps:
+        1. Pull server version
+        2. Get local changes
+        3. Push first change batch
+        Repeat if there are more local changes.
+        The batch pushing makes use of the server ability to handle simultaneously exclusive upload (that blocks
+            other uploads) and non-exclusive upload (for adding assets)
+        """
+        attempts = 2
+        for attempt in range(attempts):
+            try:
+                pull_job = pull_project_async(self, project_dir)
+                if pull_job:
+                    pull_project_wait(pull_job)
+                    pull_project_finalize(pull_job)
+
+                job = push_project_async(self, project_dir)
+                if job:
+                    push_project_wait(job)
+                    push_project_finalize(job)
+                break
+            except ClientError as e:
+                if e.http_error == 409 and attempt < attempts - 1:
+                    # retry on conflict, e.g. when server has changes that we do not have yet
+                    time.sleep(5)
+                    continue
+                raise e
