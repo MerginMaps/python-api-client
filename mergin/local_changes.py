@@ -13,7 +13,7 @@ class BaseLocalChange:
 class LocalChange(BaseLocalChange):
     origin_checksum: Optional[str] = None
     chunks: List[str] = field(default_factory=list)
-    diff: dict = field(default_factory=dict)  # Assuming diff is a dict with relevant data
+    diff: Optional[dict] = None 
     upload_file: Optional[str] = None
 
     def get_diff(self) -> Optional[BaseLocalChange]:
