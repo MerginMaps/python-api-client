@@ -341,12 +341,12 @@ def push_project_async(mc, directory) -> Optional[UploadJob]:
         raise ClientError(f"You do not seem to have write access to the project (username '{username}')")
 
     # DISCUSSION: do we want to check if the project is up to date before pushing? For now, we removed this part
-    # if local_version != server_version:
-    #     mp.log.error(f"--- push {project_path} - not up to date (local {local_version} vs server {server_version})")
-    #     raise ClientError(
-    #         "There is a new version of the project on the server. Please update your local copy."
-    #         + f"\n\nLocal version: {local_version}\nServer version: {server_version}"
-    #     )
+    if local_version != server_version:
+        mp.log.error(f"--- push {project_path} - not up to date (local {local_version} vs server {server_version})")
+        raise ClientError(
+            "There is a new version of the project on the server. Please update your local copy."
+            + f"\n\nLocal version: {local_version}\nServer version: {server_version}"
+        )
 
     changes = mp.get_push_changes()
     changes = filter_changes(mc, project_info, changes)
