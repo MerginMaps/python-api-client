@@ -15,6 +15,12 @@ class LocalChange(BaseLocalChange):
     chunks: List[str] = field(default_factory=list)
     diff: Optional[dict] = None 
     upload_file: Optional[str] = None
+    # some functions (MerginProject.compare_file_sets) are adding version to the change from project info
+    version: Optional[str] = None
+    # some functions (MerginProject.compare_file_sets) are adding history dict to the change from project info
+    history: Optional[dict] = None
+    # some functions (MerginProject.compare_file_sets) are adding location dict to the change from project info
+    location: Optional[str] = None
 
     def get_diff(self) -> Optional[BaseLocalChange]:
         if self.diff:
@@ -69,15 +75,15 @@ class LocalChanges:
         lists based on the provided `chunks` list, which contains tuples of (checksum, chunk_id).
         """
         for change in self.added:
-            change.chunks = [
+            change.chunks = list({
                 chunk[1]
                 for chunk in chunks
                 if chunk[0] == change.checksum
-            ]
+            })
 
         for change in self.updated:
-            change.chunks = [
+            change.chunks = list({
                 chunk[1]
                 for chunk in chunks
                 if chunk[0] == change.checksum
-            ]
+            })

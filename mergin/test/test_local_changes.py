@@ -12,7 +12,24 @@ def test_local_changes_from_dict():
             {"path": "file2.txt", "checksum": "xyz789", "size": 2048, "mtime": datetime.now()}
         ],
         "removed": [
-            {"path": "file3.txt", "checksum": "lmn456", "size": 512, "mtime": datetime.now()}
+            {
+                "checksum": "a4e7e35d1e8c203b5d342ecd9676adbebc924c84",
+                "diff": None,
+                "history": {
+                    "v1": {
+                    "change": "added",
+                    "checksum": "a4e7e35d1e8c203b5d342ecd9676adbebc924c84",
+                    "expiration": None,
+                    "path": "base.gpkg",
+                    "size": 98304
+                    }
+                },
+                "location": "v1/base.gpkg",
+                "mtime": "2025-08-15T09:04:21.690590Z",
+                "path": "base.gpkg",
+                "size": 98304,
+                "version": "v1"
+            }
         ]
     }
 
@@ -29,7 +46,10 @@ def test_local_changes_from_dict():
     assert len(local_changes.removed) == 1
     assert local_changes.added[0].path == "file1.txt"
     assert local_changes.updated[0].path == "file2.txt"
-    assert local_changes.removed[0].path == "file3.txt"
+    assert local_changes.removed[0].path == "base.gpkg"
+    assert local_changes.removed[0].history
+    assert local_changes.removed[0].location
+    assert not len(local_changes.removed[0].chunks)
 
 
 def test_local_change_get_diff():
@@ -74,18 +94,20 @@ def test_local_changes_get_server_request():
 def test_local_changes_update_chunks():
     """Test the update_chunks method of LocalChanges."""
     added = [
-        LocalChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now())
+        LocalChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now()),
+        LocalChange(path="file2.txt", checksum="abc123", size=1024, mtime=datetime.now())
     ]
     updated = [
         LocalChange(path="file2.txt", checksum="xyz789", size=2048, mtime=datetime.now())
     ]
 
     local_changes = LocalChanges(added=added, updated=updated)
-    chunks = [("abc123", "chunk1"), ("xyz789", "chunk2")]
+    chunks = [("abc123", "chunk1"), ("abc123", "chunk1"), ("xyz789", "chunk2")]
 
     local_changes.update_chunks(chunks)
 
     assert local_changes.added[0].chunks == ["chunk1"]
+    assert local_changes.added[1].chunks == ["chunk1"]
     assert local_changes.updated[0].chunks == ["chunk2"]
 
 def test_local_changes_get_upload_changes():

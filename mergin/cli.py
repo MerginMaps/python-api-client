@@ -468,6 +468,38 @@ def pull(ctx):
     except Exception as e:
         _print_unhandled_exception()
 
+@cli.command()
+@click.pass_context
+def sync(ctx):
+    """Synchronize the project. Pull latest project version from the server and push split changes."""
+    mc = ctx.obj["client"]
+    if mc is None:
+        return
+    directory = os.getcwd()
+    upload_job = None
+    length = 1
+    try:
+        def on_progress(increment, push_job):
+            nonlocal upload_job
+            upload_job = push_job
+
+        # run pull & push cycles until there are no local changes
+        mc.sync_project_with_callback(directory, progress_callback=on_progress)
+
+        click.secho("Sync complete.", fg="green")
+
+    except InvalidProject as e:
+        click.secho("Invalid project directory ({})".format(str(e)), fg="red")
+    except ClientError as e:
+        click.secho("Error: " + str(e), fg="red")
+        return
+    except KeyboardInterrupt:
+        click.secho("Cancelling...")
+        if upload_job:
+            push_project_cancel(upload_job)
+    except Exception as e:
+        _print_unhandled_exception()
+
 
 @cli.command()
 @click.argument("version")

@@ -109,7 +109,6 @@ class UploadQueueItem:
         resp_dict = json.load(resp)
         self.server_chunk_id = resp_dict.get("id")
         self.mc.upload_chunks_cache.add(checksum, self.server_chunk_id)
-        self.mp.log.debug(f"Upload chunk finished: {self.file_path}")
 
     def upload_blocking(self):
         with open(self.file_path, "rb") as file_handle:
@@ -137,7 +136,7 @@ class UploadQueueItem:
                         continue
                     raise
 
-            self.mp.log.debug(f"Upload chunk finished: {self.file_path}")
+            self.mp.log.debug(f"Upload chunk {self.chunk_id} finished: {self.file_path}")
 
 
 class UploadJob:
@@ -188,7 +187,9 @@ class UploadJob:
 
     def update_chunks_from_items(self):
         """Update chunks in LocalChanges from the upload queue items."""
-        self.changes.update_chunks([(item.file_checksum, item.server_chunk_id) for item in self.upload_queue_items])
+        self.changes.update_chunks(
+            [(item.file_checksum, item.server_chunk_id) for item in self.upload_queue_items]
+        )
 
 
 def create_upload_chunks(mc, mp: MerginProject, local_changes: List[LocalChange]) -> Tuple[List[UploadQueueItem], int]:
@@ -348,11 +349,13 @@ def push_project_async(mc, directory) -> Optional[UploadJob]:
             + f"\n\nLocal version: {local_version}\nServer version: {server_version}"
         )
 
-    changes = mp.get_push_changes()
-    changes = filter_changes(mc, project_info, changes)
-    mp.log.debug("push changes:\n" + pprint.pformat(changes))
-
     tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
+    changes, changes_len = get_push_changes_batch(mc, mp, project_info)
+    if not changes_len:
+        mp.log.info(f"--- push {project_path} - nothing to do")
+        return
+
+    mp.log.debug("push changes:\n" + pprint.pformat(changes))
 
     # If there are any versioned files (aka .gpkg) that are not updated through a diff,
     # we need to make a temporary copy somewhere to be sure that we are uploading full content.
@@ -366,10 +369,6 @@ def push_project_async(mc, directory) -> Optional[UploadJob]:
     for f in changes["added"]:
         if mp.is_versioned_file(f["path"]):
             mp.copy_versioned_file_for_upload(f, tmp_dir.name)
-
-    if not sum(len(v) for v in changes.values()):
-        mp.log.info(f"--- push {project_path} - nothing to do")
-        return
 
     server_feaure_flags = mc.server_features()
     job = None
@@ -527,3 +526,13 @@ def remove_diff_files(job: UploadJob) -> None:
             diff_file = job.mp.fpath_meta(diff.path)
             if os.path.exists(diff_file):
                 os.remove(diff_file)
+
+
+def get_push_changes_batch(mc, mp: MerginProject, project_info: dict) -> Tuple[dict, int]:
+    """
+    Get changes that need to be pushed to the server.
+    """
+    changes = mp.get_push_changes()
+    changes = filter_changes(mc, project_info, changes)
+
+    return changes, sum(len(v) for v in changes.values())

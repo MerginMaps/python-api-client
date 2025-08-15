@@ -3,7 +3,6 @@ import math
 import os
 import json
 import shutil
-import time
 import zlib
 import base64
 import urllib.parse
@@ -17,6 +16,7 @@ from enum import Enum, auto
 import re
 import typing
 import warnings
+from time import sleep
 
 from typing import List
 
@@ -41,7 +41,7 @@ from .client_pull import (
     download_diffs_finalize,
 )
 from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
-from .client_push import push_project_async, push_project_wait, push_project_finalize, UploadChunksCache
+from .client_push import get_push_changes_batch, push_project_async, push_project_is_running, push_project_wait, push_project_finalize, UploadChunksCache
 from .utils import DateTimeEncoder, get_versions_with_file_changes, int_version, is_version_acceptable
 from .version import __version__
 
@@ -1486,32 +1486,72 @@ class MerginClient:
         ws_inv = self.post(f"v2/workspaces/{workspace_id}/invitations", params, json_headers)
         return json.load(ws_inv)
 
-    def sync_project(self, project_dir):
+    def sync_project(self, project_directory):
         """
         Syncs project by loop with these steps:
         1. Pull server version
         2. Get local changes
         3. Push first change batch
         Repeat if there are more local changes.
-        The batch pushing makes use of the server ability to handle simultaneously exclusive upload (that blocks
-            other uploads) and non-exclusive upload (for adding assets)
         """
-        attempts = 2
-        for attempt in range(attempts):
-            try:
-                pull_job = pull_project_async(self, project_dir)
-                if pull_job:
-                    pull_project_wait(pull_job)
-                    pull_project_finalize(pull_job)
+        mp = MerginProject(project_directory)
+        has_changes = True
+        server_conflict_attempts = 0
+        while has_changes:
+            pull_job = pull_project_async(self, project_directory)
+            if pull_job:
+                pull_project_wait(pull_job)
+                pull_project_finalize(pull_job)
 
-                job = push_project_async(self, project_dir)
-                if job:
-                    push_project_wait(job)
-                    push_project_finalize(job)
-                break
+            try:
+                job = push_project_async(self, project_directory)
+                if not job:
+                    break
+                push_project_wait(job)
+                push_project_finalize(job)
+                _, has_changes = get_push_changes_batch(self, mp, job.server_resp)
             except ClientError as e:
-                if e.http_error == 409 and attempt < attempts - 1:
+                if e.http_error == 409 and server_conflict_attempts < 2:
                     # retry on conflict, e.g. when server has changes that we do not have yet
-                    time.sleep(5)
+                    mp.log.info("Attempting sync process due to conflicts between server and local directory or another user is syncing.")
+                    server_conflict_attempts += 1
+                    sleep(5)
+                    continue
+                raise e
+
+    def sync_project_with_callback(self, project_directory, progress_callback=None, sleep_time=0.1):
+        """
+        Syncs project while sending push progress info as callback.
+        Sync is done in this loop:
+            Pending changes? -> Pull -> Get changes batch -> Push the changes -> repeat
+        :param progress_callback: updates the progress bar in CLI, on_progress(increment)
+        :param sleep_time: sleep time between calling the callback function
+        """
+        mp = MerginProject(project_directory)
+        has_changes = True
+        server_conflict_attempts = 0
+        while has_changes:
+            pull_job = pull_project_async(self, project_directory)
+            if pull_job:
+                pull_project_wait(pull_job)
+                pull_project_finalize(pull_job)
+            try:
+                job = push_project_async(self, project_directory)
+                if not job:
+                    break
+                last = 0
+                while push_project_is_running(job):
+                    sleep(sleep_time)
+                    now = job.transferred_size
+                    progress_callback(now - last, job)  # update progressbar with transferred size increment
+                    last = now
+                push_project_finalize(job)
+                _, has_changes = get_push_changes_batch(self, mp, job.server_resp)
+            except ClientError as e:
+                if e.http_error == 409 and server_conflict_attempts < 2:
+                    # retry on conflict, e.g. when server has changes that we do not have yet
+                    mp.log.info("Attempting sync process due to conflicts between server and local directory or another user is syncing.")
+                    server_conflict_attempts += 1
+                    sleep(5)
                     continue
                 raise e
