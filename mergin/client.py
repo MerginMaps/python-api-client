@@ -16,6 +16,7 @@ from enum import Enum, auto
 import re
 import typing
 import warnings
+from time import sleep
 
 from typing import List
 
@@ -40,7 +41,7 @@ from .client_pull import (
     download_diffs_finalize,
 )
 from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
-from .client_push import push_project_async, push_project_wait, push_project_finalize
+from .client_push import get_push_changes_batch, push_project_async, push_project_is_running, push_project_wait, push_project_finalize, UploadChunksCache
 from .utils import DateTimeEncoder, get_versions_with_file_changes, int_version, is_version_acceptable
 from .version import __version__
 
@@ -106,6 +107,8 @@ class MerginClient:
         self._user_info = None
         self._server_type = None
         self._server_version = None
+        self._server_features = {}
+        self.upload_chunks_cache = UploadChunksCache()
         self.client_version = "Python-client/" + __version__
         if plugin_version is not None:  # this could be e.g. "Plugin/2020.1 QGIS/3.14"
             self.client_version += " " + plugin_version
@@ -362,8 +365,7 @@ class MerginClient:
         """
         if not self._server_type:
             try:
-                resp = self.get("/config", validate_auth=False)
-                config = json.load(resp)
+                config = self.server_config()
                 if config["server_type"] == "ce":
                     self._server_type = ServerType.CE
                 elif config["server_type"] == "ee":
@@ -384,13 +386,25 @@ class MerginClient:
         """
         if self._server_version is None:
             try:
-                resp = self.get("/config", validate_auth=False)
-                config = json.load(resp)
+                config = self.server_config()
                 self._server_version = config["version"]
             except (ClientError, KeyError):
                 self._server_version = ""
 
         return self._server_version
+
+    def server_features(self):
+        """
+        Returns feature flags of the server.
+        """
+        if self._server_features:
+            return self._server_features
+        config = self.server_config()
+        self._server_features = {
+            "v2_push_enabled": config.get("v2_push_enabled", False),
+            "v2_pull_enabled": config.get("v2_pull_enabled", False),
+        }
+        return self._server_features
 
     def workspaces_list(self):
         """
@@ -1471,3 +1485,73 @@ class MerginClient:
         params = {"email": email, "role": workspace_role.value}
         ws_inv = self.post(f"v2/workspaces/{workspace_id}/invitations", params, json_headers)
         return json.load(ws_inv)
+
+    def sync_project(self, project_directory):
+        """
+        Syncs project by loop with these steps:
+        1. Pull server version
+        2. Get local changes
+        3. Push first change batch
+        Repeat if there are more local changes.
+        """
+        mp = MerginProject(project_directory)
+        has_changes = True
+        server_conflict_attempts = 0
+        while has_changes:
+            pull_job = pull_project_async(self, project_directory)
+            if pull_job:
+                pull_project_wait(pull_job)
+                pull_project_finalize(pull_job)
+
+            try:
+                job = push_project_async(self, project_directory)
+                if not job:
+                    break
+                push_project_wait(job)
+                push_project_finalize(job)
+                _, has_changes = get_push_changes_batch(self, mp, job.server_resp)
+            except ClientError as e:
+                if e.http_error == 409 and server_conflict_attempts < 2:
+                    # retry on conflict, e.g. when server has changes that we do not have yet
+                    mp.log.info("Attempting sync process due to conflicts between server and local directory or another user is syncing.")
+                    server_conflict_attempts += 1
+                    sleep(5)
+                    continue
+                raise e
+
+    def sync_project_with_callback(self, project_directory, progress_callback=None, sleep_time=0.1):
+        """
+        Syncs project while sending push progress info as callback.
+        Sync is done in this loop:
+            Pending changes? -> Pull -> Get changes batch -> Push the changes -> repeat
+        :param progress_callback: updates the progress bar in CLI, on_progress(increment)
+        :param sleep_time: sleep time between calling the callback function
+        """
+        mp = MerginProject(project_directory)
+        has_changes = True
+        server_conflict_attempts = 0
+        while has_changes:
+            pull_job = pull_project_async(self, project_directory)
+            if pull_job:
+                pull_project_wait(pull_job)
+                pull_project_finalize(pull_job)
+            try:
+                job = push_project_async(self, project_directory)
+                if not job:
+                    break
+                last = 0
+                while push_project_is_running(job):
+                    sleep(sleep_time)
+                    now = job.transferred_size
+                    progress_callback(now - last, job)  # update progressbar with transferred size increment
+                    last = now
+                push_project_finalize(job)
+                _, has_changes = get_push_changes_batch(self, mp, job.server_resp)
+            except ClientError as e:
+                if e.http_error == 409 and server_conflict_attempts < 2:
+                    # retry on conflict, e.g. when server has changes that we do not have yet
+                    mp.log.info("Attempting sync process due to conflicts between server and local directory or another user is syncing.")
+                    server_conflict_attempts += 1
+                    sleep(5)
+                    continue
+                raise e
