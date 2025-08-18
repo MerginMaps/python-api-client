@@ -17,8 +17,6 @@ import re
 import typing
 import warnings
 
-from typing import List
-
 from .common import (
     ClientError,
     LoginError,
@@ -273,7 +271,7 @@ class MerginClient:
         request = urllib.request.Request(url, headers=headers)
         return self._do_request(request, validate_auth=validate_auth)
 
-    def post(self, path, data=None, headers={}, validate_auth=True, query_params: dict[str, str] = None):
+    def post(self, path, data=None, headers={}, validate_auth=True, query_params: typing.Dict[str, str] = None):
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         if query_params:
             url += "?" + urllib.parse.urlencode(query_params)
@@ -1328,7 +1326,7 @@ class MerginClient:
         resp = self.get(f"v2/workspaces/{workspace_id}/members/{user_id}")
         return json.load(resp)
 
-    def list_workspace_members(self, workspace_id: int) -> List[dict]:
+    def list_workspace_members(self, workspace_id: int) -> typing.List[dict]:
         """
         Get a list of workspace members
         """
@@ -1359,7 +1357,7 @@ class MerginClient:
         self.check_collaborators_members_support()
         self.delete(f"v2/workspaces/{workspace_id}/members/{user_id}")
 
-    def list_project_collaborators(self, project_id: str) -> List[dict]:
+    def list_project_collaborators(self, project_id: str) -> typing.List[dict]:
         """
         Get a list of project collaborators
         """
