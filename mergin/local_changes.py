@@ -66,24 +66,31 @@ class LocalChanges:
         This includes added and updated files.
         """
         return self.added + self.updated
-
-    def update_chunks(self, chunks: List[Tuple[str, str]]) -> None:
+    
+    def _map_unique_chunks(self, change_chunks: List[str], server_chunks: List[Tuple[str, str]]) -> List[str]:
         """
-        Map chunk ids to file checksums.
+        Helper function to map and deduplicate chunk ids for a single change.
+        """
+        mapped = []
+        seen = set()
+        for chunk in change_chunks:
+            for server_chunk in server_chunks:
+                chunk_id = server_chunk[0]
+                server_chunk_id = server_chunk[1]
+                if chunk_id == chunk and server_chunk_id not in seen:
+                    mapped.append(server_chunk_id)
+                    seen.add(server_chunk_id)
+        return mapped
+
+    def update_chunks(self, server_chunks: List[Tuple[str, str]]) -> None:
+        """
+        Map chunk ids to chunks returned from server (server_chunk_id).
 
         This method updates the `chunks` attribute of each change in `added` and `updated`
-        lists based on the provided `chunks` list, which contains tuples of (checksum, chunk_id).
+        lists based on the provided `server_chunks` list, which contains tuples of (chunk_id, server_chunk_id).
         """
         for change in self.added:
-            change.chunks = list({
-                chunk[1]
-                for chunk in chunks
-                if chunk[0] == change.checksum
-            })
+            change.chunks = self._map_unique_chunks(change.chunks, server_chunks)
 
         for change in self.updated:
-            change.chunks = list({
-                chunk[1]
-                for chunk in chunks
-                if chunk[0] == change.checksum
-            })
+            change.chunks = self._map_unique_chunks(change.chunks, server_chunks)

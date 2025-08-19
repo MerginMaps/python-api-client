@@ -21,7 +21,7 @@ from typing import List, Tuple, Optional
 
 from .local_changes import LocalChange, LocalChanges
 
-from .common import UPLOAD_CHUNK_SIZE, ClientError
+from .common import UPLOAD_CHUNK_SIZE, ClientError, ErrorCode
 from .merginproject import MerginProject
 from .editor import filter_changes
 
@@ -136,7 +136,7 @@ class UploadQueueItem:
                         continue
                     raise
 
-            self.mp.log.debug(f"Upload chunk {self.chunk_id} finished: {self.file_path}")
+            self.mp.log.debug(f"Upload chunk {self.server_chunk_id or self.chunk_id} finished: {self.file_path}")
 
 
 class UploadJob:
@@ -188,7 +188,7 @@ class UploadJob:
     def update_chunks_from_items(self):
         """Update chunks in LocalChanges from the upload queue items."""
         self.changes.update_chunks(
-            [(item.file_checksum, item.server_chunk_id) for item in self.upload_queue_items]
+            [(item.chunk_id, item.server_chunk_id) for item in self.upload_queue_items]
         )
 
 
@@ -285,9 +285,9 @@ def create_upload_job_v2_api(
             {"Content-Type": "application/json"},
         )
     except ClientError as err:
-        # ignore 409 error, it means that the project is already in a transaction
+        # ignore 409 error codes, it means that the project is already in a transaction
         # but we still want to continue with the upload
-        if err.http_error not in [409]:
+        if err.server_code not in [ErrorCode.AnotherUploadRunning.value, ErrorCode.ProjectVersionExists]:
             mp.log.error("Error doing push check compatibility: " + str(err))
             mp.log.error("--- push aborted")
             raise
@@ -439,11 +439,10 @@ def push_project_finalize(job: UploadJob):
         job.mp.log.error("--- push finish failed! " + error_msg)
         raise ClientError("Upload error: " + error_msg)
 
-    job.update_chunks_from_items()
-
     if server_features.get("v2_push_enabled"):
         # v2 push uses a different endpoint
         try:
+            job.update_chunks_from_items()
             job.mp.log.info(f"Finishing transaction for project {job.mp.project_full_name()}")
             job.mc.post(
                 f"/v2/projects/{job.mp.project_id()}/versions",
@@ -456,6 +455,10 @@ def push_project_finalize(job: UploadJob):
             project_info = job.mc.project_info(job.mp.project_id())
             job.server_resp = project_info
         except ClientError as err:
+            if err.server_code in [ErrorCode.AnotherUploadRunning.value, ErrorCode.ProjectVersionExists]:
+                err.sync_retry = True
+            else:
+                job.mc.upload_chunks_cache.clear()  # clear the upload chunks cache, as we are getting fatal from server
             job.mp.log.error("--- push finish failed! " + str(err))
             raise err
     elif with_upload_of_files:

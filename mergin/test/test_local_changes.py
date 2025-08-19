@@ -94,11 +94,11 @@ def test_local_changes_get_server_request():
 def test_local_changes_update_chunks():
     """Test the update_chunks method of LocalChanges."""
     added = [
-        LocalChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now()),
-        LocalChange(path="file2.txt", checksum="abc123", size=1024, mtime=datetime.now())
+        LocalChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now(),chunks=["abc123"]),
+        LocalChange(path="file2.txt", checksum="abc123", size=1024, mtime=datetime.now(),chunks=["abc123"])
     ]
     updated = [
-        LocalChange(path="file2.txt", checksum="xyz789", size=2048, mtime=datetime.now())
+        LocalChange(path="file2.txt", checksum="xyz789", size=2048, mtime=datetime.now(), chunks=["xyz789"])
     ]
 
     local_changes = LocalChanges(added=added, updated=updated)

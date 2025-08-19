@@ -22,6 +22,7 @@ from typing import List
 
 from .common import (
     ClientError,
+    ErrorCode,
     LoginError,
     WorkspaceRole,
     ProjectRole,
@@ -41,7 +42,14 @@ from .client_pull import (
     download_diffs_finalize,
 )
 from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
-from .client_push import get_push_changes_batch, push_project_async, push_project_is_running, push_project_wait, push_project_finalize, UploadChunksCache
+from .client_push import (
+    get_push_changes_batch,
+    push_project_async,
+    push_project_is_running,
+    push_project_wait,
+    push_project_finalize,
+    UploadChunksCache,
+)
 from .utils import DateTimeEncoder, get_versions_with_file_changes, int_version, is_version_acceptable
 from .version import __version__
 
@@ -1511,9 +1519,14 @@ class MerginClient:
                 push_project_finalize(job)
                 _, has_changes = get_push_changes_batch(self, mp, job.server_resp)
             except ClientError as e:
-                if e.http_error == 409 and server_conflict_attempts < 2:
+                if (
+                    e.sync_retry
+                    and server_conflict_attempts < 2
+                ):
                     # retry on conflict, e.g. when server has changes that we do not have yet
-                    mp.log.info("Attempting sync process due to conflicts between server and local directory or another user is syncing.")
+                    mp.log.info(
+                        "Attempting sync process due to conflicts between server and local directory or another user is syncing."
+                    )
                     server_conflict_attempts += 1
                     sleep(5)
                     continue
@@ -1548,9 +1561,14 @@ class MerginClient:
                 push_project_finalize(job)
                 _, has_changes = get_push_changes_batch(self, mp, job.server_resp)
             except ClientError as e:
-                if e.http_error == 409 and server_conflict_attempts < 2:
+                if (
+                    e.sync_retry
+                    and server_conflict_attempts < 2
+                ):
                     # retry on conflict, e.g. when server has changes that we do not have yet
-                    mp.log.info("Attempting sync process due to conflicts between server and local directory or another user is syncing.")
+                    mp.log.info(
+                        "Attempting sync process due to conflicts between server and local directory or another user is syncing."
+                    )
                     server_conflict_attempts += 1
                     sleep(5)
                     continue
