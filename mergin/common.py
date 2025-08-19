@@ -19,6 +19,8 @@ this_dir = os.path.dirname(os.path.realpath(__file__))
 class ErrorCode(Enum):
     ProjectsLimitHit = "ProjectsLimitHit"
     StorageLimitHit = "StorageLimitHit"
+    ProjectVersionExists = "ProjectVersionExists"
+    AnotherUploadRunning = "AnotherUploadRunning"
 
 
 class ClientError(Exception):
@@ -32,6 +34,8 @@ class ClientError(Exception):
         self.server_response = server_response
 
         self.extra = None
+        # Param to mark error as candidate for retry sync process
+        self.sync_retry = False
 
     def __str__(self):
         string_res = f"Detail: {self.detail}\n"
