@@ -44,7 +44,15 @@ class DownloadJob:
     """
 
     def __init__(
-        self, project_path, total_size, version, update_tasks, download_queue_items, directory, mp, project_info
+        self,
+        project_path,
+        total_size,
+        version,
+        update_tasks,
+        download_queue_items,
+        directory: tempfile.TemporaryDirectory,
+        mp,
+        project_info,
     ):
         self.project_path = project_path
         self.total_size = total_size  # size of data to download (in bytes)
@@ -109,7 +117,7 @@ def _cleanup_failed_download(directory, mergin_project=None):
         mergin_project.remove_logging_handler()
 
     # keep log file as it might contain useful debug info
-    log_file = os.path.join(directory, ".mergin", "client-log.txt")
+    log_file = os.path.join(mergin_project.dir, ".mergin", "client-log.txt")
     dest_path = None
 
     if os.path.exists(log_file):
@@ -138,6 +146,8 @@ def download_project_async(mc, project_path, directory, project_version=None):
     mp.log.info("--- version: " + mc.user_agent_info())
     mp.log.info(f"--- start download {project_path}")
 
+    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-", ignore_cleanup_errors=True, delete=True)
+
     try:
         # check whether we download the latest version or not
         latest_proj_info = mc.project_info(project_path)
@@ -147,7 +157,7 @@ def download_project_async(mc, project_path, directory, project_version=None):
             project_info = latest_proj_info
 
     except ClientError:
-        _cleanup_failed_download(directory, mp)
+        _cleanup_failed_download(tmp_dir.name, mp)
         raise
 
     version = project_info["version"] if project_info["version"] else "v0"
@@ -158,7 +168,7 @@ def download_project_async(mc, project_path, directory, project_version=None):
     update_tasks = []  # stuff to do at the end of download
     for file in project_info["files"]:
         file["version"] = version
-        items = _download_items(file, directory)
+        items = _download_items(file, tmp_dir.name)
         is_latest_version = project_version == latest_proj_info["version"]
         update_tasks.append(UpdateTask(file["path"], items, latest_version=is_latest_version))
 
@@ -172,7 +182,7 @@ def download_project_async(mc, project_path, directory, project_version=None):
 
     mp.log.info(f"will download {len(update_tasks)} files in {len(download_list)} chunks, total size {total_size}")
 
-    job = DownloadJob(project_path, total_size, version, update_tasks, download_list, directory, mp, project_info)
+    job = DownloadJob(project_path, total_size, version, update_tasks, download_list, tmp_dir, mp, project_info)
 
     # start download
     job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
@@ -203,7 +213,7 @@ def download_project_is_running(job):
             traceback_lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
             job.mp.log.error("Error while downloading project: " + "".join(traceback_lines))
             job.mp.log.info("--- download aborted")
-            job.failure_log_file = _cleanup_failed_download(job.directory, job.mp)
+            job.failure_log_file = _cleanup_failed_download(job.directory.name, job.mp)
             raise future.exception()
         if future.running():
             return True
@@ -229,17 +239,19 @@ def download_project_finalize(job):
             traceback_lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
             job.mp.log.error("Error while downloading project: " + "".join(traceback_lines))
             job.mp.log.info("--- download aborted")
-            job.failure_log_file = _cleanup_failed_download(job.directory, job.mp)
+            job.failure_log_file = _cleanup_failed_download(job.directory.name, job.mp)
             raise future.exception()
 
     job.mp.log.info("--- download finished")
 
     for task in job.update_tasks:
         # right now only copy tasks...
-        task.apply(job.directory, job.mp)
+        task.apply(job.mp.dir, job.mp)
 
     # final update of project metadata
     job.mp.update_metadata(job.project_info)
+
+    job.directory.cleanup()
 
 
 def download_project_cancel(job):
