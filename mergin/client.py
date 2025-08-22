@@ -62,15 +62,26 @@ class ServerType(Enum):
 
 
 def decode_token_data(token):
-    token_prefix = "Bearer ."
+    token_prefix = "Bearer "
     if not token.startswith(token_prefix):
-        raise TokenError(f"Token doesn't start with 'Bearer .': {token}")
+        raise TokenError(f"Token doesn't start with 'Bearer ': {token}")
     try:
-        data = token[len(token_prefix) :].split(".")[0]
-        # add proper base64 padding"
+        data = token[len(token_prefix) :]
+        
+        if data.startswith('.'):
+            data = data.lstrip(".")
+
+        data = data.split(".")[0]
+        # add proper base64 padding
         data += "=" * (-len(data) % 4)
-        decoded = zlib.decompress(base64.urlsafe_b64decode(data))
-        return json.loads(decoded)
+        data = base64.urlsafe_b64decode(data)
+
+        try:
+            data = zlib.decompress(data)
+        except zlib.error as e:
+            print("There was an issue during decompression, continuing without it, error:", e)
+
+        return json.loads(data)
     except (IndexError, TypeError, ValueError, zlib.error):
         raise TokenError(f"Invalid token data: {token}")
 

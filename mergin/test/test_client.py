@@ -152,15 +152,36 @@ def test_login(mc):
     assert MerginClient(mc.url, auth_token=token)
 
     invalid_token = "Completely invalid token...."
-    with pytest.raises(TokenError, match=f"Token doesn't start with 'Bearer .': {invalid_token}"):
+    with pytest.raises(TokenError, match=f"Token doesn't start with 'Bearer ': {invalid_token}"):
         decode_token_data(invalid_token)
 
     invalid_token = "Bearer .jas646kgfa"
     with pytest.raises(TokenError, match=f"Invalid token data: {invalid_token}"):
         decode_token_data(invalid_token)
 
+    invalid_token = "Bearer jas646kgfa"
+    with pytest.raises(TokenError, match=f"Invalid token data: {invalid_token}"):
+        decode_token_data(invalid_token)
+
     with pytest.raises(LoginError, match="Invalid username or password"):
         mc.login("foo", "bar")
+    
+    valid_token_dot = "Bearer .eJxNi0kKgDAMAL8iubqQRuuSkz-RojkEWi0uIIh_Fz15G2aYC45N1kEnYJN9PLsgwOCijl5l3iEDCU793_VyuhC9FOMS3n5GXd-JkGyObU6UmI6pZoNFZRtbUorIiHA_KFshoA.abc.def"
+    decoded_value = decode_token_data(valid_token_dot)
+
+    # expected: {'user_id': 1, 'username': 'apiclient', 'email': 'apiclient@example.com', 'expire': '2025-08-22 19:26:10.457532+00:00'}
+    assert decoded_value["user_id"] == 1
+    assert decoded_value["username"] == "apiclient"
+    assert decoded_value["email"] == "apiclient@example.com"
+    assert decoded_value["expire"] == "2025-08-22 19:26:10.457532+00:00"
+
+    valid_token_nodot = "Bearer eyJ1c2VyX2lkIjoxLCJ1c2VybmFtZSI6ImFwaSIsImVtYWlsIjoiYXBpQGUuY29tIn0.abc.def"
+    decoded_value = decode_token_data(valid_token_nodot)
+
+    # expected: {'user_id': 1, 'username': 'api', 'email': 'api@e.com'}
+    assert decoded_value["user_id"] == 1
+    assert decoded_value["username"] == "api"
+    assert decoded_value["email"] == "api@e.com"
 
 
 def test_create_delete_project(mc: MerginClient):
