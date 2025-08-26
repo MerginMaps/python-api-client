@@ -62,15 +62,30 @@ class ServerType(Enum):
 
 
 def decode_token_data(token):
-    token_prefix = "Bearer ."
+    token_prefix = "Bearer "
     if not token.startswith(token_prefix):
-        raise TokenError(f"Token doesn't start with 'Bearer .': {token}")
+        raise TokenError(f"Token doesn't start with 'Bearer ': {token}")
     try:
-        data = token[len(token_prefix) :].split(".")[0]
-        # add proper base64 padding"
-        data += "=" * (-len(data) % 4)
-        decoded = zlib.decompress(base64.urlsafe_b64decode(data))
-        return json.loads(decoded)
+        token_raw = token[len(token_prefix) :]
+        is_compressed = False
+
+        # compressed tokens start with dot,
+        # see https://github.com/pallets/itsdangerous/blob/main/src/itsdangerous/url_safe.py#L55
+        if token_raw.startswith("."):
+            token_raw = token_raw.lstrip(".")
+            is_compressed = True
+
+        payload_raw = token_raw.split(".")[0]
+
+        # add proper base64 padding
+        payload_raw += "=" * (-len(payload_raw) % 4)
+        payload_data = base64.urlsafe_b64decode(payload_raw)
+
+        if is_compressed:
+            payload_data = zlib.decompress(payload_data)
+
+        return json.loads(payload_data)
+
     except (IndexError, TypeError, ValueError, zlib.error):
         raise TokenError(f"Invalid token data: {token}")
 
