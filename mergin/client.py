@@ -66,22 +66,26 @@ def decode_token_data(token):
     if not token.startswith(token_prefix):
         raise TokenError(f"Token doesn't start with 'Bearer ': {token}")
     try:
-        data = token[len(token_prefix) :]
-        
-        if data.startswith('.'):
-            data = data.lstrip(".")
+        token_raw = token[len(token_prefix) :]
+        is_compressed = False
 
-        data = data.split(".")[0]
+        # compressed tokens start with dot,
+        # see https://github.com/pallets/itsdangerous/blob/main/src/itsdangerous/url_safe.py#L55
+        if token_raw.startswith("."):
+            token_raw = token_raw.lstrip(".")
+            is_compressed = True
+
+        payload_raw = token_raw.split(".")[0]
+
         # add proper base64 padding
-        data += "=" * (-len(data) % 4)
-        data = base64.urlsafe_b64decode(data)
+        payload_raw += "=" * (-len(payload_raw) % 4)
+        payload_data = base64.urlsafe_b64decode(payload_raw)
 
-        try:
-            data = zlib.decompress(data)
-        except zlib.error as e:
-            print("There was an issue during decompression, continuing without it, error:", e)
+        if is_compressed:
+            payload_data = zlib.decompress(payload_data)
 
-        return json.loads(data)
+        return json.loads(payload_data)
+
     except (IndexError, TypeError, ValueError, zlib.error):
         raise TokenError(f"Invalid token data: {token}")
 

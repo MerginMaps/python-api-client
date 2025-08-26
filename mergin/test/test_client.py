@@ -165,7 +165,7 @@ def test_login(mc):
 
     with pytest.raises(LoginError, match="Invalid username or password"):
         mc.login("foo", "bar")
-    
+
     valid_token_dot = "Bearer .eJxNi0kKgDAMAL8iubqQRuuSkz-RojkEWi0uIIh_Fz15G2aYC45N1kEnYJN9PLsgwOCijl5l3iEDCU793_VyuhC9FOMS3n5GXd-JkGyObU6UmI6pZoNFZRtbUorIiHA_KFshoA.abc.def"
     decoded_value = decode_token_data(valid_token_dot)
 
