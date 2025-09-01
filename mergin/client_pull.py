@@ -872,8 +872,8 @@ def download_files_finalize(job):
     job.mp.log.info("--- download finished")
 
     for task in job.update_tasks:
-        task.apply(job.directory, job.mp)
+        task.apply(job.temp_directory, job.mp)
 
     # Remove temporary download directory
-    if job.directory is not None and os.path.exists(job.directory):
-        shutil.rmtree(job.directory)
+    if job.temp_directory is not None and os.path.exists(job.temp_directory):
+        shutil.rmtree(job.temp_directory)
