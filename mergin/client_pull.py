@@ -250,7 +250,7 @@ def download_project_finalize(job):
     # final update of project metadata
     job.mp.update_metadata(job.project_info)
 
-    job.directory.cleanup()
+    job.temp_directory.cleanup()
 
 
 def download_project_cancel(job):
