@@ -104,7 +104,7 @@ def _do_download(item, mc, mp, project_path, job):
     job.transferred_size += item.size
 
 
-def _cleanup_failed_download(directory, mergin_project=None):
+def _cleanup_failed_download(mergin_project: MerginProject = None):
     """
     If a download job fails, there will be the newly created directory left behind with some
     temporary files in it. We want to remove it because a new download would fail because
@@ -126,7 +126,6 @@ def _cleanup_failed_download(directory, mergin_project=None):
         dest_path = tmp_file.name
         shutil.copyfile(log_file, dest_path)
 
-    shutil.rmtree(directory)
     return dest_path
 
 
@@ -157,7 +156,7 @@ def download_project_async(mc, project_path, directory, project_version=None):
             project_info = latest_proj_info
 
     except ClientError:
-        _cleanup_failed_download(tmp_dir.name, mp)
+        _cleanup_failed_download(mp)
         raise
 
     version = project_info["version"] if project_info["version"] else "v0"
@@ -213,7 +212,7 @@ def download_project_is_running(job):
             traceback_lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
             job.mp.log.error("Error while downloading project: " + "".join(traceback_lines))
             job.mp.log.info("--- download aborted")
-            job.failure_log_file = _cleanup_failed_download(job.directory.name, job.mp)
+            job.failure_log_file = _cleanup_failed_download(job.mp)
             raise future.exception()
         if future.running():
             return True
@@ -239,7 +238,7 @@ def download_project_finalize(job):
             traceback_lines = traceback.format_exception(type(exc), exc, exc.__traceback__)
             job.mp.log.error("Error while downloading project: " + "".join(traceback_lines))
             job.mp.log.info("--- download aborted")
-            job.failure_log_file = _cleanup_failed_download(job.directory.name, job.mp)
+            job.failure_log_file = _cleanup_failed_download(job.mp)
             raise future.exception()
 
     job.mp.log.info("--- download finished")
