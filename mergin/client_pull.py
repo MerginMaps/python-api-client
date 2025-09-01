@@ -60,7 +60,7 @@ class DownloadJob:
         self.version = version
         self.update_tasks = update_tasks
         self.download_queue_items = download_queue_items
-        self.temp_directory = temp_directory
+        self.temp_directory = temp_directory  # project's directory
         self.mp = mp  # MerginProject instance
         self.is_cancelled = False
         self.project_info = project_info  # parsed JSON with project info returned from the server
