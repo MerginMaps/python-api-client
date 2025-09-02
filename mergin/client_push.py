@@ -274,7 +274,12 @@ def push_project_finalize(job):
                     f"Push failed with HTTP error {err.http_error}. "
                     f"Upload details: {len(job.upload_queue_items)} file chunks, total size {job.total_size} bytes."
                 )
+            # server returns various error messages with filename or something generic
+            # it would be better if it returned list of failed files (and reasons) whenever possible    
             job.mp.log.error("--- push finish failed! " + str(err))
+
+            # if push finish fails, the transaction is not killed, so we
+            # need to cancel it so it does not block further uploads
             job.mp.log.info("canceling the pending transaction...")
             try:
                 resp_cancel = job.mc.post("/v1/project/push/cancel/%s" % job.transaction_id)
