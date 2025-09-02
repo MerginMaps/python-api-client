@@ -50,7 +50,7 @@ class DownloadJob:
         version,
         update_tasks,
         download_queue_items,
-        temp_directory: tempfile.TemporaryDirectory,
+        tmp_dir: tempfile.TemporaryDirectory,
         mp,
         project_info,
     ):
@@ -60,7 +60,7 @@ class DownloadJob:
         self.version = version
         self.update_tasks = update_tasks
         self.download_queue_items = download_queue_items
-        self.temp_directory = temp_directory
+        self.tmp_dir = tmp_dir
         self.mp = mp  # MerginProject instance
         self.is_cancelled = False
         self.project_info = project_info  # parsed JSON with project info returned from the server
@@ -250,7 +250,7 @@ def download_project_finalize(job):
     # final update of project metadata
     job.mp.update_metadata(job.project_info)
 
-    job.temp_directory.cleanup()
+    job.tmp_dir.cleanup()
 
 
 def download_project_cancel(job):
@@ -347,7 +347,7 @@ class PullJob:
         version,
         files_to_merge,
         download_queue_items,
-        temp_dir,
+        tmp_dir,
         mp,
         project_info,
         basefiles_to_patch,
@@ -362,7 +362,7 @@ class PullJob:
         self.version = version
         self.files_to_merge = files_to_merge  # list of FileToMerge instances
         self.download_queue_items = download_queue_items
-        self.temp_dir = temp_dir  # TemporaryDirectory instance where we store downloaded files
+        self.tmp_dir = tmp_dir  # TemporaryDirectory instance where we store downloaded files
         self.mp = mp  # MerginProject instance
         self.is_cancelled = False
         self.project_info = project_info  # parsed JSON with project info returned from the server
@@ -424,7 +424,7 @@ def pull_project_async(mc, directory):
     # then we just download the whole file
     _pulling_file_with_diffs = lambda f: "diffs" in f and len(f["diffs"]) != 0
 
-    temp_dir = tempfile.TemporaryDirectory(prefix="mm-pull-", ignore_cleanup_errors=True, delete=True)
+    tmp_dir = tempfile.TemporaryDirectory(prefix="mm-pull-", ignore_cleanup_errors=True, delete=True)
     pull_changes = mp.get_pull_changes(server_info["files"])
     mp.log.debug("pull changes:\n" + pprint.pformat(pull_changes))
     fetch_files = []
@@ -451,10 +451,10 @@ def pull_project_async(mc, directory):
 
     for file in fetch_files:
         diff_only = _pulling_file_with_diffs(file)
-        items = _download_items(file, temp_dir.name, diff_only)
+        items = _download_items(file, tmp_dir.name, diff_only)
 
         # figure out destination path for the file
-        file_dir = os.path.dirname(os.path.normpath(os.path.join(temp_dir.name, file["path"])))
+        file_dir = os.path.dirname(os.path.normpath(os.path.join(tmp_dir.name, file["path"])))
         basename = os.path.basename(file["diff"]["path"]) if diff_only else os.path.basename(file["path"])
         dest_file_path = os.path.join(file_dir, basename)
         os.makedirs(file_dir, exist_ok=True)
@@ -475,8 +475,8 @@ def pull_project_async(mc, directory):
             file_path = file["path"]
             mp.log.info(f"missing base file for {file_path} -> going to download it (version {server_version})")
             file["version"] = server_version
-            items = _download_items(file, temp_dir.name, diff_only=False)
-            dest_file_path = mp.fpath(file["path"], temp_dir.name)
+            items = _download_items(file, tmp_dir.name, diff_only=False)
+            dest_file_path = mp.fpath(file["path"], tmp_dir.name)
             # dest_file_path = os.path.join(os.path.dirname(os.path.normpath(os.path.join(temp_dir, file['path']))), os.path.basename(file['path']))
             files_to_merge.append(FileToMerge(dest_file_path, items))
             continue
@@ -500,7 +500,7 @@ def pull_project_async(mc, directory):
         server_version,
         files_to_merge,
         download_list,
-        temp_dir,
+        tmp_dir,
         mp,
         server_info,
         basefiles_to_patch,
@@ -614,10 +614,10 @@ def pull_project_finalize(job: PullJob):
     # download their full versions so we have them up-to-date for applying changes
     for file_path, file_diffs in job.basefiles_to_patch:
         basefile = job.mp.fpath_meta(file_path)
-        server_file = job.mp.fpath(file_path, job.temp_dir.name)
+        server_file = job.mp.fpath(file_path, job.tmp_dir.name)
 
         shutil.copy(basefile, server_file)
-        diffs = [job.mp.fpath(f, job.temp_dir.name) for f in file_diffs]
+        diffs = [job.mp.fpath(f, job.tmp_dir.name) for f in file_diffs]
         patch_error = job.mp.apply_diffs(server_file, diffs)
         if patch_error:
             # that's weird that we are unable to apply diffs to the basefile!
@@ -633,7 +633,7 @@ def pull_project_finalize(job: PullJob):
             raise ClientError("Cannot patch basefile {}! Please try syncing again.".format(basefile))
 
     try:
-        conflicts = job.mp.apply_pull_changes(job.pull_changes, job.temp_dir.name, job.project_info, job.mc)
+        conflicts = job.mp.apply_pull_changes(job.pull_changes, job.tmp_dir.name, job.project_info, job.mc)
     except Exception as e:
         job.mp.log.error("Failed to apply pull changes: " + str(e))
         job.mp.log.info("--- pull aborted")
@@ -646,7 +646,7 @@ def pull_project_finalize(job: PullJob):
     else:
         job.mp.log.info("--- pull finished -- at version " + job.mp.version())
 
-    job.temp_dir.cleanup()  # delete our temporary dir and all its content
+    job.tmp_dir.cleanup()  # delete our temporary dir and all its content
     return conflicts
 
 
@@ -798,7 +798,7 @@ def download_files_async(
     mp.log.info(f"Got project info. version {project_info['version']}")
 
     # set temporary directory for download
-    temp_dir = tempfile.mkdtemp(prefix="python-api-client-")
+    tmp_dir = tempfile.mkdtemp(prefix="python-api-client-")
 
     if output_paths is None:
         output_paths = []
@@ -808,7 +808,7 @@ def download_files_async(
     if len(output_paths) != len(file_paths):
         warn = "Output file paths are not of the same length as file paths. Cannot store required files."
         mp.log.warning(warn)
-        shutil.rmtree(temp_dir)
+        shutil.rmtree(tmp_dir)
         raise ClientError(warn)
 
     download_list = []
@@ -822,7 +822,7 @@ def download_files_async(
         if file["path"] in file_paths:
             index = file_paths.index(file["path"])
             file["version"] = version
-            items = _download_items(file, temp_dir)
+            items = _download_items(file, tmp_dir)
             is_latest_version = version == latest_proj_info["version"]
             task = UpdateTask(file["path"], items, output_paths[index], latest_version=is_latest_version)
             download_list.extend(task.download_queue_items)
@@ -842,13 +842,13 @@ def download_files_async(
     if not download_list or missing_files:
         warn = f"No [{', '.join(missing_files)}] exists at version {version}"
         mp.log.warning(warn)
-        shutil.rmtree(temp_dir)
+        shutil.rmtree(tmp_dir)
         raise ClientError(warn)
 
     mp.log.info(
         f"will download files [{', '.join(files_to_download)}] in {len(download_list)} chunks, total size {total_size}"
     )
-    job = DownloadJob(project_path, total_size, version, update_tasks, download_list, temp_dir, mp, project_info)
+    job = DownloadJob(project_path, total_size, version, update_tasks, download_list, tmp_dir, mp, project_info)
     job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     job.futures = []
     for item in download_list:
@@ -872,8 +872,8 @@ def download_files_finalize(job):
     job.mp.log.info("--- download finished")
 
     for task in job.update_tasks:
-        task.apply(job.temp_directory, job.mp)
+        task.apply(job.tmp_dir, job.mp)
 
     # Remove temporary download directory
-    if job.temp_directory is not None and os.path.exists(job.temp_directory):
-        shutil.rmtree(job.temp_directory)
+    if job.tmp_dir is not None and os.path.exists(job.tmp_dir):
+        shutil.rmtree(job.tmp_dir)

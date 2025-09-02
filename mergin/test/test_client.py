@@ -2549,7 +2549,7 @@ def test_download_failure(mc):
     # download project async
     with pytest.raises(IsADirectoryError):
         job = download_project_async(mc, project, download_dir)
-        os.makedirs(os.path.join(job.temp_directory.name, "base.gpkg.0"))
+        os.makedirs(os.path.join(job.tmp_dir.name, "base.gpkg.0"))
         download_project_wait(job)
         download_project_finalize(job)
 
@@ -2561,7 +2561,7 @@ def test_download_failure(mc):
     # active waiting
     remove_folders([download_dir])
     job = download_project_async(mc, project, download_dir)
-    os.makedirs(os.path.join(job.temp_directory.name, "base.gpkg.0"))
+    os.makedirs(os.path.join(job.tmp_dir.name, "base.gpkg.0"))
     with pytest.raises(IsADirectoryError):
         while True:
             assert download_project_is_running(job)
