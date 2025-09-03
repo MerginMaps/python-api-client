@@ -11,6 +11,7 @@ import pytest
 import pytz
 import sqlite3
 import glob
+from unittest.mock import patch, Mock
 
 from .. import InvalidProject
 from ..client import (
@@ -3157,3 +3158,28 @@ def test_client_project_sync(mc):
         os.path.join(project_dir_2, "base.gpkg"),
     )
     mc.sync_project(project_dir_2)
+
+
+def test_client_project_sync_retry(mc):
+    test_project = "test_client_project_sync_retry"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    cleanup(mc, project, [project_dir])
+    mc.create_project(test_project)
+    mc.download_project(project, project_dir)
+    shutil.copy(os.path.join(TEST_DATA_DIR, "test.txt"), project_dir)
+    with patch("mergin.client.push_project_finalize", autospec=True) as mock_push_project_finalize:
+        mock_push_project_finalize.side_effect = ClientError("test error")
+        with pytest.raises(ClientError, match="test error"):
+            mc.sync_project(project_dir)
+
+    with patch("mergin.client.push_project_finalize") as mock_push_project_finalize, patch(
+        "mergin.client.PUSH_ATTEMPTS", 2
+    ):
+        mock_push_project_finalize.side_effect = ClientError(
+            detail="",
+            server_code=ErrorCode.AnotherUploadRunning.value,
+        )
+        with pytest.raises(ClientError):
+            mc.sync_project(project_dir)
+    assert mock_push_project_finalize.call_count == 2

@@ -24,7 +24,7 @@ from typing import List, Tuple, Optional, ByteString
 
 from .local_changes import LocalChange, LocalChanges
 
-from .common import UPLOAD_CHUNK_SIZE, ClientError, ErrorCode
+from .common import UPLOAD_CHUNK_ATTEMPT_WAIT, UPLOAD_CHUNK_ATTEMPTS, UPLOAD_CHUNK_SIZE, ClientError, ErrorCode
 from .merginproject import MerginProject
 from .editor import filter_changes
 from .utils import get_data_checksum
@@ -111,8 +111,7 @@ class UploadQueueItem:
             checksum_str = get_data_checksum(data)
 
             self.mp.log.debug(f"Uploading {self.file_path} part={self.chunk_index}")
-            attempts = 2
-            for attempt in range(attempts):
+            for attempt in range(UPLOAD_CHUNK_ATTEMPTS):
                 try:
                     if self.mc.server_features().get("v2_push_enabled"):
                         # use v2 API for uploading chunks
@@ -122,8 +121,8 @@ class UploadQueueItem:
                         self.upload_chunk(data, checksum_str)
                     break  # exit loop if upload was successful
                 except ClientError as e:
-                    if attempt < attempts - 1:
-                        time.sleep(5)
+                    if attempt < UPLOAD_CHUNK_ATTEMPTS - 1:
+                        time.sleep(UPLOAD_CHUNK_ATTEMPT_WAIT)
                         continue
                     raise
 
@@ -249,7 +248,7 @@ def create_upload_job(
             )
             push_start_resp = json.load(resp)
     except ClientError as err:
-        if err.server_code not in [ErrorCode.AnotherUploadRunning.value, ErrorCode.ProjectVersionExists.value]:
+        if not err.is_blocking_sync():
             mp.log.error("Error starting transaction: " + str(err))
             mp.log.info("--- push aborted")
             raise
@@ -415,10 +414,9 @@ def push_project_finalize(job: UploadJob):
             project_info = json.load(resp)
             job.server_resp = project_info
         except ClientError as err:
-            if err.server_code in [ErrorCode.AnotherUploadRunning.value, ErrorCode.ProjectVersionExists.value]:
-                err.sync_retry = True
-            else:
-                job.mc.upload_chunks_cache.clear()  # clear the upload chunks cache, as we are getting fatal from server
+            if not err.is_retryable_sync():
+                # clear the upload chunks cache, as we are getting fatal from server
+                job.mc.upload_chunks_cache.clear()
             job.mp.log.error("--- push finish failed! " + str(err))
             raise err
     elif with_upload_of_files:

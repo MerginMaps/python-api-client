@@ -25,7 +25,6 @@ from .common import (
     PUSH_ATTEMPTS,
     SYNC_CALLBACK_WAIT,
     ClientError,
-    ErrorCode,
     LoginError,
     WorkspaceRole,
     ProjectRole,
@@ -807,7 +806,7 @@ class MerginClient:
     def user_info(self):
         server_type = self.server_type()
         if server_type == ServerType.OLD:
-            resp = self.get("/v1/user/" + self.username())
+            resp = self.get(f"/v1/user/{self.username()}")
         else:
             resp = self.get("/v1/user/profile")
         return json.load(resp)
@@ -1526,11 +1525,11 @@ class MerginClient:
                         sleep(SYNC_CALLBACK_WAIT)
                         current_size = job.transferred_size
                         progress_callback(current_size - last_size, job)  # call callback with transferred size increment
-                        last = current_size
+                        last_size = current_size
                 push_project_finalize(job)
                 _, has_changes = get_push_changes_batch(self, mp, job.server_resp)
             except ClientError as e:
-                if e.sync_retry and server_conflict_attempts <= PUSH_ATTEMPTS:
+                if e.is_retryable_sync() and server_conflict_attempts < PUSH_ATTEMPTS - 1:
                     # retry on conflict, e.g. when server has changes that we do not have yet
                     mp.log.info(
                         f"Restarting sync process (conflict on server) - {server_conflict_attempts + 1}/{PUSH_ATTEMPTS}"
