@@ -265,7 +265,6 @@ def create_upload_job(
             job.server_resp = push_start_resp
         push_project_finalize(job)
         return  # all done - no pending job
-    
 
     if transaction_id:
         mp.log.info(f"got transaction ID {transaction_id}")
@@ -405,7 +404,7 @@ def push_project_finalize(job: UploadJob):
         try:
             job.update_chunks_from_items()
             job.mp.log.info(f"Finishing transaction for project {job.mp.project_full_name()}")
-            job.mc.post(
+            resp = job.mc.post(
                 f"/v2/projects/{job.mp.project_id()}/versions",
                 data={
                     "version": job.version,
@@ -413,7 +412,7 @@ def push_project_finalize(job: UploadJob):
                 },
                 headers={"Content-Type": "application/json"},
             )
-            project_info = job.mc.project_info(job.mp.project_id())
+            project_info = json.load(resp)
             job.server_resp = project_info
         except ClientError as err:
             if err.server_code in [ErrorCode.AnotherUploadRunning.value, ErrorCode.ProjectVersionExists.value]:
