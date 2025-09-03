@@ -259,18 +259,19 @@ def create_upload_job(
     upload_changes = changes.get_upload_changes()
     transaction_id = push_start_resp.get("transaction") if upload_changes else None
     job = UploadJob(local_version, changes, transaction_id, mp, mc, tmp_dir)
+    if not upload_changes:
+        mp.log.info("not uploading any files")
+        if push_start_resp:
+            job.server_resp = push_start_resp
+        push_project_finalize(job)
+        return  # all done - no pending job
+    
 
     if transaction_id:
         mp.log.info(f"got transaction ID {transaction_id}")
 
     # prepare file chunks for upload
     upload_queue_items = create_upload_chunks(mc, mp, upload_changes)
-    if not upload_queue_items:
-        mp.log.info("not uploading any files")
-        if push_start_resp:
-            job.server_resp = push_start_resp
-        push_project_finalize(job)
-        return  # all done - no pending job
 
     mp.log.info(f"Starting upload chunks for project {project_id}")
     job.add_items(upload_queue_items)
