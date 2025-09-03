@@ -9,6 +9,15 @@ UPLOAD_CHUNK_SIZE = 10 * 1024 * 1024
 # size of the log file part to send (if file is larger only this size from end will be sent)
 MAX_LOG_FILE_SIZE_TO_SEND = 5 * 1024 * 1024
 
+# number of attempts to push changes (in case of network issues etc)
+PUSH_ATTEMPTS = 12
+
+# seconds to wait between attempts
+PUSH_ATTEMPT_WAIT = 5
+
+ # seconds to wait between sync callback calls
+SYNC_CALLBACK_WAIT = 0.01
+
 # default URL for submitting logs
 MERGIN_DEFAULT_LOGS_URL = "https://g4pfq226j0.execute-api.eu-west-1.amazonaws.com/mergin_client_log_submit"
 

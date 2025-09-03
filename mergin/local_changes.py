@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, Optional, List, Tuple
 
+
 @dataclass
 class BaseLocalChange:
     path: str
@@ -9,11 +10,12 @@ class BaseLocalChange:
     size: int
     mtime: datetime
 
+
 @dataclass
 class LocalChange(BaseLocalChange):
     origin_checksum: Optional[str] = None
     chunks: List[str] = field(default_factory=list)
-    diff: Optional[dict] = None 
+    diff: Optional[dict] = None
     upload_file: Optional[str] = None
     # some functions (MerginProject.compare_file_sets) are adding version to the change from project info
     version: Optional[str] = None
@@ -28,11 +30,10 @@ class LocalChange(BaseLocalChange):
                 path=self.diff.get("path", ""),
                 checksum=self.diff.get("checksum", ""),
                 size=self.diff.get("size", 0),
-                mtime=self.diff.get("mtime", datetime.now())
+                mtime=self.diff.get("mtime", datetime.now()),
             )
-        return None
 
-    def get_server_data(self) -> dict:
+    def to_server_data(self) -> dict:
         result = {
             "path": self.path,
             "checksum": self.checksum,
@@ -43,9 +44,10 @@ class LocalChange(BaseLocalChange):
             result["diff"] = {
                 "path": self.diff.get("path", ""),
                 "checksum": self.diff.get("checksum", ""),
-                "size": self.diff.get("size", 0)
+                "size": self.diff.get("size", 0),
             }
         return result
+
 
 @dataclass
 class LocalChanges:
@@ -53,20 +55,20 @@ class LocalChanges:
     updated: List[LocalChange] = field(default_factory=list)
     removed: List[LocalChange] = field(default_factory=list)
 
-    def get_server_request(self) -> dict:
+    def to_server_payload(self) -> dict:
         return {
-            "added": [change.get_server_data() for change in self.added],
-            "updated": [change.get_server_data() for change in self.updated],
-            "removed": [change.get_server_data() for change in self.removed],
+            "added": [change.to_server_data() for change in self.added],
+            "updated": [change.to_server_data() for change in self.updated],
+            "removed": [change.to_server_data() for change in self.removed],
         }
-    
+
     def get_upload_changes(self) -> List[LocalChange]:
         """
         Get all changes that need to be uploaded.
         This includes added and updated files.
         """
         return self.added + self.updated
-    
+
     def _map_unique_chunks(self, change_chunks: List[str], server_chunks: List[Tuple[str, str]]) -> List[str]:
         """
         Helper function to map and deduplicate chunk ids for a single change.

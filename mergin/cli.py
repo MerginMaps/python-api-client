@@ -477,14 +477,13 @@ def sync(ctx):
         return
     directory = os.getcwd()
     upload_job = None
-    length = 1
     try:
         def on_progress(increment, push_job):
             nonlocal upload_job
             upload_job = push_job
 
         # run pull & push cycles until there are no local changes
-        mc.sync_project_with_callback(directory, progress_callback=on_progress)
+        mc.sync_project(directory, progress_callback=on_progress)
 
         click.secho("Sync complete.", fg="green")
 

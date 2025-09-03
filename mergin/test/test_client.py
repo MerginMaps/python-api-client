@@ -271,15 +271,14 @@ def test_create_remote_project_from_local(mc):
     with pytest.raises(Exception, match="Project directory already exists"):
         mc.download_project(project, download_dir)
 
+
 def test_new_project_sync_v1_api(mc):
     """
     Create a new project, download it, add a file and then do sync - it should not fail
     This is using v1 endpoint.
     """
     server_features = mc.server_features()
-    mc._server_features = {
-        "v2_push_enabled": False
-    }
+    mc._server_features = {"v2_push_enabled": False}
     test_project = "test_new_project_sync_v1"
     project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
@@ -303,6 +302,7 @@ def test_new_project_sync_v1_api(mc):
     local_changes = mp.get_push_changes()
     assert not local_changes["added"] and not local_changes["removed"] and not local_changes["updated"]
     mc._server_features = server_features
+
 
 def test_new_project_sync_v2_api(mc):
     """
@@ -331,6 +331,7 @@ def test_new_project_sync_v2_api(mc):
     mp = MerginProject(project_dir)
     local_changes = mp.get_push_changes()
     assert not local_changes["added"] and not local_changes["removed"] and not local_changes["updated"]
+
 
 def test_push_pull_changes(mc):
     test_project = "test_push"
@@ -426,6 +427,7 @@ def test_push_pull_changes(mc):
         == f_conflict_checksum
     )
     assert generate_checksum(os.path.join(project_dir_2, f_updated)) == f_remote_checksum
+
 
 def test_sync_remove(mc):
     """
@@ -3043,9 +3045,10 @@ def test_validate_auth(mc: MerginClient):
     with pytest.raises(LoginError):
         mc_auth_token_login_wrong_password.validate_auth()
 
+
 def test_uploaded_chunks_cache(mc):
     """Create a new project, download it, add a file and then do sync - it should not fail"""
-    
+
     test_project = "test_uploaded_chunks_cache"
     project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
@@ -3079,6 +3082,7 @@ def test_uploaded_chunks_cache(mc):
     assert job.upload_queue_items[1].server_chunk_id == chunk_id
     assert mc.upload_chunks_cache.cache == {}
 
+
 def test_client_push_project_async(mc):
     """
     Integration tests for low level client_push functions
@@ -3106,6 +3110,7 @@ def test_client_push_project_async(mc):
     push_project_finalize(job)
     assert not os.path.exists(job.tmp_dir.name)
 
+
 def test_client_pull_project_async(mc):
     """
     Integration tests for low level client_pull functions
@@ -3131,6 +3136,7 @@ def test_client_pull_project_async(mc):
     assert job.total_size == job.transferred_size
     pull_project_finalize(job)
     assert not os.path.exists(job.temp_dir)
+
 
 def test_client_project_sync(mc):
     test_project = "test_client_project_sync"

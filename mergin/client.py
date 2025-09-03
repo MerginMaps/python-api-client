@@ -21,6 +21,9 @@ from time import sleep
 from typing import List
 
 from .common import (
+    PUSH_ATTEMPT_WAIT,
+    PUSH_ATTEMPTS,
+    SYNC_CALLBACK_WAIT,
     ClientError,
     ErrorCode,
     LoginError,
@@ -916,7 +919,7 @@ class MerginClient:
         :param directory: Project's directory
         :type directory: String
         """
-        job = push_project_async(self, directory)
+        job = push_project_async(self, directory, check_version=True)
         if job is None:
             return  # there is nothing to push (or we only deleted some files)
         push_project_wait(job)
@@ -1494,7 +1497,7 @@ class MerginClient:
         ws_inv = self.post(f"v2/workspaces/{workspace_id}/invitations", params, json_headers)
         return json.load(ws_inv)
 
-    def sync_project(self, project_directory):
+    def sync_project(self, project_directory, progress_callback=None):
         """
         Syncs project by loop with these steps:
         1. Pull server version
@@ -1515,61 +1518,24 @@ class MerginClient:
                 job = push_project_async(self, project_directory)
                 if not job:
                     break
-                push_project_wait(job)
+                if not progress_callback:
+                    push_project_wait(job)
+                else:
+                    last_size = 0
+                    while push_project_is_running(job):
+                        sleep(SYNC_CALLBACK_WAIT)
+                        current_size = job.transferred_size
+                        progress_callback(current_size - last_size, job)  # call callback with transferred size increment
+                        last = current_size
                 push_project_finalize(job)
                 _, has_changes = get_push_changes_batch(self, mp, job.server_resp)
             except ClientError as e:
-                if (
-                    e.sync_retry
-                    and server_conflict_attempts < 2
-                ):
+                if e.sync_retry and server_conflict_attempts <= PUSH_ATTEMPTS:
                     # retry on conflict, e.g. when server has changes that we do not have yet
                     mp.log.info(
-                        "Attempting sync process due to conflicts between server and local directory or another user is syncing."
+                        f"Restarting sync process (conflict on server) - {server_conflict_attempts + 1}/{PUSH_ATTEMPTS}"
                     )
                     server_conflict_attempts += 1
-                    sleep(5)
-                    continue
-                raise e
-
-    def sync_project_with_callback(self, project_directory, progress_callback=None, sleep_time=0.1):
-        """
-        Syncs project while sending push progress info as callback.
-        Sync is done in this loop:
-            Pending changes? -> Pull -> Get changes batch -> Push the changes -> repeat
-        :param progress_callback: updates the progress bar in CLI, on_progress(increment)
-        :param sleep_time: sleep time between calling the callback function
-        """
-        mp = MerginProject(project_directory)
-        has_changes = True
-        server_conflict_attempts = 0
-        while has_changes:
-            pull_job = pull_project_async(self, project_directory)
-            if pull_job:
-                pull_project_wait(pull_job)
-                pull_project_finalize(pull_job)
-            try:
-                job = push_project_async(self, project_directory)
-                if not job:
-                    break
-                last = 0
-                while push_project_is_running(job):
-                    sleep(sleep_time)
-                    now = job.transferred_size
-                    progress_callback(now - last, job)  # update progressbar with transferred size increment
-                    last = now
-                push_project_finalize(job)
-                _, has_changes = get_push_changes_batch(self, mp, job.server_resp)
-            except ClientError as e:
-                if (
-                    e.sync_retry
-                    and server_conflict_attempts < 2
-                ):
-                    # retry on conflict, e.g. when server has changes that we do not have yet
-                    mp.log.info(
-                        "Attempting sync process due to conflicts between server and local directory or another user is syncing."
-                    )
-                    server_conflict_attempts += 1
-                    sleep(5)
+                    sleep(PUSH_ATTEMPT_WAIT)
                     continue
                 raise e

@@ -7,6 +7,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 from .common import ClientError
+from typing import ByteString
 
 
 def generate_checksum(file, chunk_size=4096):
@@ -294,3 +295,14 @@ def bytes_to_human_size(bytes: int):
         return f"{round( bytes / 1024.0 / 1024.0 / 1024.0, precision )} GB"
     else:
         return f"{round( bytes / 1024.0 / 1024.0 / 1024.0 / 1024.0, precision )} TB"
+    
+def get_data_checksum(data: ByteString) -> str:
+    """
+    Generate sha1 checksum for given data.
+
+    :param data: data to calculate checksum
+    :return: sha1 checksum
+    """
+    checksum = hashlib.sha1()
+    checksum.update(data)
+    return checksum.hexdigest()

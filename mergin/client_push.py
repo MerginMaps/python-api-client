@@ -7,32 +7,27 @@ Then we need to wait until we are finished uploading - either by periodically
 calling push_project_is_running(job) that will just return True/False or by calling
 push_project_wait(job) that will block the current thread (not good for GUI).
 To finish the upload job, we have to call push_project_finalize(job).
+
+We introduced here compability with:
+v1 Push API using transaction approach
+v2 Push API using raw chunks upload approach
 """
 
 from dataclasses import asdict
 import json
-import hashlib
 import pprint
 import tempfile
 import concurrent.futures
 import os
 import time
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, ByteString
 
 from .local_changes import LocalChange, LocalChanges
 
 from .common import UPLOAD_CHUNK_SIZE, ClientError, ErrorCode
 from .merginproject import MerginProject
 from .editor import filter_changes
-
-
-def _do_upload(item, job):
-    """runs in worker thread, have to be defined here to avoid worker threads repeating this function"""
-    if job.is_cancelled:
-        return
-
-    item.upload_blocking()
-    job.transferred_size += item.size
+from .utils import get_data_checksum
 
 
 class UploadChunksCache:
@@ -71,7 +66,7 @@ class UploadQueueItem:
 
         self._request_headers = {"Content-Type": "application/octet-stream"}
 
-    def upload_chunk(self, data: bytes, checksum: str):
+    def upload_chunk(self, data: ByteString, checksum: str):
         """
         Uploads the chunk to the server.
         """
@@ -84,15 +79,14 @@ class UploadQueueItem:
 
         if not (resp_dict["size"] == len(data) and resp_dict["checksum"] == checksum):
             try:
-                self.mc.post("/v1/project/push/cancel/{}".format(self.transaction_id))
+                self.mc.post(f"/v1/project/push/cancel/{self.transaction_id}")
             except ClientError:
                 pass
-            raise ClientError("Mismatch between uploaded file chunk {} and local one".format(self.chunk_id))
+            raise ClientError(f"Mismatch between uploaded file chunk {self.chunk_id} and local one")
 
-    def upload_chunk_v2_api(self, data: bytes, checksum: str):
+    def upload_chunk_v2_api(self, data: ByteString, checksum: str):
         """
         Uploads the chunk to the server.
-        :param mc: MerginClient instance
         """
         # try to lookup the chunk in the cache, if yes use it.
         cached_chunk_id = self.mc.upload_chunks_cache.get_chunk_id(checksum)
@@ -114,9 +108,7 @@ class UploadQueueItem:
         with open(self.file_path, "rb") as file_handle:
             file_handle.seek(self.chunk_index * UPLOAD_CHUNK_SIZE)
             data = file_handle.read(UPLOAD_CHUNK_SIZE)
-            checksum = hashlib.sha1()
-            checksum.update(data)
-            checksum_str = checksum.hexdigest()
+            checksum_str = get_data_checksum(data)
 
             self.mp.log.debug(f"Uploading {self.file_path} part={self.chunk_index}")
             attempts = 2
@@ -130,8 +122,7 @@ class UploadQueueItem:
                         self.upload_chunk(data, checksum_str)
                     break  # exit loop if upload was successful
                 except ClientError as e:
-                    if e.http_error == 409 and attempt < attempts - 1:
-                        # retry on conflict, e.g. when server has changes that we do not have yet
+                    if attempt < attempts - 1:
                         time.sleep(5)
                         continue
                     raise
@@ -145,7 +136,6 @@ class UploadJob:
     def __init__(
         self, version: str, changes: LocalChanges, transaction_id: Optional[str], mp: MerginProject, mc, tmp_dir
     ):
-        # self.project_path = project_path  # full project name ("username/projectname")
         self.version = version
         self.changes: LocalChanges = changes  # dictionary of local changes to the project
         self.transaction_id = transaction_id  # ID of the transaction assigned by the server
@@ -163,42 +153,48 @@ class UploadJob:
     def dump(self):
         print("--- JOB ---", self.total_size, "bytes")
         for item in self.upload_queue_items:
-            print("- {} {} {}".format(item.file_path, item.chunk_index, item.size))
+            print(f"- {item.file_path} {item.chunk_index} {item.size}")
         print("--- END ---")
 
-    def submit_item_to_thread(self, item: UploadQueueItem):
+    def _submit_item_to_thread(self, item: UploadQueueItem):
         """Upload a single item in the background"""
-        feature = self.executor.submit(_do_upload, item, self)
-        self.futures.append(feature)
+        future = self.executor.submit(_do_upload, item, self)
+        self.futures.append(future)
 
-    def add_items(self, items: List[UploadQueueItem], total_size: int):
+    def add_items(self, items: List[UploadQueueItem]):
         """Add multiple chunks to the upload queue"""
-        self.total_size = total_size
+        self.total_size = sum(item.size for item in items)
         self.upload_queue_items = items
 
-        self.mp.log.info(f"will upload {len(items)} items with total size {total_size}")
+        self.mp.log.info(f"will upload {len(self.upload_queue_items)} items with total size {self.total_size}")
 
         # start uploads in background
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
         for item in items:
             if self.transaction_id:
                 item.transaction_id = self.transaction_id
-            self.submit_item_to_thread(item)
+            self._submit_item_to_thread(item)
 
     def update_chunks_from_items(self):
         """Update chunks in LocalChanges from the upload queue items."""
-        self.changes.update_chunks(
-            [(item.chunk_id, item.server_chunk_id) for item in self.upload_queue_items]
-        )
+        self.changes.update_chunks([(item.chunk_id, item.server_chunk_id) for item in self.upload_queue_items])
 
 
-def create_upload_chunks(mc, mp: MerginProject, local_changes: List[LocalChange]) -> Tuple[List[UploadQueueItem], int]:
+def _do_upload(item: UploadQueueItem, job: UploadJob):
+    """runs in worker thread, have to be defined here to avoid worker threads repeating this function"""
+    if job.is_cancelled:
+        return
+
+    item.upload_blocking()
+    job.transferred_size += item.size
+
+
+def create_upload_chunks(mc, mp: MerginProject, local_changes: List[LocalChange]) -> List[UploadQueueItem]:
     """
     Create a list of UploadQueueItem objects from the changes dictionary and calculate total size of files.
     This is used to prepare the upload queue for the upload job.
     """
     upload_queue_items = []
-    total_size = 0
     # prepare file chunks for upload
     for change in local_changes:
         file_checksum = change.checksum
@@ -222,9 +218,7 @@ def create_upload_chunks(mc, mp: MerginProject, local_changes: List[LocalChange]
                 UploadQueueItem(mc, mp, file_location, size, file_checksum, chunk_id, chunk_index)
             )
 
-        total_size += file_size
-
-    return upload_queue_items, total_size
+    return upload_queue_items
 
 
 def create_upload_job(
@@ -234,83 +228,56 @@ def create_upload_job(
     Prepare transaction and create an upload job for the project using the v1 API.
     """
     project_path = mp.project_full_name()
-    local_version = mp.version()
-
-    data = {"version": local_version, "changes": changes.get_server_request()}
-    try:
-        resp = mc.post(
-            f"/v1/project/push/{project_path}",
-            data,
-            {"Content-Type": "application/json"},
-        )
-    except ClientError as err:
-        mp.log.error("Error starting transaction: " + str(err))
-        mp.log.info("--- push aborted")
-        raise
-    push_start_resp = json.load(resp)
-
-    upload_changes = changes.get_upload_changes()
-    transaction_id = push_start_resp["transaction"] if upload_changes else None
-    job = UploadJob(local_version, changes, transaction_id, mp, mc, tmp_dir)
-
-    if not upload_changes:
-        mp.log.info("not uploading any files")
-        job.server_resp = push_start_resp
-        push_project_finalize(job)
-        return  # all done - no pending job
-
-    mp.log.info(f"got transaction ID {transaction_id}")
-
-    # prepare file chunks for upload
-    upload_queue_items, total_size = create_upload_chunks(mc, mp, upload_changes)
-    job.add_items(upload_queue_items, total_size)
-    return job
-
-
-def create_upload_job_v2_api(
-    mc, mp: MerginProject, changes: LocalChanges, tmp_dir: tempfile.TemporaryDirectory
-) -> Optional[UploadJob]:
-    """
-    Call checkonly endpoint to check compatibility of the project with the server
-    and prepare an upload job for the project using the v2 API.
-    """
     project_id = mp.project_id()
     local_version = mp.version()
+    server_feaures = mc.server_features()
 
-    data = {"version": local_version, "changes": changes.get_server_request()}
+    data = {"version": local_version, "changes": changes.to_server_payload()}
+    push_start_resp = {}
     try:
-        mc.post(
-            f"/v2/projects/{project_id}/versions",
-            {**data, "check_only": True},
-            {"Content-Type": "application/json"},
-        )
+        if server_feaures.get("v2_push_enabled"):
+            mc.post(
+                f"/v2/projects/{project_id}/versions",
+                {**data, "check_only": True},
+                {"Content-Type": "application/json"},
+            )
+        else:
+            resp = mc.post(
+                f"/v1/project/push/{project_path}",
+                data,
+                {"Content-Type": "application/json"},
+            )
+            push_start_resp = json.load(resp)
     except ClientError as err:
-        # ignore 409 error codes, it means that the project is already in a transaction
-        # but we still want to continue with the upload
-        if err.server_code not in [ErrorCode.AnotherUploadRunning.value, ErrorCode.ProjectVersionExists]:
-            mp.log.error("Error doing push check compatibility: " + str(err))
-            mp.log.error("--- push aborted")
+        if err.server_code not in [ErrorCode.AnotherUploadRunning.value, ErrorCode.ProjectVersionExists.value]:
+            mp.log.error("Error starting transaction: " + str(err))
+            mp.log.info("--- push aborted")
             raise
         else:
             mp.log.info("Project version exists or another upload is running, continuing with upload.")
 
     upload_changes = changes.get_upload_changes()
-    job = UploadJob(local_version, changes, None, mp, mc, tmp_dir)
-    upload_queue_items, total_size = create_upload_chunks(mc, mp, upload_changes)
-    job.add_items(upload_queue_items, total_size)
+    transaction_id = push_start_resp.get("transaction") if upload_changes else None
+    job = UploadJob(local_version, changes, transaction_id, mp, mc, tmp_dir)
 
-    if not upload_queue_items:
-        mp.log.info("not uploading any files")
-        push_project_finalize(job)
-        return None  # all done - no pending job
-
-    mp.log.info(f"Starting upload chunks for project {project_id}")
+    if transaction_id:
+        mp.log.info(f"got transaction ID {transaction_id}")
 
     # prepare file chunks for upload
+    upload_queue_items = create_upload_chunks(mc, mp, upload_changes)
+    if not upload_queue_items:
+        mp.log.info("not uploading any files")
+        if push_start_resp:
+            job.server_resp = push_start_resp
+        push_project_finalize(job)
+        return  # all done - no pending job
+
+    mp.log.info(f"Starting upload chunks for project {project_id}")
+    job.add_items(upload_queue_items)
     return job
 
 
-def push_project_async(mc, directory) -> Optional[UploadJob]:
+def push_project_async(mc, directory, check_version=False) -> Optional[UploadJob]:
     """Starts push of a project and returns pending upload job"""
 
     mp = MerginProject(directory)
@@ -342,7 +309,7 @@ def push_project_async(mc, directory) -> Optional[UploadJob]:
         raise ClientError(f"You do not seem to have write access to the project (username '{username}')")
 
     # DISCUSSION: do we want to check if the project is up to date before pushing? For now, we removed this part
-    if local_version != server_version:
+    if check_version and local_version != server_version:
         mp.log.error(f"--- push {project_path} - not up to date (local {local_version} vs server {server_version})")
         raise ClientError(
             "There is a new version of the project on the server. Please update your local copy."
@@ -370,19 +337,12 @@ def push_project_async(mc, directory) -> Optional[UploadJob]:
         if mp.is_versioned_file(f["path"]):
             mp.copy_versioned_file_for_upload(f, tmp_dir.name)
 
-    server_feaure_flags = mc.server_features()
-    job = None
     local_changes = LocalChanges(
         added=[LocalChange(**change) for change in changes["added"]],
         updated=[LocalChange(**change) for change in changes["updated"]],
         removed=[LocalChange(**change) for change in changes["removed"]],
     )
-    if server_feaure_flags.get("v2_push_enabled"):
-        # v2 push uses a different endpoint
-        job = create_upload_job_v2_api(mc, mp, local_changes, tmp_dir)
-    else:
-        # v1 push uses the old endpoint
-        job = create_upload_job(mc, mp, local_changes, tmp_dir)
+    job = create_upload_job(mc, mp, local_changes, tmp_dir)
     return job
 
 
@@ -433,8 +393,8 @@ def push_project_finalize(job: UploadJob):
                 raise future.exception()
 
     if job.transferred_size != job.total_size:
-        error_msg = "Transferred size ({}) and expected total size ({}) do not match!".format(
-            job.transferred_size, job.total_size
+        error_msg = (
+            f"Transferred size ({job.transferred_size}) and expected total size ({job.total_size}) do not match!"
         )
         job.mp.log.error("--- push finish failed! " + error_msg)
         raise ClientError("Upload error: " + error_msg)
@@ -448,14 +408,14 @@ def push_project_finalize(job: UploadJob):
                 f"/v2/projects/{job.mp.project_id()}/versions",
                 data={
                     "version": job.version,
-                    "changes": job.changes.get_server_request(),
+                    "changes": job.changes.to_server_payload(),
                 },
                 headers={"Content-Type": "application/json"},
             )
             project_info = job.mc.project_info(job.mp.project_id())
             job.server_resp = project_info
         except ClientError as err:
-            if err.server_code in [ErrorCode.AnotherUploadRunning.value, ErrorCode.ProjectVersionExists]:
+            if err.server_code in [ErrorCode.AnotherUploadRunning.value, ErrorCode.ProjectVersionExists.value]:
                 err.sync_retry = True
             else:
                 job.mc.upload_chunks_cache.clear()  # clear the upload chunks cache, as we are getting fatal from server

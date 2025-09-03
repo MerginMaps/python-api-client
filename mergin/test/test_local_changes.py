@@ -2,35 +2,32 @@ from datetime import datetime
 
 from ..local_changes import LocalChange, LocalChanges
 
+
 def test_local_changes_from_dict():
     """Test generating LocalChanges from a dictionary."""
     changes_dict = {
-        "added": [
-            {"path": "file1.txt", "checksum": "abc123", "size": 1024, "mtime": datetime.now()}
-        ],
-        "updated": [
-            {"path": "file2.txt", "checksum": "xyz789", "size": 2048, "mtime": datetime.now()}
-        ],
+        "added": [{"path": "file1.txt", "checksum": "abc123", "size": 1024, "mtime": datetime.now()}],
+        "updated": [{"path": "file2.txt", "checksum": "xyz789", "size": 2048, "mtime": datetime.now()}],
         "removed": [
             {
                 "checksum": "a4e7e35d1e8c203b5d342ecd9676adbebc924c84",
                 "diff": None,
                 "history": {
                     "v1": {
-                    "change": "added",
-                    "checksum": "a4e7e35d1e8c203b5d342ecd9676adbebc924c84",
-                    "expiration": None,
-                    "path": "base.gpkg",
-                    "size": 98304
+                        "change": "added",
+                        "checksum": "a4e7e35d1e8c203b5d342ecd9676adbebc924c84",
+                        "expiration": None,
+                        "path": "base.gpkg",
+                        "size": 98304,
                     }
                 },
                 "location": "v1/base.gpkg",
                 "mtime": "2025-08-15T09:04:21.690590Z",
                 "path": "base.gpkg",
                 "size": 98304,
-                "version": "v1"
+                "version": "v1",
             }
-        ]
+        ],
     }
 
     # Convert dictionary to LocalChanges
@@ -59,7 +56,7 @@ def test_local_change_get_diff():
         checksum="abc123",
         size=1024,
         mtime=datetime.now(),
-        diff={"path": "file1-diff", "checksum": "diff123", "size": 512, "mtime": datetime.now()}
+        diff={"path": "file1-diff", "checksum": "diff123", "size": 512, "mtime": datetime.now()},
     )
 
     diff = local_change.get_diff()
@@ -69,20 +66,14 @@ def test_local_change_get_diff():
     assert diff.size == 512
 
 
-def test_local_changes_get_server_request():
-    """Test the get_server_request method of LocalChanges."""
-    added = [
-        LocalChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now())
-    ]
-    updated = [
-        LocalChange(path="file2.txt", checksum="xyz789", size=2048, mtime=datetime.now())
-    ]
-    removed = [
-        LocalChange(path="file3.txt", checksum="lmn456", size=512, mtime=datetime.now())
-    ]
+def test_local_changes_to_server_payload():
+    """Test the to_server_payload method of LocalChanges."""
+    added = [LocalChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now())]
+    updated = [LocalChange(path="file2.txt", checksum="xyz789", size=2048, mtime=datetime.now())]
+    removed = [LocalChange(path="file3.txt", checksum="lmn456", size=512, mtime=datetime.now())]
 
     local_changes = LocalChanges(added=added, updated=updated, removed=removed)
-    server_request = local_changes.get_server_request()
+    server_request = local_changes.to_server_payload()
 
     assert "added" in server_request
     assert "updated" in server_request
@@ -91,15 +82,14 @@ def test_local_changes_get_server_request():
     assert server_request["updated"][0]["path"] == "file2.txt"
     assert server_request["removed"][0]["path"] == "file3.txt"
 
+
 def test_local_changes_update_chunks():
     """Test the update_chunks method of LocalChanges."""
     added = [
-        LocalChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now(),chunks=["abc123"]),
-        LocalChange(path="file2.txt", checksum="abc123", size=1024, mtime=datetime.now(),chunks=["abc123"])
+        LocalChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now(), chunks=["abc123"]),
+        LocalChange(path="file2.txt", checksum="abc123", size=1024, mtime=datetime.now(), chunks=["abc123"]),
     ]
-    updated = [
-        LocalChange(path="file2.txt", checksum="xyz789", size=2048, mtime=datetime.now(), chunks=["xyz789"])
-    ]
+    updated = [LocalChange(path="file2.txt", checksum="xyz789", size=2048, mtime=datetime.now(), chunks=["xyz789"])]
 
     local_changes = LocalChanges(added=added, updated=updated)
     chunks = [("abc123", "chunk1"), ("abc123", "chunk1"), ("xyz789", "chunk2")]
@@ -110,18 +100,13 @@ def test_local_changes_update_chunks():
     assert local_changes.added[1].chunks == ["chunk1"]
     assert local_changes.updated[0].chunks == ["chunk2"]
 
+
 def test_local_changes_get_upload_changes():
     """Test the get_upload_changes method of LocalChanges."""
     # Create sample LocalChange instances
-    added = [
-        LocalChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now())
-    ]
-    updated = [
-        LocalChange(path="file2.txt", checksum="xyz789", size=2048, mtime=datetime.now())
-    ]
-    removed = [
-        LocalChange(path="file3.txt", checksum="lmn456", size=512, mtime=datetime.now())
-    ]
+    added = [LocalChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now())]
+    updated = [LocalChange(path="file2.txt", checksum="xyz789", size=2048, mtime=datetime.now())]
+    removed = [LocalChange(path="file3.txt", checksum="lmn456", size=512, mtime=datetime.now())]
 
     # Initialize LocalChanges with added, updated, and removed changes
     local_changes = LocalChanges(added=added, updated=updated, removed=removed)
