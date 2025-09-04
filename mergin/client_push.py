@@ -268,8 +268,14 @@ def push_project_finalize(job):
             resp = job.mc.post("/v1/project/push/finish/%s" % job.transaction_id)
             job.server_resp = json.load(resp)
         except ClientError as err:
+            # Log additional metadata on server error 502 or 504
+            if hasattr(err, "http_error") and err.http_error in (502, 504):
+                job.mp.log.error(
+                    f"Push failed with HTTP error {err.http_error}. "
+                    f"Upload details: {len(job.upload_queue_items)} file chunks, total size {job.total_size} bytes."
+                )
             # server returns various error messages with filename or something generic
-            # it would be better if it returned list of failed files (and reasons) whenever possible
+            # it would be better if it returned list of failed files (and reasons) whenever possible    
             job.mp.log.error("--- push finish failed! " + str(err))
 
             # if push finish fails, the transaction is not killed, so we
