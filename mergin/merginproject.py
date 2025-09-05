@@ -34,7 +34,6 @@ try:
 except (ImportError, ModuleNotFoundError):
     import pygeodiff
 
-
 class MerginProject:
     """Base class for Mergin Maps local projects.
 
@@ -704,13 +703,14 @@ class MerginProject:
                     self.geodiff.make_copy_sqlite(self.fpath(path), basefile)
                 elif k == "updated":
                     # in case for geopackage cannot be created diff (e.g. forced update with committed changes from wal file)
-                    if "diff" not in item:
+                    diff = item.get("diff")
+                    if not diff:
                         self.log.info("updating basefile (copy) for: " + path)
                         self.geodiff.make_copy_sqlite(self.fpath(path), basefile)
                     else:
                         self.log.info("updating basefile (diff) for: " + path)
                         # better to apply diff to previous basefile to avoid issues with geodiff tmp files
-                        changeset = self.fpath_meta(item["diff"]["path"])
+                        changeset = self.fpath_meta(diff["path"])
                         patch_error = self.apply_diffs(basefile, [changeset])
                         if patch_error:
                             # in case of local sync issues it is safier to remove basefile, next time it will be downloaded from server
