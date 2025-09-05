@@ -3172,6 +3172,7 @@ def test_client_project_sync_retry(mc):
         mock_push_project_finalize.side_effect = ClientError("test error")
         with pytest.raises(ClientError, match="test error"):
             mc.sync_project(project_dir)
+        assert mock_push_project_finalize.call_count == 1
 
     with patch("mergin.client.push_project_finalize") as mock_push_project_finalize, patch(
         "mergin.client.PUSH_ATTEMPTS", 2

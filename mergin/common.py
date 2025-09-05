@@ -83,6 +83,7 @@ class ClientError(Exception):
         if self.is_blocking_sync() or self.is_rate_limit():
             return True
 
+        # Check retryable based on http error and message from v1 sync API endpoint
         if (
             self.http_error
             and self.detail

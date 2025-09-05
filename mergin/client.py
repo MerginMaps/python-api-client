@@ -1538,3 +1538,5 @@ class MerginClient:
                     sleep(PUSH_ATTEMPT_WAIT)
                     continue
                 raise e
+            else:
+                server_conflict_attempts = 0
