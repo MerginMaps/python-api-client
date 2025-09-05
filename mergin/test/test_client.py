@@ -3174,13 +3174,25 @@ def test_client_project_sync_retry(mc):
             mc.sync_project(project_dir)
         assert mock_push_project_finalize.call_count == 1
 
-    with patch("mergin.client.push_project_finalize") as mock_push_project_finalize, patch(
+    with patch("mergin.client.push_project_async") as mock_push_project_async, patch(
         "mergin.client.PUSH_ATTEMPTS", 2
     ):
-        mock_push_project_finalize.side_effect = ClientError(
+        mock_push_project_async.side_effect = ClientError(
             detail="",
             server_code=ErrorCode.AnotherUploadRunning.value,
         )
         with pytest.raises(ClientError):
             mc.sync_project(project_dir)
-    assert mock_push_project_finalize.call_count == 2
+    assert mock_push_project_async.call_count == 2
+
+    # for v1 endpoints we are rising retry just from push start
+    with patch("mergin.client.push_project_async") as mock_push_project_async, patch(
+        "mergin.client.PUSH_ATTEMPTS", 2
+    ):
+        mock_push_project_async.side_effect = ClientError(
+            detail="Another process is running. Please try later.",
+            http_error=400,
+        )
+        with pytest.raises(ClientError):
+            mc.sync_project(project_dir)
+    assert mock_push_project_async.call_count == 2
