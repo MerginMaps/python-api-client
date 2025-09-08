@@ -334,12 +334,14 @@ def _geodiff_changes_count(mp, diff_rel_path):
 
     try:
         from pygeodiff import GeoDiff
+
         return GeoDiff().changes_count(diff_abs)
     except Exception:
         pass
 
     try:
         import geodiff  # optional fallback
+
         if hasattr(geodiff, "changes_count"):
             try:
                 return geodiff.changes_count(diff_abs)
@@ -349,6 +351,7 @@ def _geodiff_changes_count(mp, diff_rel_path):
         return None
 
     return None
+
 
 def push_project_cancel(job):
     """

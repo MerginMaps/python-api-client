@@ -78,12 +78,14 @@ def test_push_finalize_logs_on_5xx_real_diff(caplog, status_code):
             mc=SimpleNamespace(post=fake_post),
             changes={
                 "added": [],
-                "updated": [{
-                    "path": modified.name,
-                    "size": file_size,
-                    "diff": {"path": diff_path.name, "size": diff_size},
-                    "chunks": [1],
-                }],
+                "updated": [
+                    {
+                        "path": modified.name,
+                        "size": file_size,
+                        "diff": {"path": diff_path.name, "size": diff_size},
+                        "chunks": [1],
+                    }
+                ],
                 "removed": [],
             },
             tmp_dir=SimpleNamespace(cleanup=lambda: None),
