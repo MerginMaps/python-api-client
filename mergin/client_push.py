@@ -320,38 +320,22 @@ def push_project_finalize(job):
     job.mp.log.info("--- push finished - new project version " + job.server_resp["version"])
 
 
-def _geodiff_changes_count(mp, diff_rel_path):
+def _geodiff_changes_count(mp: MerginProject, diff_rel_path: str):
     """
     Best-effort: return number of changes in the .gpkg diff (int) or None.
     Never raises – diagnostics/logging must not fail.
     """
-    if not diff_rel_path:
-        return None
+
     try:
         diff_abs = mp.fpath_meta(diff_rel_path)
-    except Exception:
+    except FileNotFoundError:
         return None
 
     try:
-        from pygeodiff import GeoDiff
-
+        from pygeodiff import GeoDiff, GeoDiffLibError
         return GeoDiff().changes_count(diff_abs)
-    except Exception:
-        pass
-
-    try:
-        import geodiff  # optional fallback
-
-        if hasattr(geodiff, "changes_count"):
-            try:
-                return geodiff.changes_count(diff_abs)
-            except Exception:
-                return None
-    except Exception:
+    except GeoDiffLibError:
         return None
-
-    return None
-
 
 def push_project_cancel(job):
     """
