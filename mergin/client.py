@@ -202,9 +202,11 @@ class MerginClient:
 
         if self._auth_session:
             # Refresh auth token if it expired or will expire very soon
-            delta = self._auth_session["expire"] - datetime.now(timezone.utc)
+            expire = self._auth_session.get("expire")
+            now = datetime.now(timezone.utc)
+            delta = expire - now
+            self.log.debug("Auth expire=%s now=%s delta=%.1fs", expire, now, delta.total_seconds())
             if delta.total_seconds() < 5:
-                self.log.info("Token has expired - refreshing...")
                 if self._auth_params.get("login", None) and self._auth_params.get("password", None):
                     self.log.info("Token has expired - refreshing...")
                     self.login(self._auth_params["login"], self._auth_params["password"])
@@ -303,7 +305,6 @@ class MerginClient:
         :type password: String
         """
         params = {"login": login, "password": password}
-        self._auth_session = None
         self.log.info(f"Going to log in user {login}")
         try:
             resp = self.post(
@@ -314,12 +315,14 @@ class MerginClient:
         except ClientError as e:
             self.log.info(f"Login problem: {e.detail}")
             raise LoginError(e.detail)
+        expires = dateutil.parser.parse(session["expire"])
         self._auth_session = {
             "token": f"Bearer {session['token']}",
-            "expire": dateutil.parser.parse(session["expire"]),
+            "expire": expires,
         }
         self._user_info = {"username": data["username"]}
         self.log.info(f"User {data['username']} successfully logged in.")
+        self.log.debug(f"The auth token expires at {expires}")
         return session
 
     def username(self):
