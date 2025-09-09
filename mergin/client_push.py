@@ -333,9 +333,11 @@ def _geodiff_changes_count(mp: MerginProject, diff_rel_path: str):
 
     try:
         from pygeodiff import GeoDiff, GeoDiffLibError
+
         return GeoDiff().changes_count(diff_abs)
     except GeoDiffLibError:
         return None
+
 
 def push_project_cancel(job):
     """

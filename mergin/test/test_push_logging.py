@@ -8,6 +8,7 @@ from pygeodiff import GeoDiff
 from mergin.client_push import push_project_finalize, UploadJob
 from mergin.common import ClientError
 
+
 @pytest.mark.parametrize("status_code", [502, 504])
 def test_push_finalize_logs_on_5xx_real_diff(caplog, status_code, tmp_path):
     # --- data ---
@@ -30,17 +31,26 @@ def test_push_finalize_logs_on_5xx_real_diff(caplog, status_code, tmp_path):
 
     # --- fake MP/MC len tam, kde treba ---
     class MP:
-        def __init__(self, log): self.log = log
-        def update_metadata(self, *a, **k): pass
-        def apply_push_changes(self, *a, **k): pass
-        def fpath_meta(self, rel): return str(diff_path) if rel == diff_path.name else rel
+        def __init__(self, log):
+            self.log = log
+
+        def update_metadata(self, *a, **k):
+            pass
+
+        def apply_push_changes(self, *a, **k):
+            pass
+
+        def fpath_meta(self, rel):
+            return str(diff_path) if rel == diff_path.name else rel
 
     tx = "tx-1"
 
     class MC:
         def post(self, url, *args, **kwargs):
             if url.endswith(f"/v1/project/push/finish/{tx}"):
-                err = ClientError("Gateway error"); setattr(err, "http_error", status_code); raise err
+                err = ClientError("Gateway error")
+                setattr(err, "http_error", status_code)
+                raise err
             if url.endswith(f"/v1/project/push/cancel/{tx}"):
                 return SimpleNamespace(msg="cancelled")
             return SimpleNamespace(msg="ok")
@@ -52,12 +62,14 @@ def test_push_finalize_logs_on_5xx_real_diff(caplog, status_code, tmp_path):
         project_path="u/p",
         changes={
             "added": [],
-            "updated": [{
-                "path": modified.name,
-                "size": file_size,
-                "diff": {"path": diff_path.name, "size": diff_size},
-                "chunks": [1],
-            }],
+            "updated": [
+                {
+                    "path": modified.name,
+                    "size": file_size,
+                    "diff": {"path": diff_path.name, "size": diff_size},
+                    "chunks": [1],
+                }
+            ],
             "removed": [],
         },
         transaction_id=tx,
