@@ -276,7 +276,7 @@ def create_upload_job(
     return job
 
 
-def push_project_async(mc, directory, check_version=False) -> Optional[UploadJob]:
+def push_project_async(mc, directory) -> Optional[UploadJob]:
     """Starts push of a project and returns pending upload job"""
 
     mp = MerginProject(directory)
@@ -289,34 +289,10 @@ def push_project_async(mc, directory, check_version=False) -> Optional[UploadJob
     mp.log.info("--- version: " + mc.user_agent_info())
     mp.log.info(f"--- start push {project_path}")
 
-    try:
-        project_info = mc.project_info(project_path)
-    except ClientError as err:
-        mp.log.error("Error getting project info: " + str(err))
-        mp.log.info("--- push aborted")
-        raise
-    server_version = project_info["version"] if project_info["version"] else "v0"
-
-    mp.log.info(f"got project info: local version {local_version} / server version {server_version}")
-
-    username = mc.username()
-    # permissions field contains information about update, delete and upload privileges of the user
-    # on a specific project. This is more accurate information then "writernames" field, as it takes
-    # into account namespace privileges. So we have to check only "permissions", namely "upload" one
-    if not mc.has_writing_permissions(project_path):
-        mp.log.error(f"--- push {project_path} - username {username} does not have write access")
-        raise ClientError(f"You do not seem to have write access to the project (username '{username}')")
-
-    # DISCUSSION: do we want to check if the project is up to date before pushing? For now, we removed this part
-    if check_version and local_version != server_version:
-        mp.log.error(f"--- push {project_path} - not up to date (local {local_version} vs server {server_version})")
-        raise ClientError(
-            "There is a new version of the project on the server. Please update your local copy."
-            + f"\n\nLocal version: {local_version}\nServer version: {server_version}"
-        )
+    mp.log.info(f"got project info: local version {local_version}")
 
     tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
-    changes, changes_len = get_push_changes_batch(mc, mp, project_info)
+    changes, changes_len = get_push_changes_batch(mc, mp)
     if not changes_len:
         mp.log.info(f"--- push {project_path} - nothing to do")
         return
@@ -489,11 +465,12 @@ def remove_diff_files(job: UploadJob) -> None:
                 os.remove(diff_file)
 
 
-def get_push_changes_batch(mc, mp: MerginProject, project_info: dict) -> Tuple[dict, int]:
+def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[dict, int]:
     """
     Get changes that need to be pushed to the server.
     """
     changes = mp.get_push_changes()
-    changes = filter_changes(mc, project_info, changes)
+    project_role = mp.project_role()
+    changes = filter_changes(mc, project_role, changes)
 
     return changes, sum(len(v) for v in changes.values())

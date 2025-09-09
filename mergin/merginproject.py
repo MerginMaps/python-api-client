@@ -155,6 +155,10 @@ class MerginProject:
         full_name = self.project_full_name()
         slash_index = full_name.index("/")
         return full_name[:slash_index]
+    
+    def project_role(self) -> str:
+        self._read_metadata()
+        return self._metadata.get("role")
 
     def project_id(self) -> str:
         """Returns ID of the project (UUID using 8-4-4-4-12 formatting without braces)

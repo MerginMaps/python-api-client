@@ -14,12 +14,11 @@ Returns:
 _disallowed_changes: Callable[[dict], bool] = lambda change: is_qgis_file(change["path"])
 
 
-def is_editor_enabled(mc, project_info: dict) -> bool:
+def is_editor_enabled(mc, project_role: str) -> bool:
     """
     The function checks if the server supports editor access, and if the current user's project role matches the expected role name for editors.
     """
     server_support = mc.has_editor_support()
-    project_role = project_info.get("role")
 
     return server_support and project_role == EDITOR_ROLE_NAME
 
@@ -40,7 +39,7 @@ def _apply_editor_filters(changes: Dict[str, List[dict]]) -> Dict[str, List[dict
     return changes
 
 
-def filter_changes(mc, project_info: dict, changes: Dict[str, List[dict]]) -> Dict[str, List[dict]]:
+def filter_changes(mc, project_role: str, changes: Dict[str, List[dict]]) -> Dict[str, List[dict]]:
     """
     Filters the given changes dictionary based on the editor's enabled state.
 
@@ -52,7 +51,7 @@ def filter_changes(mc, project_info: dict, changes: Dict[str, List[dict]]) -> Di
     Returns:
         dict[str, list[dict]]: The filtered changes dictionary.
     """
-    if not is_editor_enabled(mc, project_info):
+    if not is_editor_enabled(mc, project_role):
         return changes
     return _apply_editor_filters(changes)
 

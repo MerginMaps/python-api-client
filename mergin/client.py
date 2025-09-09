@@ -918,7 +918,7 @@ class MerginClient:
         :param directory: Project's directory
         :type directory: String
         """
-        job = push_project_async(self, directory, check_version=True)
+        job = push_project_async(self, directory)
         if job is None:
             return  # there is nothing to push (or we only deleted some files)
         push_project_wait(job)

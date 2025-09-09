@@ -2639,14 +2639,12 @@ def test_download_failure(mc):
 def test_editor(mc: MerginClient):
     """Test editor handler class and push with editor"""
 
-    project_info = {"role": "editor"}
     if not mc.has_editor_support():
-        assert is_editor_enabled(mc, project_info) is False
+        assert is_editor_enabled(mc, EDITOR_ROLE_NAME) is False
         return
 
     # mock that user is editor
-    project_info["role"] = EDITOR_ROLE_NAME
-    assert is_editor_enabled(mc, project_info) is True
+    assert is_editor_enabled(mc, EDITOR_ROLE_NAME) is True
 
     # unit test for editor methods
     qgs_changeset = {
@@ -2654,7 +2652,7 @@ def test_editor(mc: MerginClient):
         "updated": [{"path": "/folder/project.updated.Qgs"}],
         "removed": [{"path": "/folder/project.removed.qgs"}],
     }
-    qgs_changeset = filter_changes(mc, project_info, qgs_changeset)
+    qgs_changeset = filter_changes(mc, EDITOR_ROLE_NAME, qgs_changeset)
     assert sum(len(v) for v in qgs_changeset.values()) == 2
 
 
