@@ -1524,10 +1524,12 @@ class MerginClient:
                     while push_project_is_running(job):
                         sleep(SYNC_CALLBACK_WAIT)
                         current_size = job.transferred_size
-                        progress_callback(current_size - last_size, job)  # call callback with transferred size increment
+                        progress_callback(
+                            current_size - last_size, job
+                        )  # call callback with transferred size increment
                         last_size = current_size
                 push_project_finalize(job)
-                _, has_changes = get_push_changes_batch(self, mp, job.server_resp)
+                _, has_changes = get_push_changes_batch(self, mp)
             except ClientError as e:
                 if e.is_retryable_sync() and server_conflict_attempts < PUSH_ATTEMPTS - 1:
                     # retry on conflict, e.g. when server has changes that we do not have yet
