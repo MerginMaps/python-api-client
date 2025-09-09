@@ -406,7 +406,7 @@ def test_push_pull_changes(mc):
     f_conflict_checksum = generate_checksum(os.path.join(project_dir_2, f_updated))
 
     # not at latest server version
-    with pytest.raises(ClientError, match="Please update your local copy"):
+    with pytest.raises(ClientError, match="Version mismatch"):
         mc.push_project(project_dir_2)
 
     # check changes in project_dir_2 before applied
@@ -3172,9 +3172,7 @@ def test_client_project_sync_retry(mc):
             mc.sync_project(project_dir)
         assert mock_push_project_finalize.call_count == 1
 
-    with patch("mergin.client.push_project_async") as mock_push_project_async, patch(
-        "mergin.client.PUSH_ATTEMPTS", 2
-    ):
+    with patch("mergin.client.push_project_async") as mock_push_project_async, patch("mergin.client.PUSH_ATTEMPTS", 2):
         mock_push_project_async.side_effect = ClientError(
             detail="",
             server_code=ErrorCode.AnotherUploadRunning.value,
@@ -3184,9 +3182,7 @@ def test_client_project_sync_retry(mc):
     assert mock_push_project_async.call_count == 2
 
     # for v1 endpoints we are rising retry just from push start
-    with patch("mergin.client.push_project_async") as mock_push_project_async, patch(
-        "mergin.client.PUSH_ATTEMPTS", 2
-    ):
+    with patch("mergin.client.push_project_async") as mock_push_project_async, patch("mergin.client.PUSH_ATTEMPTS", 2):
         mock_push_project_async.side_effect = ClientError(
             detail="Another process is running. Please try later.",
             http_error=400,

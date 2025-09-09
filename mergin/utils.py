@@ -295,7 +295,8 @@ def bytes_to_human_size(bytes: int):
         return f"{round( bytes / 1024.0 / 1024.0 / 1024.0, precision )} GB"
     else:
         return f"{round( bytes / 1024.0 / 1024.0 / 1024.0 / 1024.0, precision )} TB"
-    
+
+
 def get_data_checksum(data: ByteString) -> str:
     """
     Generate sha1 checksum for given data.

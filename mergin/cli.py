@@ -468,6 +468,7 @@ def pull(ctx):
     except Exception as e:
         _print_unhandled_exception()
 
+
 @cli.command()
 @click.pass_context
 def sync(ctx):
@@ -478,6 +479,7 @@ def sync(ctx):
     directory = os.getcwd()
     upload_job = None
     try:
+
         def on_progress(increment, push_job):
             nonlocal upload_job
             upload_job = push_job

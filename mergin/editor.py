@@ -56,7 +56,7 @@ def filter_changes(mc, project_role: str, changes: Dict[str, List[dict]]) -> Dic
     return _apply_editor_filters(changes)
 
 
-def prevent_conflicted_copy(path: str, mc, project_info: dict) -> bool:
+def prevent_conflicted_copy(path: str, mc, project_role: str) -> bool:
     """
     Decides whether a file path should be blocked from creating a conflicted copy.
     Note: This is used when the editor is active and attempting to modify files (e.g., .ggs) that are also updated on the server, preventing unnecessary conflict files creation.
@@ -69,4 +69,4 @@ def prevent_conflicted_copy(path: str, mc, project_info: dict) -> bool:
     Returns:
         bool: True if the file path should be prevented from ceating conflicted copy, False otherwise.
     """
-    return is_editor_enabled(mc, project_info) and any([is_qgis_file(path)])
+    return is_editor_enabled(mc, project_role) and any([is_qgis_file(path)])

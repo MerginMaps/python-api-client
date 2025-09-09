@@ -34,6 +34,7 @@ try:
 except (ImportError, ModuleNotFoundError):
     import pygeodiff
 
+
 class MerginProject:
     """Base class for Mergin Maps local projects.
 
@@ -155,7 +156,7 @@ class MerginProject:
         full_name = self.project_full_name()
         slash_index = full_name.index("/")
         return full_name[:slash_index]
-    
+
     def project_role(self) -> str:
         self._read_metadata()
         return self._metadata.get("role")
@@ -555,7 +556,7 @@ class MerginProject:
                     if (
                         path in modified_local_paths
                         and item["checksum"] != local_files_map[path]["checksum"]
-                        and not prevent_conflicted_copy(path, mc, server_project)
+                        and not prevent_conflicted_copy(path, mc, server_project.get("role"))
                     ):
                         conflict = self.create_conflicted_copy(path, mc.username())
                         conflicts.append(conflict)
