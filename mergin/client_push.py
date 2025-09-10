@@ -19,6 +19,7 @@ import os
 from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
 from .editor import filter_changes
+from .utils import cleanup_tmp_dir
 
 
 class UploadJob:
@@ -124,7 +125,7 @@ def push_project_async(mc, directory):
     changes = filter_changes(mc, project_info, changes)
     mp.log.debug("push changes:\n" + pprint.pformat(changes))
 
-    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-", ignore_cleanup_errors=True, delete=True)
+    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
 
     # If there are any versioned files (aka .gpkg) that are not updated through a diff,
     # we need to make a temporary copy somewhere to be sure that we are uploading full content.
@@ -275,7 +276,7 @@ def push_project_finalize(job):
                     f"Upload details: {len(job.upload_queue_items)} file chunks, total size {job.total_size} bytes."
                 )
             # server returns various error messages with filename or something generic
-            # it would be better if it returned list of failed files (and reasons) whenever possible    
+            # it would be better if it returned list of failed files (and reasons) whenever possible
             job.mp.log.error("--- push finish failed! " + str(err))
 
             # if push finish fails, the transaction is not killed, so we
@@ -296,7 +297,7 @@ def push_project_finalize(job):
         job.mp.log.info("--- push aborted")
         raise ClientError("Failed to apply push changes: " + str(e))
 
-    job.tmp_dir.cleanup()  # delete our temporary dir and all its content
+    cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
 
     remove_diff_files(job)
 
