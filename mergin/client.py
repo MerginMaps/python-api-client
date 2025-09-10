@@ -18,8 +18,6 @@ import typing
 import warnings
 from time import sleep
 
-from typing import List
-
 from .common import (
     PUSH_ATTEMPT_WAIT,
     PUSH_ATTEMPTS,
@@ -75,15 +73,30 @@ class ServerType(Enum):
 
 
 def decode_token_data(token):
-    token_prefix = "Bearer ."
+    token_prefix = "Bearer "
     if not token.startswith(token_prefix):
-        raise TokenError(f"Token doesn't start with 'Bearer .': {token}")
+        raise TokenError(f"Token doesn't start with 'Bearer ': {token}")
     try:
-        data = token[len(token_prefix) :].split(".")[0]
-        # add proper base64 padding"
-        data += "=" * (-len(data) % 4)
-        decoded = zlib.decompress(base64.urlsafe_b64decode(data))
-        return json.loads(decoded)
+        token_raw = token[len(token_prefix) :]
+        is_compressed = False
+
+        # compressed tokens start with dot,
+        # see https://github.com/pallets/itsdangerous/blob/main/src/itsdangerous/url_safe.py#L55
+        if token_raw.startswith("."):
+            token_raw = token_raw.lstrip(".")
+            is_compressed = True
+
+        payload_raw = token_raw.split(".")[0]
+
+        # add proper base64 padding
+        payload_raw += "=" * (-len(payload_raw) % 4)
+        payload_data = base64.urlsafe_b64decode(payload_raw)
+
+        if is_compressed:
+            payload_data = zlib.decompress(payload_data)
+
+        return json.loads(payload_data)
+
     except (IndexError, TypeError, ValueError, zlib.error):
         raise TokenError(f"Invalid token data: {token}")
 
@@ -214,12 +227,14 @@ class MerginClient:
 
     def validate_auth(self):
         """Validate that client has valid auth token or can be logged in."""
-
         if self._auth_session:
             # Refresh auth token if it expired or will expire very soon
-            delta = self._auth_session["expire"] - datetime.now(timezone.utc)
-            if delta.total_seconds() < 5:
-                self.log.info("Token has expired - refreshing...")
+            expire = self._auth_session.get("expire")
+            now = datetime.now(timezone.utc)
+            delta = expire - now
+            delta_seconds = delta.total_seconds()
+            if delta_seconds < 5:
+                self.log.debug(f"Token has expired: expire={expire} now={now} delta={delta_seconds:.1f}s")
                 if self._auth_params.get("login", None) and self._auth_params.get("password", None):
                     self.log.info("Token has expired - refreshing...")
                     self.login(self._auth_params["login"], self._auth_params["password"])
@@ -286,7 +301,7 @@ class MerginClient:
         request = urllib.request.Request(url, headers=headers)
         return self._do_request(request, validate_auth=validate_auth)
 
-    def post(self, path, data=None, headers={}, validate_auth=True, query_params: dict[str, str] = None):
+    def post(self, path, data=None, headers={}, validate_auth=True, query_params: typing.Dict[str, str] = None):
         url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
         if query_params:
             url += "?" + urllib.parse.urlencode(query_params)
@@ -318,7 +333,6 @@ class MerginClient:
         :type password: String
         """
         params = {"login": login, "password": password}
-        self._auth_session = None
         self.log.info(f"Going to log in user {login}")
         try:
             resp = self.post(
@@ -329,12 +343,14 @@ class MerginClient:
         except ClientError as e:
             self.log.info(f"Login problem: {e.detail}")
             raise LoginError(e.detail)
+        expires = dateutil.parser.parse(session["expire"])
         self._auth_session = {
             "token": f"Bearer {session['token']}",
-            "expire": dateutil.parser.parse(session["expire"]),
+            "expire": expires,
         }
         self._user_info = {"username": data["username"]}
         self.log.info(f"User {data['username']} successfully logged in.")
+        self.log.debug(f"The auth token expires at {expires}")
         return session
 
     def username(self):
@@ -1352,7 +1368,7 @@ class MerginClient:
         resp = self.get(f"v2/workspaces/{workspace_id}/members/{user_id}")
         return json.load(resp)
 
-    def list_workspace_members(self, workspace_id: int) -> List[dict]:
+    def list_workspace_members(self, workspace_id: int) -> typing.List[dict]:
         """
         Get a list of workspace members
         """
@@ -1383,7 +1399,7 @@ class MerginClient:
         self.check_collaborators_members_support()
         self.delete(f"v2/workspaces/{workspace_id}/members/{user_id}")
 
-    def list_project_collaborators(self, project_id: str) -> List[dict]:
+    def list_project_collaborators(self, project_id: str) -> typing.List[dict]:
         """
         Get a list of project collaborators
         """

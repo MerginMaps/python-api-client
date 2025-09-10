@@ -291,13 +291,13 @@ def push_project_async(mc, directory) -> Optional[UploadJob]:
 
     mp.log.info(f"got project info: local version {local_version}")
 
-    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
     changes, changes_len = get_push_changes_batch(mc, mp)
     if not changes_len:
         mp.log.info(f"--- push {project_path} - nothing to do")
         return
 
     mp.log.debug("push changes:\n" + pprint.pformat(changes))
+    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-", ignore_cleanup_errors=True, delete=True)
 
     # If there are any versioned files (aka .gpkg) that are not updated through a diff,
     # we need to make a temporary copy somewhere to be sure that we are uploading full content.
@@ -401,6 +401,12 @@ def push_project_finalize(job: UploadJob):
             resp = job.mc.post("/v1/project/push/finish/%s" % job.transaction_id)
             job.server_resp = json.load(resp)
         except ClientError as err:
+            # Log additional metadata on server error 502 or 504
+            if hasattr(err, "http_error") and err.http_error in (502, 504):
+                job.mp.log.error(
+                    f"Push failed with HTTP error {err.http_error}. "
+                    f"Upload details: {len(job.upload_queue_items)} file chunks, total size {job.total_size} bytes."
+                )
             # server returns various error messages with filename or something generic
             # it would be better if it returned list of failed files (and reasons) whenever possible
             job.mp.log.error("--- push finish failed! " + str(err))
