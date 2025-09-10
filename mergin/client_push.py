@@ -124,7 +124,7 @@ def push_project_async(mc, directory):
     changes = filter_changes(mc, project_info, changes)
     mp.log.debug("push changes:\n" + pprint.pformat(changes))
 
-    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
+    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-", ignore_cleanup_errors=True, delete=True)
 
     # If there are any versioned files (aka .gpkg) that are not updated through a diff,
     # we need to make a temporary copy somewhere to be sure that we are uploading full content.
