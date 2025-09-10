@@ -427,7 +427,7 @@ class MerginProject:
                 file["checksum"] = checksum
             file["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(file["size"] / UPLOAD_CHUNK_SIZE))]
 
-        # need to check for for real changes in geodiff files using geodiff tool (comparing checksum is not enough)
+        # need to check for real changes in geodiff files using geodiff tool (comparing checksum is not enough)
         not_updated = []
         for file in changes["updated"]:
             path = file["path"]
