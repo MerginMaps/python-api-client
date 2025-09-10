@@ -145,7 +145,7 @@ def download_project_async(mc, project_path, directory, project_version=None):
     mp.log.info("--- version: " + mc.user_agent_info())
     mp.log.info(f"--- start download {project_path}")
 
-    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-", ignore_cleanup_errors=True, delete=True)
+    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
 
     try:
         # check whether we download the latest version or not
@@ -424,7 +424,7 @@ def pull_project_async(mc, directory) -> PullJob:
     # then we just download the whole file
     _pulling_file_with_diffs = lambda f: "diffs" in f and len(f["diffs"]) != 0
 
-    tmp_dir = tempfile.TemporaryDirectory(prefix="mm-pull-", ignore_cleanup_errors=True, delete=True)
+    tmp_dir = tempfile.TemporaryDirectory(prefix="mm-pull-")
     pull_changes = mp.get_pull_changes(server_info["files"])
     mp.log.debug("pull changes:\n" + pprint.pformat(pull_changes))
     fetch_files = []

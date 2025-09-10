@@ -3155,7 +3155,7 @@ def test_client_pull_project_async(mc):
     pull_project_wait(job)
     assert job.total_size == job.transferred_size
     pull_project_finalize(job)
-    assert not os.path.exists(job.temp_dir)
+    assert not os.path.exists(job.tmp_dir.name)
 
 
 def test_client_project_sync(mc):
