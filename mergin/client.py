@@ -199,14 +199,14 @@ class MerginClient:
 
     def validate_auth(self):
         """Validate that client has valid auth token or can be logged in."""
-
         if self._auth_session:
             # Refresh auth token if it expired or will expire very soon
             expire = self._auth_session.get("expire")
             now = datetime.now(timezone.utc)
             delta = expire - now
-            self.log.debug("Auth expire=%s now=%s delta=%.1fs", expire, now, delta.total_seconds())
-            if delta.total_seconds() < 5:
+            delta_seconds = delta.total_seconds()
+            if delta_seconds < 5:
+                self.log.debug(f"Token has expired: expire={expire} now={now} delta={delta_seconds:.1f}s")
                 if self._auth_params.get("login", None) and self._auth_params.get("password", None):
                     self.log.info("Token has expired - refreshing...")
                     self.login(self._auth_params["login"], self._auth_params["password"])
