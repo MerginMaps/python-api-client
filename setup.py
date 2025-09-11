@@ -21,6 +21,7 @@ setup(
         'pygeodiff==2.0.4',
         'pytz==2022.1',
         'click==8.1.3',
+        'pathvalidate==3.3.1',
     ],
 
     entry_points={
