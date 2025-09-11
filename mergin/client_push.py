@@ -24,7 +24,14 @@ from typing import List, Tuple, Optional, ByteString
 
 from .local_changes import LocalChange, LocalChanges
 
-from .common import UPLOAD_CHUNK_ATTEMPT_WAIT, UPLOAD_CHUNK_ATTEMPTS, UPLOAD_CHUNK_SIZE, ClientError, ErrorCode
+from .common import (
+    MAX_UPLOAD_VERSIONED_SIZE,
+    UPLOAD_CHUNK_ATTEMPT_WAIT,
+    UPLOAD_CHUNK_ATTEMPTS,
+    UPLOAD_CHUNK_SIZE,
+    MAX_UPLOAD_MEDIA_SIZE,
+    ClientError,
+)
 from .merginproject import MerginProject
 from .editor import filter_changes
 from .utils import get_data_checksum
@@ -296,7 +303,7 @@ def push_project_async(mc, directory) -> Optional[UploadJob]:
         mp.log.info(f"--- push {project_path} - nothing to do")
         return
 
-    mp.log.debug("push changes:\n" + pprint.pformat(changes))
+    mp.log.debug("push changes:\n" + pprint.pformat(asdict(changes)))
     tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
 
     # If there are any versioned files (aka .gpkg) that are not updated through a diff,
@@ -304,20 +311,15 @@ def push_project_async(mc, directory) -> Optional[UploadJob]:
     # That's because if there are pending transactions, checkpointing or switching from WAL mode
     # won't work, and we would end up with some changes left in -wal file which do not get
     # uploaded. The temporary copy using geodiff uses sqlite backup API and should copy everything.
-    for f in changes["updated"]:
-        if mp.is_versioned_file(f["path"]) and "diff" not in f:
+    for f in changes.updated:
+        if mp.is_versioned_file(f.path) and not f.diff:
             mp.copy_versioned_file_for_upload(f, tmp_dir.name)
 
-    for f in changes["added"]:
-        if mp.is_versioned_file(f["path"]):
+    for f in changes.added:
+        if mp.is_versioned_file(f.path):
             mp.copy_versioned_file_for_upload(f, tmp_dir.name)
 
-    local_changes = LocalChanges(
-        added=[LocalChange(**change) for change in changes["added"]],
-        updated=[LocalChange(**change) for change in changes["updated"]],
-        removed=[LocalChange(**change) for change in changes["removed"]],
-    )
-    job = create_upload_job(mc, mp, local_changes, tmp_dir)
+    job = create_upload_job(mc, mp, changes, tmp_dir)
     return job
 
 
@@ -471,7 +473,7 @@ def remove_diff_files(job: UploadJob) -> None:
                 os.remove(diff_file)
 
 
-def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[dict, int]:
+def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[LocalChanges, int]:
     """
     Get changes that need to be pushed to the server.
     """
@@ -479,4 +481,19 @@ def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[dict, int]:
     project_role = mp.project_role()
     changes = filter_changes(mc, project_role, changes)
 
-    return changes, sum(len(v) for v in changes.values())
+    local_changes = LocalChanges(
+        added=[LocalChange(**change) for change in changes["added"]],
+        updated=[LocalChange(**change) for change in changes["updated"]],
+        removed=[LocalChange(**change) for change in changes["removed"]],
+    )
+    if local_changes.get_media_upload_size() > MAX_UPLOAD_MEDIA_SIZE:
+        raise ClientError(
+            f"Total size of media files to upload exceeds the maximum allowed size of {MAX_UPLOAD_MEDIA_SIZE / (1024**3)} GiB."
+        )
+
+    if local_changes.get_gpgk_upload_size() > MAX_UPLOAD_VERSIONED_SIZE:
+        raise ClientError(
+            f"Total size of GPKG files to upload exceeds the maximum allowed size of {MAX_UPLOAD_VERSIONED_SIZE / (1024**3)} GiB."
+        )
+
+    return local_changes, sum(len(v) for v in changes.values())

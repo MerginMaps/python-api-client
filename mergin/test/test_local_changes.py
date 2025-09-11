@@ -118,3 +118,62 @@ def test_local_changes_get_upload_changes():
     assert len(upload_changes) == 2  # Only added and updated should be included
     assert upload_changes[0].path == "file1.txt"  # First change is from added
     assert upload_changes[1].path == "file2.txt"  # Second change is from updated
+
+
+def test_local_changes_get_media_upload_size():
+    """Test the get_media_upload_size method of LocalChanges."""
+    # Create sample LocalChange instances
+    added = [
+        LocalChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now()),
+        LocalChange(path="file2.jpg", checksum="xyz789", size=2048, mtime=datetime.now()),
+    ]
+    updated = [
+        LocalChange(path="file3.mp4", checksum="lmn456", size=5120, mtime=datetime.now()),
+        LocalChange(path="file4.gpkg", checksum="opq123", size=1024, mtime=datetime.now()),
+    ]
+
+    # Initialize LocalChanges
+    local_changes = LocalChanges(added=added, updated=updated)
+
+    # Call get_media_upload_size
+    media_size = local_changes.get_media_upload_size()
+
+    # Assertions
+    assert media_size == 8192  # Only non-versioned files (txt, jpg, mp4) are included
+
+
+def test_local_changes_get_gpgk_upload_size():
+    """Test the get_gpgk_upload_size method of LocalChanges."""
+    # Create sample LocalChange instances
+    added = [
+        LocalChange(path="file1.gpkg", checksum="abc123", size=1024, mtime=datetime.now()),
+        LocalChange(path="file2.gpkg", checksum="xyz789", size=2048, mtime=datetime.now(), diff={"path": "diff1"}),
+    ]
+    updated = [
+        LocalChange(path="file3.gpkg", checksum="lmn456", size=5120, mtime=datetime.now()),
+        LocalChange(path="file4.txt", checksum="opq123", size=1024, mtime=datetime.now()),
+    ]
+
+    # Initialize LocalChanges
+    local_changes = LocalChanges(added=added, updated=updated)
+
+    # Call get_gpgk_upload_size
+    gpkg_size = local_changes.get_gpgk_upload_size()
+
+    # Assertions
+    assert gpkg_size == 6144  # Only GPKG files without diffs are included
+
+
+def test_local_changes_post_init():
+    """Test the __post_init__ method of LocalChanges."""
+    # Create more than MAX_UPLOAD_CHANGES changes
+    added = [LocalChange(path=f"file{i}.txt", checksum="abc123", size=1024, mtime=datetime.now()) for i in range(80)]
+    updated = [LocalChange(path=f"file{i}.txt", checksum="xyz789", size=2048, mtime=datetime.now()) for i in range(21)]
+
+    # Initialize LocalChanges
+    local_changes = LocalChanges(added=added, updated=updated)
+
+    # Assertions
+    assert len(local_changes.added) == 80  # All 80 added changes are included
+    assert len(local_changes.updated) == 20  # Only 20 updated changes are included to respect the limit
+    assert len(local_changes.added) + len(local_changes.updated) == 100  # Total is limited to MAX_UPLOAD_CHANGES

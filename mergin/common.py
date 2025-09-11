@@ -24,6 +24,12 @@ PUSH_ATTEMPT_WAIT = 5
 # seconds to wait between sync callback calls
 SYNC_CALLBACK_WAIT = 0.01
 
+# maximum size of media files able to upload in one push (in bytes)
+MAX_UPLOAD_MEDIA_SIZE = 10 * (1024**3)
+
+# maximum size of GPKG files able to upload in one push (in bytes)
+MAX_UPLOAD_VERSIONED_SIZE = 5 * (1024**3)
+
 # default URL for submitting logs
 MERGIN_DEFAULT_LOGS_URL = "https://g4pfq226j0.execute-api.eu-west-1.amazonaws.com/mergin_client_log_submit"
 
@@ -39,7 +45,9 @@ class ErrorCode(Enum):
 
 
 class ClientError(Exception):
-    def __init__(self, detail: str, url=None, server_code=None, server_response=None, http_error=None, http_method=None):
+    def __init__(
+        self, detail: str, url=None, server_code=None, server_response=None, http_error=None, http_method=None
+    ):
         self.detail = detail
         self.url = url
         self.http_error = http_error
