@@ -263,6 +263,7 @@ def download_project_cancel(job):
     job.is_cancelled = True
     job.executor.shutdown(wait=True)
     job.mp.log.info("--- download cancelled")
+    cleanup_tmp_dir(job.mp, job.tmp_dir)
 
 
 class UpdateTask:
@@ -550,6 +551,7 @@ def pull_project_cancel(job):
     job.is_cancelled = True
     job.executor.shutdown(wait=True)
     job.mp.log.info("--- pull cancelled")
+    cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
 
 
 class FileToMerge:
@@ -637,6 +639,7 @@ def pull_project_finalize(job: PullJob):
     except Exception as e:
         job.mp.log.error("Failed to apply pull changes: " + str(e))
         job.mp.log.info("--- pull aborted")
+        cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
         raise ClientError("Failed to apply pull changes: " + str(e))
 
     job.mp.update_metadata(job.project_info)

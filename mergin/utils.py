@@ -307,7 +307,5 @@ def cleanup_tmp_dir(mp, tmp_dir: tempfile.TemporaryDirectory):
         tmp_dir.cleanup()
     except PermissionError:
         mp.log.warning(f"Permission error during tmp dir cleanup: {tmp_dir.name}")
-        pass  # Ignore the error and continue
     except Exception as e:
         mp.log.error(f"Error during tmp dir cleanup: {tmp_dir.name}: {e}")
-        pass  # Ignore the error and continue
