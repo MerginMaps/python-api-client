@@ -275,7 +275,7 @@ def push_project_finalize(job):
                     f"Upload details: {len(job.upload_queue_items)} file chunks, total size {job.total_size} bytes."
                 )
             # server returns various error messages with filename or something generic
-            # it would be better if it returned list of failed files (and reasons) whenever possible    
+            # it would be better if it returned list of failed files (and reasons) whenever possible
             job.mp.log.error("--- push finish failed! " + str(err))
 
             # if push finish fails, the transaction is not killed, so we
