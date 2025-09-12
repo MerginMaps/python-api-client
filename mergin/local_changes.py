@@ -1,6 +1,10 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Optional, List, Tuple
+from typing import Optional, List, Tuple
+
+from .utils import is_versioned_file
+
+MAX_UPLOAD_CHANGES = 100
 
 
 @dataclass
@@ -55,6 +59,18 @@ class LocalChanges:
     updated: List[LocalChange] = field(default_factory=list)
     removed: List[LocalChange] = field(default_factory=list)
 
+    def __post_init__(self):
+        """
+        Enforce a limit of changes combined from `added` and `updated`.
+        """
+        total_changes = len(self.get_upload_changes())
+        if total_changes > MAX_UPLOAD_CHANGES:
+            # Calculate how many changes to keep from `added` and `updated`
+            added_limit = min(len(self.added), MAX_UPLOAD_CHANGES)
+            updated_limit = MAX_UPLOAD_CHANGES - added_limit
+            self.added = self.added[:added_limit]
+            self.updated = self.updated[:updated_limit]
+
     def to_server_payload(self) -> dict:
         return {
             "added": [change.to_server_data() for change in self.added],
@@ -96,3 +112,23 @@ class LocalChanges:
 
         for change in self.updated:
             change.chunks = self._map_unique_chunks(change.chunks, server_chunks)
+
+    def get_media_upload_over_size(self, size_limit: int) -> Optional[LocalChange]:
+        """
+        Find the first media file in added and updated changes that exceeds the size limit.
+        :return: The first LocalChange that exceeds the size limit, or None if no such file exists.
+        """
+        for change in self.get_upload_changes():
+            if not is_versioned_file(change.path) and change.size > size_limit:
+                return change
+
+    def get_gpgk_upload_over_size(self, size_limit: int) -> Optional[LocalChange]:
+        """
+        Find the first GPKG file in added and updated changes that exceeds the size limit.
+        Do not include diffs (only new or overwritten files).
+        :param size_limit: The size limit in bytes.
+        :return: The first LocalChange that exceeds the size limit, or None if no such file exists.
+        """
+        for change in self.get_upload_changes():
+            if is_versioned_file(change.path) and not change.diff and change.size > size_limit:
+                return change
