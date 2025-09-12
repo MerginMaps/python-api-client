@@ -486,14 +486,17 @@ def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[LocalChanges, int]:
         updated=[LocalChange(**change) for change in changes["updated"]],
         removed=[LocalChange(**change) for change in changes["removed"]],
     )
-    if local_changes.get_media_upload_size() > MAX_UPLOAD_MEDIA_SIZE:
+
+    over_limit_media = local_changes.get_media_upload_over_size(MAX_UPLOAD_MEDIA_SIZE)
+    if over_limit_media:
         raise ClientError(
-            f"Total size of media files to upload exceeds the maximum allowed size of {MAX_UPLOAD_MEDIA_SIZE / (1024**3)} GiB."
+            f"File {over_limit_media.path} to upload exceeds the maximum allowed size of {MAX_UPLOAD_MEDIA_SIZE / (1024**3)} GB."
         )
 
-    if local_changes.get_gpgk_upload_size() > MAX_UPLOAD_VERSIONED_SIZE:
+    over_limit_gpkg = local_changes.get_gpgk_upload_over_size(MAX_UPLOAD_VERSIONED_SIZE)
+    if over_limit_gpkg:
         raise ClientError(
-            f"Total size of GPKG files to upload exceeds the maximum allowed size of {MAX_UPLOAD_VERSIONED_SIZE / (1024**3)} GiB."
+            f"Geopackage {over_limit_gpkg.path} to upload exceeds the maximum allowed size of {MAX_UPLOAD_VERSIONED_SIZE / (1024**3)} GB."
         )
 
     return local_changes, sum(len(v) for v in changes.values())

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from ..local_changes import LocalChange, LocalChanges
+from ..local_changes import LocalChange, LocalChanges, MAX_UPLOAD_CHANGES
 
 
 def test_local_changes_from_dict():
@@ -120,60 +120,91 @@ def test_local_changes_get_upload_changes():
     assert upload_changes[1].path == "file2.txt"  # Second change is from updated
 
 
-def test_local_changes_get_media_upload_size():
-    """Test the get_media_upload_size method of LocalChanges."""
+def test_local_changes_get_media_upload_over_size():
+    """Test the get_media_upload_file method of LocalChanges."""
+    # Define constants
+    SIZE_LIMIT_MB = 10
+    SIZE_LIMIT_BYTES = SIZE_LIMIT_MB * 1024 * 1024
+    SMALL_FILE_SIZE = 1024
+    LARGE_FILE_SIZE = 15 * 1024 * 1024
+
     # Create sample LocalChange instances
     added = [
-        LocalChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now()),
-        LocalChange(path="file2.jpg", checksum="xyz789", size=2048, mtime=datetime.now()),
+        LocalChange(path="file1.txt", checksum="abc123", size=SMALL_FILE_SIZE, mtime=datetime.now()),
+        LocalChange(path="file2.jpg", checksum="xyz789", size=LARGE_FILE_SIZE, mtime=datetime.now()),  # Over limit
     ]
     updated = [
-        LocalChange(path="file3.mp4", checksum="lmn456", size=5120, mtime=datetime.now()),
-        LocalChange(path="file4.gpkg", checksum="opq123", size=1024, mtime=datetime.now()),
+        LocalChange(path="file3.mp4", checksum="lmn456", size=5 * 1024 * 1024, mtime=datetime.now()),
+        LocalChange(path="file4.gpkg", checksum="opq123", size=SMALL_FILE_SIZE, mtime=datetime.now()),
     ]
 
     # Initialize LocalChanges
     local_changes = LocalChanges(added=added, updated=updated)
 
-    # Call get_media_upload_size
-    media_size = local_changes.get_media_upload_size()
+    # Call get_media_upload_file with a size limit
+    media_file = local_changes.get_media_upload_over_size(SIZE_LIMIT_BYTES)
 
     # Assertions
-    assert media_size == 8192  # Only non-versioned files (txt, jpg, mp4) are included
+    assert media_file is not None
+    assert media_file.path == "file2.jpg"  # The first file over the limit
+    assert media_file.size == LARGE_FILE_SIZE
 
 
-def test_local_changes_get_gpgk_upload_size():
-    """Test the get_gpgk_upload_size method of LocalChanges."""
+def test_local_changes_get_gpgk_upload_over_size():
+    """Test the get_gpgk_upload_file method of LocalChanges."""
+    # Define constants
+    SIZE_LIMIT_MB = 10
+    SIZE_LIMIT_BYTES = SIZE_LIMIT_MB * 1024 * 1024
+    SMALL_FILE_SIZE = 1024
+    LARGE_FILE_SIZE = 15 * 1024 * 1024
+
     # Create sample LocalChange instances
     added = [
-        LocalChange(path="file1.gpkg", checksum="abc123", size=1024, mtime=datetime.now()),
-        LocalChange(path="file2.gpkg", checksum="xyz789", size=2048, mtime=datetime.now(), diff={"path": "diff1"}),
+        LocalChange(path="file1.gpkg", checksum="abc123", size=SMALL_FILE_SIZE, mtime=datetime.now()),
+        LocalChange(
+            path="file2.gpkg", checksum="xyz789", size=LARGE_FILE_SIZE, mtime=datetime.now(), diff=None
+        ),  # Over limit
     ]
     updated = [
-        LocalChange(path="file3.gpkg", checksum="lmn456", size=5120, mtime=datetime.now()),
-        LocalChange(path="file4.txt", checksum="opq123", size=1024, mtime=datetime.now()),
+        LocalChange(path="file3.gpkg", checksum="lmn456", size=5 * 1024 * 1024, mtime=datetime.now()),
+        LocalChange(path="file4.txt", checksum="opq123", size=SMALL_FILE_SIZE, mtime=datetime.now()),
     ]
 
     # Initialize LocalChanges
     local_changes = LocalChanges(added=added, updated=updated)
 
-    # Call get_gpgk_upload_size
-    gpkg_size = local_changes.get_gpgk_upload_size()
+    # Call get_gpgk_upload_file with a size limit
+    gpkg_file = local_changes.get_gpgk_upload_over_size(SIZE_LIMIT_BYTES)
 
     # Assertions
-    assert gpkg_size == 6144  # Only GPKG files without diffs are included
+    assert gpkg_file is not None
+    assert gpkg_file.path == "file2.gpkg"  # The first GPKG file over the limit
+    assert gpkg_file.size == LARGE_FILE_SIZE
+    assert gpkg_file.diff is None  # Ensure it doesn't include diffs
 
 
 def test_local_changes_post_init():
     """Test the __post_init__ method of LocalChanges."""
+    # Define constants
+    ADDED_COUNT = 80
+    UPDATED_COUNT = 21
+    SMALL_FILE_SIZE = 1024
+    LARGE_FILE_SIZE = 2048
+
     # Create more than MAX_UPLOAD_CHANGES changes
-    added = [LocalChange(path=f"file{i}.txt", checksum="abc123", size=1024, mtime=datetime.now()) for i in range(80)]
-    updated = [LocalChange(path=f"file{i}.txt", checksum="xyz789", size=2048, mtime=datetime.now()) for i in range(21)]
+    added = [
+        LocalChange(path=f"file{i}.txt", checksum="abc123", size=SMALL_FILE_SIZE, mtime=datetime.now())
+        for i in range(ADDED_COUNT)
+    ]
+    updated = [
+        LocalChange(path=f"file{i}.txt", checksum="xyz789", size=LARGE_FILE_SIZE, mtime=datetime.now())
+        for i in range(UPDATED_COUNT)
+    ]
 
     # Initialize LocalChanges
     local_changes = LocalChanges(added=added, updated=updated)
 
     # Assertions
-    assert len(local_changes.added) == 80  # All 80 added changes are included
-    assert len(local_changes.updated) == 20  # Only 20 updated changes are included to respect the limit
-    assert len(local_changes.added) + len(local_changes.updated) == 100  # Total is limited to MAX_UPLOAD_CHANGES
+    assert len(local_changes.added) == ADDED_COUNT  # All added changes are included
+    assert len(local_changes.updated) == MAX_UPLOAD_CHANGES - ADDED_COUNT  # Only enough updated changes are included
+    assert len(local_changes.added) + len(local_changes.updated) == MAX_UPLOAD_CHANGES  # Total is limited
