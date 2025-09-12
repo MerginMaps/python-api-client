@@ -336,7 +336,7 @@ def _geodiff_changes_count(mp: MerginProject, diff_rel_path: str):
     diff_abs = mp.fpath_meta(diff_rel_path)
     try:
         return GeoDiff().changes_count(diff_abs)
-    except (GeoDiffLibError, GeoDiffLibConflictError, GeoDiffLibUnsupportedChangeError, GeoDiffLibVersionError):
+    except (GeoDiffLibError, GeoDiffLibConflictError, GeoDiffLibUnsupportedChangeError, GeoDiffLibVersionError,FileNotFoundError):
         return None
 
 
