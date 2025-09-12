@@ -1480,7 +1480,6 @@ def test_push_gpkg_schema_change(mc):
     # open a connection and keep it open (qgis does this with a pool of connections too)
     acon2 = AnotherSqliteConn(test_gpkg)
     acon2.run("select count(*) from simple;")
-    acon2.close()
 
     # add a new table to ensure that geodiff will fail due to unsupported change
     # (this simulates an independent reader/writer like GDAL)
@@ -3071,6 +3070,9 @@ def test_validate_auth(mc: MerginClient):
 def test_uploaded_chunks_cache(mc):
     """Create a new project, download it, add a file and then do sync - it should not fail"""
 
+    # This test does not make sense on servers without v2 push
+    if not mc.server_features().get("v2_push_enabled"):
+        return
     test_project = "test_uploaded_chunks_cache"
     project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
