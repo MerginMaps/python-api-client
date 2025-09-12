@@ -15,6 +15,13 @@ import pprint
 import tempfile
 import concurrent.futures
 import os
+from pygeodiff import (
+    GeoDiff,
+    GeoDiffLibError,
+    GeoDiffLibConflictError,
+    GeoDiffLibUnsupportedChangeError,
+    GeoDiffLibVersionError,
+)
 
 from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
@@ -268,14 +275,31 @@ def push_project_finalize(job):
             resp = job.mc.post("/v1/project/push/finish/%s" % job.transaction_id)
             job.server_resp = json.load(resp)
         except ClientError as err:
-            # Log additional metadata on server error 502 or 504
-            if hasattr(err, "http_error") and err.http_error in (502, 504):
+            # Log additional metadata on server error 502 or 504 (extended logging only)
+            http_code = getattr(err, "http_error", None)
+            if http_code in (502, 504):
                 job.mp.log.error(
-                    f"Push failed with HTTP error {err.http_error}. "
+                    f"Push failed with HTTP error {http_code}. "
                     f"Upload details: {len(job.upload_queue_items)} file chunks, total size {job.total_size} bytes."
                 )
+                job.mp.log.error("Files:")
+                for f in job.changes.get("added", []) + job.changes.get("updated", []):
+                    path = f.get("path", "<unknown>")
+                    size = f.get("size", "?")
+                    if "diff" in f:
+                        diff_info = f.get("diff", {})
+                        diff_size = diff_info.get("size", "?")
+                        # best-effort: number of geodiff changes (if available)
+                        changes_cnt = _geodiff_changes_count(job.mp, diff_info.get("path"))
+                        if changes_cnt is None:
+                            job.mp.log.error(f"  - {path}, size={size}, diff_size={diff_size}, changes=n/a")
+                        else:
+                            job.mp.log.error(f"  - {path}, size={size}, diff_size={diff_size}, changes={changes_cnt}")
+                    else:
+                        job.mp.log.error(f"  - {path}, size={size}")
+
             # server returns various error messages with filename or something generic
-            # it would be better if it returned list of failed files (and reasons) whenever possible    
+            # it would be better if it returned list of failed files (and reasons) whenever possible
             job.mp.log.error("--- push finish failed! " + str(err))
 
             # if push finish fails, the transaction is not killed, so we
@@ -301,6 +325,25 @@ def push_project_finalize(job):
     remove_diff_files(job)
 
     job.mp.log.info("--- push finished - new project version " + job.server_resp["version"])
+
+
+def _geodiff_changes_count(mp: MerginProject, diff_rel_path: str):
+    """
+    Best-effort: return number of changes in the .gpkg diff (int) or None.
+    Never raises – diagnostics/logging must not fail.
+    """
+
+    diff_abs = mp.fpath_meta(diff_rel_path)
+    try:
+        return GeoDiff().changes_count(diff_abs)
+    except (
+        GeoDiffLibError,
+        GeoDiffLibConflictError,
+        GeoDiffLibUnsupportedChangeError,
+        GeoDiffLibVersionError,
+        FileNotFoundError,
+    ):
+        return None
 
 
 def push_project_cancel(job):
