@@ -157,6 +157,10 @@ class MerginProject:
         slash_index = full_name.index("/")
         return full_name[:slash_index]
 
+    def project_role(self) -> str:
+        self._read_metadata()
+        return self._metadata.get("role")
+
     def project_id(self) -> str:
         """Returns ID of the project (UUID using 8-4-4-4-12 formatting without braces)
 
@@ -552,7 +556,7 @@ class MerginProject:
                     if (
                         path in modified_local_paths
                         and item["checksum"] != local_files_map[path]["checksum"]
-                        and not prevent_conflicted_copy(path, mc, server_project)
+                        and not prevent_conflicted_copy(path, mc, server_project.get("role"))
                     ):
                         conflict = self.create_conflicted_copy(path, mc.username())
                         conflicts.append(conflict)
@@ -704,13 +708,14 @@ class MerginProject:
                     self.geodiff.make_copy_sqlite(self.fpath(path), basefile)
                 elif k == "updated":
                     # in case for geopackage cannot be created diff (e.g. forced update with committed changes from wal file)
-                    if "diff" not in item:
+                    diff = item.get("diff")
+                    if not diff:
                         self.log.info("updating basefile (copy) for: " + path)
                         self.geodiff.make_copy_sqlite(self.fpath(path), basefile)
                     else:
                         self.log.info("updating basefile (diff) for: " + path)
                         # better to apply diff to previous basefile to avoid issues with geodiff tmp files
-                        changeset = self.fpath_meta(item["diff"]["path"])
+                        changeset = self.fpath_meta(diff["path"])
                         patch_error = self.apply_diffs(basefile, [changeset])
                         if patch_error:
                             # in case of local sync issues it is safier to remove basefile, next time it will be downloaded from server
