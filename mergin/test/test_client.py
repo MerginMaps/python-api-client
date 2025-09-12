@@ -1364,6 +1364,7 @@ def _create_test_table(db_file):
     cursor.execute("CREATE TABLE test (fid SERIAL, txt TEXT);")
     cursor.execute("INSERT INTO test VALUES (123, 'hello');")
     cursor.execute("COMMIT;")
+    con.close()
 
 
 def _create_spatial_table(db_file):
@@ -1479,6 +1480,7 @@ def test_push_gpkg_schema_change(mc):
     # open a connection and keep it open (qgis does this with a pool of connections too)
     acon2 = AnotherSqliteConn(test_gpkg)
     acon2.run("select count(*) from simple;")
+    acon2.close()
 
     # add a new table to ensure that geodiff will fail due to unsupported change
     # (this simulates an independent reader/writer like GDAL)
