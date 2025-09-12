@@ -26,6 +26,7 @@ from pygeodiff import (
 from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
 from .editor import filter_changes
+from .utils import cleanup_tmp_dir
 
 
 class UploadJob:
@@ -131,7 +132,7 @@ def push_project_async(mc, directory):
     changes = filter_changes(mc, project_info, changes)
     mp.log.debug("push changes:\n" + pprint.pformat(changes))
 
-    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-", ignore_cleanup_errors=True, delete=True)
+    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
 
     # If there are any versioned files (aka .gpkg) that are not updated through a diff,
     # we need to make a temporary copy somewhere to be sure that we are uploading full content.
@@ -267,6 +268,7 @@ def push_project_finalize(job):
             job.transferred_size, job.total_size
         )
         job.mp.log.error("--- push finish failed! " + error_msg)
+        cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
         raise ClientError("Upload error: " + error_msg)
 
     if with_upload_of_files:
@@ -310,6 +312,7 @@ def push_project_finalize(job):
                 job.mp.log.info("cancel response: " + resp_cancel.msg)
             except ClientError as err2:
                 job.mp.log.info("cancel response: " + str(err2))
+            cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
             raise err
 
     job.mp.update_metadata(job.server_resp)
@@ -318,10 +321,10 @@ def push_project_finalize(job):
     except Exception as e:
         job.mp.log.error("Failed to apply push changes: " + str(e))
         job.mp.log.info("--- push aborted")
+        cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
         raise ClientError("Failed to apply push changes: " + str(e))
 
-    job.tmp_dir.cleanup()  # delete our temporary dir and all its content
-
+    cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
     remove_diff_files(job)
 
     job.mp.log.info("--- push finished - new project version " + job.server_resp["version"])
@@ -362,7 +365,9 @@ def push_project_cancel(job):
         job.server_resp = resp_cancel.msg
     except ClientError as err:
         job.mp.log.error("--- push cancelling failed! " + str(err))
+        cleanup_tmp_dir(job.mp, job.tmp_dir)
         raise err
+    cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
     job.mp.log.info("--- push cancel response: " + str(job.server_resp))
 
 

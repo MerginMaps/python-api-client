@@ -2266,8 +2266,11 @@ def test_clean_diff_files(mc):
     shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
     mc.push_project(project_dir)
 
-    diff_files = glob.glob("*-diff-*", root_dir=os.path.split(mp.fpath_meta("inserted_1_A.gpkg"))[0])
+    # Get the directory path
+    directory = os.path.split(mp.fpath_meta("inserted_1_A.gpkg"))[0]
+    diff_files = [f for f in os.listdir(directory) if "-diff-" in f]
 
+    # Assert that no matching files are found
     assert diff_files == []
 
 
