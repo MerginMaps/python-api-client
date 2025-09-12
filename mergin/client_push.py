@@ -322,9 +322,9 @@ def push_project_cancel(job):
         job.server_resp = resp_cancel.msg
     except ClientError as err:
         job.mp.log.error("--- push cancelling failed! " + str(err))
+        cleanup_tmp_dir(job.mp, job.tmp_dir)
         raise err
-    finally:
-        cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
+    cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
     job.mp.log.info("--- push cancel response: " + str(job.server_resp))
 
 
