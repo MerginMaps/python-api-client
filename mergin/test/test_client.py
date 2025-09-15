@@ -1364,6 +1364,7 @@ def _create_test_table(db_file):
     cursor.execute("CREATE TABLE test (fid SERIAL, txt TEXT);")
     cursor.execute("INSERT INTO test VALUES (123, 'hello');")
     cursor.execute("COMMIT;")
+    con.close()
 
 
 def _create_spatial_table(db_file):
@@ -3069,6 +3070,8 @@ def test_validate_auth(mc: MerginClient):
 def test_uploaded_chunks_cache(mc):
     """Create a new project, download it, add a file and then do sync - it should not fail"""
 
+    if not mc.server_features().get("v2_push_enabled"):
+        pytest.skip("Server does not support v2 push")
     test_project = "test_uploaded_chunks_cache"
     project = API_USER + "/" + test_project
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
