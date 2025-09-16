@@ -15,13 +15,10 @@ import pprint
 import tempfile
 import concurrent.futures
 import os
-from pygeodiff import (
-    GeoDiff,
-    GeoDiffLibError,
-    GeoDiffLibConflictError,
-    GeoDiffLibUnsupportedChangeError,
-    GeoDiffLibVersionError,
-)
+try:
+    from .deps import pygeodiff
+except (ImportError, ModuleNotFoundError):
+    import pygeodiff
 
 from .common import UPLOAD_CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
@@ -338,12 +335,12 @@ def _geodiff_changes_count(mp: MerginProject, diff_rel_path: str):
 
     diff_abs = mp.fpath_meta(diff_rel_path)
     try:
-        return GeoDiff().changes_count(diff_abs)
+        return pygeodiff.GeoDiff().changes_count(diff_abs)
     except (
-        GeoDiffLibError,
-        GeoDiffLibConflictError,
-        GeoDiffLibUnsupportedChangeError,
-        GeoDiffLibVersionError,
+        pygeodiff.GeoDiffLibError,
+        pygeodiff.GeoDiffLibConflictError,
+        pygeodiff.GeoDiffLibUnsupportedChangeError,
+        pygeodiff.GeoDiffLibVersionError,
         FileNotFoundError,
     ):
         return None
