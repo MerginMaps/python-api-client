@@ -3225,11 +3225,11 @@ def test_push_file_limits(mc):
     mc.download_project(project, project_dir)
     shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), project_dir)
     # setting to some minimal value to mock limit hit
-    with patch("mergin.client_push.MAX_UPLOAD_VERSIONED_SIZE", 1):
-        with pytest.raises(ClientError, match=f"base.gpkg to upload exceeds the maximum allowed size of {1/1024**3}"):
+    with patch("mergin.local_changes.MAX_UPLOAD_VERSIONED_SIZE", 1):
+        with pytest.raises(ClientError, match=f"Some files exceeded maximum upload size. Files: base.gpkg."):
             mc.push_project(project_dir)
 
     shutil.copy(os.path.join(TEST_DATA_DIR, "test.txt"), project_dir)
-    with patch("mergin.client_push.MAX_UPLOAD_MEDIA_SIZE", 1):
-        with pytest.raises(ClientError, match=f"test.txt to upload exceeds the maximum allowed size of {1/1024**3}"):
+    with patch("mergin.local_changes.MAX_UPLOAD_MEDIA_SIZE", 1):
+        with pytest.raises(ClientError, match=f"Some files exceeded maximum upload size. Files: test.txt."):
             mc.push_project(project_dir)

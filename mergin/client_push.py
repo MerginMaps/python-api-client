@@ -22,7 +22,7 @@ import os
 import time
 from typing import List, Tuple, Optional, ByteString
 
-from .local_changes import LocalChange, LocalChanges
+from .local_changes import ChangesValidationError, LocalChange, LocalChanges
 
 from .common import (
     MAX_UPLOAD_VERSIONED_SIZE,
@@ -481,22 +481,14 @@ def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[LocalChanges, int]:
     project_role = mp.project_role()
     changes = filter_changes(mc, project_role, changes)
 
-    local_changes = LocalChanges(
-        added=[LocalChange(**change) for change in changes["added"]],
-        updated=[LocalChange(**change) for change in changes["updated"]],
-        removed=[LocalChange(**change) for change in changes["removed"]],
-    )
-
-    over_limit_media = local_changes.get_media_upload_over_size(MAX_UPLOAD_MEDIA_SIZE)
-    if over_limit_media:
-        raise ClientError(
-            f"File {over_limit_media.path} to upload exceeds the maximum allowed size of {MAX_UPLOAD_MEDIA_SIZE / (1024**3)} GB."
+    try:
+        local_changes = LocalChanges(
+            added=[LocalChange(**change) for change in changes["added"]],
+            updated=[LocalChange(**change) for change in changes["updated"]],
+            removed=[LocalChange(**change) for change in changes["removed"]],
         )
-
-    over_limit_gpkg = local_changes.get_gpgk_upload_over_size(MAX_UPLOAD_VERSIONED_SIZE)
-    if over_limit_gpkg:
+    except ChangesValidationError as e:
         raise ClientError(
-            f"Geopackage {over_limit_gpkg.path} to upload exceeds the maximum allowed size of {MAX_UPLOAD_VERSIONED_SIZE / (1024**3)} GB."
+            f"Some files exceeded maximum upload size. Files: {', '.join([c.path for c in e.invalid_changes])}. Maximum size for media files is {e.max_media_upload_size / (1024**3)} GB and for geopackage files {e.max_versioned_upload_size / (1024**3)} GB."
         )
-
     return local_changes, sum(len(v) for v in changes.values())

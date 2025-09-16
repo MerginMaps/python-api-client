@@ -3,8 +3,18 @@ from datetime import datetime
 from typing import Optional, List, Tuple
 
 from .utils import is_versioned_file
+from .common import MAX_UPLOAD_MEDIA_SIZE, MAX_UPLOAD_VERSIONED_SIZE
 
 MAX_UPLOAD_CHANGES = 100
+
+
+# The custom exception
+class ChangesValidationError(Exception):
+    def __init__(self, message, invalid_changes=[], max_media_upload_size=None, max_versioned_upload_size=None):
+        super().__init__(message)
+        self.invalid_changes = invalid_changes if invalid_changes is not None else []
+        self.max_media_upload_size = max_media_upload_size
+        self.max_versioned_upload_size = max_versioned_upload_size
 
 
 @dataclass
@@ -63,7 +73,20 @@ class LocalChanges:
         """
         Enforce a limit of changes combined from `added` and `updated`.
         """
-        total_changes = len(self.get_upload_changes())
+        upload_changes = self.get_upload_changes()
+        total_changes = len(upload_changes)
+        oversize_changes = []
+        for change in upload_changes:
+            if not is_versioned_file(change.path) and change.size > MAX_UPLOAD_MEDIA_SIZE:
+                oversize_changes.append(change)
+            elif not change.diff and change.size > MAX_UPLOAD_VERSIONED_SIZE:
+                oversize_changes.append(change)
+        if oversize_changes:
+            error = ChangesValidationError("Some files exceed the maximum upload size", oversize_changes)
+            error.max_media_upload_size = MAX_UPLOAD_MEDIA_SIZE
+            error.max_versioned_upload_size = MAX_UPLOAD_VERSIONED_SIZE
+            raise error
+
         if total_changes > MAX_UPLOAD_CHANGES:
             # Calculate how many changes to keep from `added` and `updated`
             added_limit = min(len(self.added), MAX_UPLOAD_CHANGES)
@@ -112,23 +135,3 @@ class LocalChanges:
 
         for change in self.updated:
             change.chunks = self._map_unique_chunks(change.chunks, server_chunks)
-
-    def get_media_upload_over_size(self, size_limit: int) -> Optional[LocalChange]:
-        """
-        Find the first media file in added and updated changes that exceeds the size limit.
-        :return: The first LocalChange that exceeds the size limit, or None if no such file exists.
-        """
-        for change in self.get_upload_changes():
-            if not is_versioned_file(change.path) and change.size > size_limit:
-                return change
-
-    def get_gpgk_upload_over_size(self, size_limit: int) -> Optional[LocalChange]:
-        """
-        Find the first GPKG file in added and updated changes that exceeds the size limit.
-        Do not include diffs (only new or overwritten files).
-        :param size_limit: The size limit in bytes.
-        :return: The first LocalChange that exceeds the size limit, or None if no such file exists.
-        """
-        for change in self.get_upload_changes():
-            if is_versioned_file(change.path) and not change.diff and change.size > size_limit:
-                return change

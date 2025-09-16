@@ -1,6 +1,8 @@
 from datetime import datetime
+import pytest
+from unittest.mock import patch
 
-from ..local_changes import LocalChange, LocalChanges, MAX_UPLOAD_CHANGES
+from ..local_changes import ChangesValidationError, LocalChange, LocalChanges, MAX_UPLOAD_CHANGES
 
 
 def test_local_changes_from_dict():
@@ -120,10 +122,10 @@ def test_local_changes_get_upload_changes():
     assert upload_changes[1].path == "file2.txt"  # Second change is from updated
 
 
-def test_local_changes_get_media_upload_over_size():
+def test_local_changes_post_init_validation_media():
     """Test the get_media_upload_file method of LocalChanges."""
     # Define constants
-    SIZE_LIMIT_MB = 10
+    SIZE_LIMIT_MB = 5
     SIZE_LIMIT_BYTES = SIZE_LIMIT_MB * 1024 * 1024
     SMALL_FILE_SIZE = 1024
     LARGE_FILE_SIZE = 15 * 1024 * 1024
@@ -139,18 +141,16 @@ def test_local_changes_get_media_upload_over_size():
     ]
 
     # Initialize LocalChanges
-    local_changes = LocalChanges(added=added, updated=updated)
-
-    # Call get_media_upload_file with a size limit
-    media_file = local_changes.get_media_upload_over_size(SIZE_LIMIT_BYTES)
-
-    # Assertions
-    assert media_file is not None
-    assert media_file.path == "file2.jpg"  # The first file over the limit
-    assert media_file.size == LARGE_FILE_SIZE
+    with patch("mergin.local_changes.MAX_UPLOAD_MEDIA_SIZE", SIZE_LIMIT_BYTES):
+        with pytest.raises(ChangesValidationError, match="Some files exceed") as err:
+            LocalChanges(added=added, updated=updated)
+            print(err.value.invalid_changes)
+    assert len(err.value.invalid_changes) == 1
+    assert "file2.jpg" == err.value.invalid_changes[0].path
+    assert err.value.invalid_changes[0].size == LARGE_FILE_SIZE
 
 
-def test_local_changes_get_gpgk_upload_over_size():
+def test_local_changes_post_init_validation_media():
     """Test the get_gpgk_upload_file method of LocalChanges."""
     # Define constants
     SIZE_LIMIT_MB = 10
@@ -166,21 +166,23 @@ def test_local_changes_get_gpgk_upload_over_size():
         ),  # Over limit
     ]
     updated = [
-        LocalChange(path="file3.gpkg", checksum="lmn456", size=5 * 1024 * 1024, mtime=datetime.now()),
+        LocalChange(
+            path="file3.gpkg",
+            checksum="lmn456",
+            size=SIZE_LIMIT_BYTES + 1,
+            mtime=datetime.now(),
+            diff={"path": "file3-diff.gpkg", "checksum": "diff123", "size": 1024, "mtime": datetime.now()},
+        ),
         LocalChange(path="file4.txt", checksum="opq123", size=SMALL_FILE_SIZE, mtime=datetime.now()),
     ]
 
     # Initialize LocalChanges
-    local_changes = LocalChanges(added=added, updated=updated)
-
-    # Call get_gpgk_upload_file with a size limit
-    gpkg_file = local_changes.get_gpgk_upload_over_size(SIZE_LIMIT_BYTES)
-
-    # Assertions
-    assert gpkg_file is not None
-    assert gpkg_file.path == "file2.gpkg"  # The first GPKG file over the limit
-    assert gpkg_file.size == LARGE_FILE_SIZE
-    assert gpkg_file.diff is None  # Ensure it doesn't include diffs
+    with patch("mergin.local_changes.MAX_UPLOAD_VERSIONED_SIZE", SIZE_LIMIT_BYTES):
+        with pytest.raises(ChangesValidationError) as err:
+            LocalChanges(added=added, updated=updated)
+    assert len(err.value.invalid_changes) == 1
+    assert "file2.gpkg" == err.value.invalid_changes[0].path
+    assert err.value.invalid_changes[0].size == LARGE_FILE_SIZE
 
 
 def test_local_changes_post_init():
