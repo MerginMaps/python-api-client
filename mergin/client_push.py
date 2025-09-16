@@ -16,13 +16,8 @@ import tempfile
 import concurrent.futures
 import os
 
-try:
-    from .deps import pygeodiff
-except (ImportError, ModuleNotFoundError):
-    import pygeodiff
-
 from .common import UPLOAD_CHUNK_SIZE, ClientError
-from .merginproject import MerginProject
+from .merginproject import MerginProject, pygeodiff
 from .editor import filter_changes
 from .utils import cleanup_tmp_dir
 
