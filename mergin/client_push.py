@@ -15,6 +15,7 @@ import pprint
 import tempfile
 import concurrent.futures
 import os
+
 try:
     from .deps import pygeodiff
 except (ImportError, ModuleNotFoundError):
