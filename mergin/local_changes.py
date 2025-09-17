@@ -4,7 +4,7 @@ from typing import Dict, Optional, List, Tuple
 
 
 @dataclass
-class BaseLocalChange:
+class FileDiffChange:
     path: str
     checksum: str
     size: int
@@ -12,9 +12,20 @@ class BaseLocalChange:
 
 
 @dataclass
-class LocalChange(BaseLocalChange):
+class FileChange:
+    # path to the file relative to the project root
+    path: str
+    # file checksum
+    checksum: str
+    # file size in bytes
+    size: int
+    # file modification time
+    mtime: datetime
+    # original file checksum used for compairison
     origin_checksum: Optional[str] = None
+    # list of chunk ids that make up this file
     chunks: List[str] = field(default_factory=list)
+    # optional diff information for geopackage files with geodiff metadata
     diff: Optional[dict] = None
     upload_file: Optional[str] = None
     # some functions (MerginProject.compare_file_sets) are adding version to the change from project info
@@ -24,9 +35,9 @@ class LocalChange(BaseLocalChange):
     # some functions (MerginProject.compare_file_sets) are adding location dict to the change from project info
     location: Optional[str] = None
 
-    def get_diff(self) -> Optional[BaseLocalChange]:
+    def get_diff(self) -> Optional[FileDiffChange]:
         if self.diff:
-            return BaseLocalChange(
+            return FileDiffChange(
                 path=self.diff.get("path", ""),
                 checksum=self.diff.get("checksum", ""),
                 size=self.diff.get("size", 0),
@@ -50,10 +61,10 @@ class LocalChange(BaseLocalChange):
 
 
 @dataclass
-class LocalChanges:
-    added: List[LocalChange] = field(default_factory=list)
-    updated: List[LocalChange] = field(default_factory=list)
-    removed: List[LocalChange] = field(default_factory=list)
+class LocalPojectChanges:
+    added: List[FileChange] = field(default_factory=list)
+    updated: List[FileChange] = field(default_factory=list)
+    removed: List[FileChange] = field(default_factory=list)
 
     def to_server_payload(self) -> dict:
         return {
@@ -62,7 +73,7 @@ class LocalChanges:
             "removed": [change.to_server_data() for change in self.removed],
         }
 
-    def get_upload_changes(self) -> List[LocalChange]:
+    def get_upload_changes(self) -> List[FileChange]:
         """
         Get all changes that need to be uploaded.
         This includes added and updated files.
@@ -76,9 +87,7 @@ class LocalChanges:
         mapped = []
         seen = set()
         for chunk in change_chunks:
-            for server_chunk in server_chunks:
-                chunk_id = server_chunk[0]
-                server_chunk_id = server_chunk[1]
+            for chunk_id, server_chunk_id in server_chunks:
                 if chunk_id == chunk and server_chunk_id not in seen:
                     mapped.append(server_chunk_id)
                     seen.add(server_chunk_id)

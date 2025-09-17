@@ -1519,6 +1519,9 @@ class MerginClient:
         2. Get local changes
         3. Push first change batch
         Repeat if there are more local changes.
+
+        :param project_directory: Project's directory
+        :param progress_callback: Optional callback function to report progress during push.
         """
         mp = MerginProject(project_directory)
         has_changes = True
@@ -1546,6 +1549,7 @@ class MerginClient:
                         last_size = current_size
                 push_project_finalize(job)
                 _, has_changes = get_push_changes_batch(self, mp)
+                server_conflict_attempts = 0
             except ClientError as e:
                 if e.is_retryable_sync() and server_conflict_attempts < PUSH_ATTEMPTS - 1:
                     # retry on conflict, e.g. when server has changes that we do not have yet
@@ -1556,5 +1560,3 @@ class MerginClient:
                     sleep(PUSH_ATTEMPT_WAIT)
                     continue
                 raise e
-            else:
-                server_conflict_attempts = 0

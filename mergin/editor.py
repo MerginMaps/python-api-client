@@ -64,7 +64,7 @@ def prevent_conflicted_copy(path: str, mc, project_role: str) -> bool:
     Args:
         path (str): The file path to check.
         mc: The Mergin client object.
-        project_info (dict): Information about the Mergin project from server.
+        project_role: Current project role.
 
     Returns:
         bool: True if the file path should be prevented from ceating conflicted copy, False otherwise.
