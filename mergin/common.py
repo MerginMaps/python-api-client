@@ -39,7 +39,9 @@ class ErrorCode(Enum):
 
 
 class ClientError(Exception):
-    def __init__(self, detail: str, url=None, server_code=None, server_response=None, http_error=None, http_method=None):
+    def __init__(
+        self, detail: str, url=None, server_code=None, server_response=None, http_error=None, http_method=None
+    ):
         self.detail = detail
         self.url = url
         self.http_error = http_error

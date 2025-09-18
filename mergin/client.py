@@ -1512,9 +1512,13 @@ class MerginClient:
         ws_inv = self.post(f"v2/workspaces/{workspace_id}/invitations", params, json_headers)
         return json.load(ws_inv)
 
-    def _sync_project_generator(self, project_directory):
+    def sync_project_generator(self, project_directory):
         """
-        See `sync_project` for details. This method is a generator yielding upload progress as (size_change, job) tuples.
+        Syncs project by loop with these steps:
+        1. Pull server version
+        2. Get local changes
+        3. Push first change batch
+        Repeat if there are more local changes.
 
         :param project_directory: Project's directory
         """
@@ -1527,6 +1531,7 @@ class MerginClient:
                 job = push_project_async(self, project_directory)
                 if not job:
                     break
+                # waiting for progress
                 last_size = 0
                 while push_project_is_running(job):
                     sleep(SYNC_CALLBACK_WAIT)
@@ -1549,35 +1554,11 @@ class MerginClient:
 
     def sync_project(self, project_directory):
         """
-        Syncs project by loop with these steps:
-        1. Pull server version
-        2. Get local changes
-        3. Push first change batch
-        Repeat if there are more local changes.
+        See description of _sync_project_generator().
 
         :param project_directory: Project's directory
-        :param upload_progress: If True, the method will be a generator yielding upload progress as (size_change, job) tuples.
         """
-        mp = MerginProject(project_directory)
-        has_changes = True
-        server_conflict_attempts = 0
-        while has_changes:
-            self.pull_project(project_directory)
-            try:
-                job = push_project_async(self, project_directory)
-                if not job:
-                    break
-                push_project_wait(job)
-                push_project_finalize(job)
-                _, has_changes = get_push_changes_batch(self, mp)
-                server_conflict_attempts = 0
-            except ClientError as e:
-                if e.is_retryable_sync() and server_conflict_attempts < PUSH_ATTEMPTS - 1:
-                    # retry on conflict, e.g. when server has changes that we do not have yet
-                    mp.log.info(
-                        f"Restarting sync process (conflict on server) - {server_conflict_attempts + 1}/{PUSH_ATTEMPTS}"
-                    )
-                    server_conflict_attempts += 1
-                    sleep(PUSH_ATTEMPT_WAIT)
-                    continue
-                raise e
+        # walk through the generator to perform the sync
+        # in this method we do not yield anything to the caller
+        for _ in self.sync_project_generator(project_directory):
+            pass

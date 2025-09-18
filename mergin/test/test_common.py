@@ -1,5 +1,6 @@
 from ..common import ClientError, ErrorCode
 
+
 def test_client_error_is_blocked_sync():
     """Test the is_blocked_sync method of ClientError."""
     error = ClientError(detail="", server_code=None)
@@ -12,6 +13,7 @@ def test_client_error_is_blocked_sync():
     error.server_code = ErrorCode.ProjectVersionExists.value
     assert error.is_blocking_sync() is True
 
+
 def test_client_error_is_rate_limit():
     """Test the is_rate_limit method of ClientError."""
     error = ClientError(detail="", http_error=None)
@@ -20,6 +22,7 @@ def test_client_error_is_rate_limit():
     assert error.is_rate_limit() is False
     error.http_error = 429
     assert error.is_rate_limit() is True
+
 
 def test_client_error_is_retryable_sync():
     """Test the is_retryable_sync method of ClientError."""

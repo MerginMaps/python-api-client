@@ -481,7 +481,7 @@ def sync(ctx):
     current_bar = None
     try:
         # Iterate over the generator to get updates
-        for size_change, job in mc._sync_project_generator(directory):
+        for size_change, job in mc.sync_project_generator(directory):
             # Check if this is a new job (a new push operation)
             if job and job != current_job:
                 # If a previous bar exists, close it
