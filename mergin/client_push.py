@@ -22,7 +22,7 @@ import os
 import time
 from typing import List, Tuple, Optional, ByteString
 
-from .local_changes import ChangesValidationError, FileChange, LocalPojectChanges
+from .local_changes import ChangesValidationError, FileChange, LocalProjectChanges
 
 from .common import (
     MAX_UPLOAD_VERSIONED_SIZE,
@@ -140,10 +140,10 @@ class UploadJob:
     """Keeps all the important data about a pending upload job"""
 
     def __init__(
-        self, version: str, changes: LocalPojectChanges, transaction_id: Optional[str], mp: MerginProject, mc, tmp_dir
+        self, version: str, changes: LocalProjectChanges, transaction_id: Optional[str], mp: MerginProject, mc, tmp_dir
     ):
         self.version = version
-        self.changes: LocalPojectChanges = changes  # dictionary of local changes to the project
+        self.changes: LocalProjectChanges = changes  # dictionary of local changes to the project
         self.transaction_id = transaction_id  # ID of the transaction assigned by the server
         self.total_size = 0  # size of data to upload (in bytes)
         self.transferred_size = 0  # size of data already uploaded (in bytes)
@@ -186,7 +186,7 @@ class UploadJob:
         Update chunks in LocalProjectChanges from the upload queue items.
         Used just before finalizing the transaction to set the server_chunk_id in v2 API.
         """
-        self.changes.update_chunks([(item.chunk_id, item.server_chunk_id) for item in self.upload_queue_items])
+        self.changes.update_chunk_ids([(item.chunk_id, item.server_chunk_id) for item in self.upload_queue_items])
 
 
 def _do_upload(item: UploadQueueItem, job: UploadJob):
@@ -231,7 +231,7 @@ def create_upload_chunks(mc, mp: MerginProject, local_changes: List[FileChange])
 
 
 def create_upload_job(
-    mc, mp: MerginProject, changes: LocalPojectChanges, tmp_dir: tempfile.TemporaryDirectory
+    mc, mp: MerginProject, changes: LocalProjectChanges, tmp_dir: tempfile.TemporaryDirectory
 ) -> Optional[UploadJob]:
     """
     Prepare transaction and create an upload job for the project using the v1 API.
@@ -479,7 +479,7 @@ def remove_diff_files(job: UploadJob) -> None:
                 os.remove(diff_file)
 
 
-def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[LocalPojectChanges, int]:
+def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[LocalProjectChanges, int]:
     """
     Get changes that need to be pushed to the server.
     """
@@ -488,7 +488,7 @@ def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[LocalPojectChanges, i
     changes = filter_changes(mc, project_role, changes)
 
     try:
-        local_changes = LocalPojectChanges(
+        local_changes = LocalProjectChanges(
             added=[FileChange(**change) for change in changes["added"]],
             updated=[FileChange(**change) for change in changes["updated"]],
             removed=[FileChange(**change) for change in changes["removed"]],
