@@ -1554,6 +1554,8 @@ class MerginClient:
 
     def sync_project(self, project_directory):
         """
+        Syncs project by pulling server changes and pushing local changes. There is intorduced retry mechanism
+        for handling server conflicts (when server has changes that we do not have yet or somebody else is syncing).
         See description of _sync_project_generator().
 
         :param project_directory: Project's directory
