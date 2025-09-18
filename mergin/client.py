@@ -1512,13 +1512,16 @@ class MerginClient:
         ws_inv = self.post(f"v2/workspaces/{workspace_id}/invitations", params, json_headers)
         return json.load(ws_inv)
 
-    def sync_project(self, project_directory, progress_callback=None):
+    def sync_project(self, project_directory, upload_progress=False):
         """
         Syncs project by loop with these steps:
         1. Pull server version
         2. Get local changes
         3. Push first change batch
         Repeat if there are more local changes.
+
+        :param project_directory: Project's directory
+        :param upload_progress: If True, the method will be a generator yielding upload progress as (size_change, job) tuples.
         """
         mp = MerginProject(project_directory)
         has_changes = True
@@ -1533,19 +1536,18 @@ class MerginClient:
                 job = push_project_async(self, project_directory)
                 if not job:
                     break
-                if not progress_callback:
+                if not upload_progress:
                     push_project_wait(job)
                 else:
                     last_size = 0
                     while push_project_is_running(job):
                         sleep(SYNC_CALLBACK_WAIT)
                         current_size = job.transferred_size
-                        progress_callback(
-                            current_size - last_size, job
-                        )  # call callback with transferred size increment
+                        yield (current_size - last_size, job)  # Yields the size change and the job object
                         last_size = current_size
                 push_project_finalize(job)
                 _, has_changes = get_push_changes_batch(self, mp)
+                server_conflict_attempts = 0
             except ClientError as e:
                 if e.is_retryable_sync() and server_conflict_attempts < PUSH_ATTEMPTS - 1:
                     # retry on conflict, e.g. when server has changes that we do not have yet
@@ -1556,5 +1558,3 @@ class MerginClient:
                     sleep(PUSH_ATTEMPT_WAIT)
                     continue
                 raise e
-            else:
-                server_conflict_attempts = 0

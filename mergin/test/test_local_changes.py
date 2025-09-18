@@ -2,7 +2,7 @@ from datetime import datetime
 import pytest
 from unittest.mock import patch
 
-from ..local_changes import ChangesValidationError, LocalChange, LocalChanges, MAX_UPLOAD_CHANGES
+from ..local_changes import ChangesValidationError, FileChange, LocalPojectChanges, MAX_UPLOAD_CHANGES
 
 
 def test_local_changes_from_dict():
@@ -33,11 +33,11 @@ def test_local_changes_from_dict():
     }
 
     # Convert dictionary to LocalChanges
-    added = [LocalChange(**file) for file in changes_dict["added"]]
-    updated = [LocalChange(**file) for file in changes_dict["updated"]]
-    removed = [LocalChange(**file) for file in changes_dict["removed"]]
+    added = [FileChange(**file) for file in changes_dict["added"]]
+    updated = [FileChange(**file) for file in changes_dict["updated"]]
+    removed = [FileChange(**file) for file in changes_dict["removed"]]
 
-    local_changes = LocalChanges(added=added, updated=updated, removed=removed)
+    local_changes = LocalPojectChanges(added=added, updated=updated, removed=removed)
 
     # Assertions
     assert len(local_changes.added) == 1
@@ -53,7 +53,7 @@ def test_local_changes_from_dict():
 
 def test_local_change_get_diff():
     """Test the get_diff method of LocalChange."""
-    local_change = LocalChange(
+    local_change = FileChange(
         path="file1.txt",
         checksum="abc123",
         size=1024,
@@ -70,11 +70,11 @@ def test_local_change_get_diff():
 
 def test_local_changes_to_server_payload():
     """Test the to_server_payload method of LocalChanges."""
-    added = [LocalChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now())]
-    updated = [LocalChange(path="file2.txt", checksum="xyz789", size=2048, mtime=datetime.now())]
-    removed = [LocalChange(path="file3.txt", checksum="lmn456", size=512, mtime=datetime.now())]
+    added = [FileChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now())]
+    updated = [FileChange(path="file2.txt", checksum="xyz789", size=2048, mtime=datetime.now())]
+    removed = [FileChange(path="file3.txt", checksum="lmn456", size=512, mtime=datetime.now())]
 
-    local_changes = LocalChanges(added=added, updated=updated, removed=removed)
+    local_changes = LocalPojectChanges(added=added, updated=updated, removed=removed)
     server_request = local_changes.to_server_payload()
 
     assert "added" in server_request
@@ -88,12 +88,12 @@ def test_local_changes_to_server_payload():
 def test_local_changes_update_chunks():
     """Test the update_chunks method of LocalChanges."""
     added = [
-        LocalChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now(), chunks=["abc123"]),
-        LocalChange(path="file2.txt", checksum="abc123", size=1024, mtime=datetime.now(), chunks=["abc123"]),
+        FileChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now(), chunks=["abc123"]),
+        FileChange(path="file2.txt", checksum="abc123", size=1024, mtime=datetime.now(), chunks=["abc123"]),
     ]
-    updated = [LocalChange(path="file2.txt", checksum="xyz789", size=2048, mtime=datetime.now(), chunks=["xyz789"])]
+    updated = [FileChange(path="file2.txt", checksum="xyz789", size=2048, mtime=datetime.now(), chunks=["xyz789"])]
 
-    local_changes = LocalChanges(added=added, updated=updated)
+    local_changes = LocalPojectChanges(added=added, updated=updated)
     chunks = [("abc123", "chunk1"), ("abc123", "chunk1"), ("xyz789", "chunk2")]
 
     local_changes.update_chunks(chunks)
@@ -106,12 +106,12 @@ def test_local_changes_update_chunks():
 def test_local_changes_get_upload_changes():
     """Test the get_upload_changes method of LocalChanges."""
     # Create sample LocalChange instances
-    added = [LocalChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now())]
-    updated = [LocalChange(path="file2.txt", checksum="xyz789", size=2048, mtime=datetime.now())]
-    removed = [LocalChange(path="file3.txt", checksum="lmn456", size=512, mtime=datetime.now())]
+    added = [FileChange(path="file1.txt", checksum="abc123", size=1024, mtime=datetime.now())]
+    updated = [FileChange(path="file2.txt", checksum="xyz789", size=2048, mtime=datetime.now())]
+    removed = [FileChange(path="file3.txt", checksum="lmn456", size=512, mtime=datetime.now())]
 
     # Initialize LocalChanges with added, updated, and removed changes
-    local_changes = LocalChanges(added=added, updated=updated, removed=removed)
+    local_changes = LocalPojectChanges(added=added, updated=updated, removed=removed)
 
     # Call get_upload_changes
     upload_changes = local_changes.get_upload_changes()
@@ -123,7 +123,7 @@ def test_local_changes_get_upload_changes():
 
 
 def test_local_changes_post_init_validation_media():
-    """Test the get_media_upload_file method of LocalChanges."""
+    """Test the get_media_upload_file method of LocalProjectChanges."""
     # Define constants
     SIZE_LIMIT_MB = 5
     SIZE_LIMIT_BYTES = SIZE_LIMIT_MB * 1024 * 1024
@@ -132,26 +132,26 @@ def test_local_changes_post_init_validation_media():
 
     # Create sample LocalChange instances
     added = [
-        LocalChange(path="file1.txt", checksum="abc123", size=SMALL_FILE_SIZE, mtime=datetime.now()),
-        LocalChange(path="file2.jpg", checksum="xyz789", size=LARGE_FILE_SIZE, mtime=datetime.now()),  # Over limit
+        FileChange(path="file1.txt", checksum="abc123", size=SMALL_FILE_SIZE, mtime=datetime.now()),
+        FileChange(path="file2.jpg", checksum="xyz789", size=LARGE_FILE_SIZE, mtime=datetime.now()),  # Over limit
     ]
     updated = [
-        LocalChange(path="file3.mp4", checksum="lmn456", size=5 * 1024 * 1024, mtime=datetime.now()),
-        LocalChange(path="file4.gpkg", checksum="opq123", size=SMALL_FILE_SIZE, mtime=datetime.now()),
+        FileChange(path="file3.mp4", checksum="lmn456", size=5 * 1024 * 1024, mtime=datetime.now()),
+        FileChange(path="file4.gpkg", checksum="opq123", size=SMALL_FILE_SIZE, mtime=datetime.now()),
     ]
 
-    # Initialize LocalChanges
+    # Initialize LocalProjectChanges
     with patch("mergin.local_changes.MAX_UPLOAD_MEDIA_SIZE", SIZE_LIMIT_BYTES):
         with pytest.raises(ChangesValidationError, match="Some files exceed") as err:
-            LocalChanges(added=added, updated=updated)
+            LocalPojectChanges(added=added, updated=updated)
             print(err.value.invalid_changes)
     assert len(err.value.invalid_changes) == 1
     assert "file2.jpg" == err.value.invalid_changes[0].path
     assert err.value.invalid_changes[0].size == LARGE_FILE_SIZE
 
 
-def test_local_changes_post_init_validation_media():
-    """Test the get_gpgk_upload_file method of LocalChanges."""
+def test_local_changes_post_init_validation_gpgkg():
+    """Test the get_gpgk_upload_file method of LocalProjectChanges."""
     # Define constants
     SIZE_LIMIT_MB = 10
     SIZE_LIMIT_BYTES = SIZE_LIMIT_MB * 1024 * 1024
@@ -160,26 +160,26 @@ def test_local_changes_post_init_validation_media():
 
     # Create sample LocalChange instances
     added = [
-        LocalChange(path="file1.gpkg", checksum="abc123", size=SMALL_FILE_SIZE, mtime=datetime.now()),
-        LocalChange(
+        FileChange(path="file1.gpkg", checksum="abc123", size=SMALL_FILE_SIZE, mtime=datetime.now()),
+        FileChange(
             path="file2.gpkg", checksum="xyz789", size=LARGE_FILE_SIZE, mtime=datetime.now(), diff=None
         ),  # Over limit
     ]
     updated = [
-        LocalChange(
+        FileChange(
             path="file3.gpkg",
             checksum="lmn456",
             size=SIZE_LIMIT_BYTES + 1,
             mtime=datetime.now(),
             diff={"path": "file3-diff.gpkg", "checksum": "diff123", "size": 1024, "mtime": datetime.now()},
         ),
-        LocalChange(path="file4.txt", checksum="opq123", size=SMALL_FILE_SIZE, mtime=datetime.now()),
+        FileChange(path="file4.txt", checksum="opq123", size=SMALL_FILE_SIZE, mtime=datetime.now()),
     ]
 
-    # Initialize LocalChanges
+    # Initialize LocalProjectChanges
     with patch("mergin.local_changes.MAX_UPLOAD_VERSIONED_SIZE", SIZE_LIMIT_BYTES):
         with pytest.raises(ChangesValidationError) as err:
-            LocalChanges(added=added, updated=updated)
+            LocalPojectChanges(added=added, updated=updated)
     assert len(err.value.invalid_changes) == 1
     assert "file2.gpkg" == err.value.invalid_changes[0].path
     assert err.value.invalid_changes[0].size == LARGE_FILE_SIZE
@@ -195,16 +195,16 @@ def test_local_changes_post_init():
 
     # Create more than MAX_UPLOAD_CHANGES changes
     added = [
-        LocalChange(path=f"file{i}.txt", checksum="abc123", size=SMALL_FILE_SIZE, mtime=datetime.now())
+        FileChange(path=f"file{i}.txt", checksum="abc123", size=SMALL_FILE_SIZE, mtime=datetime.now())
         for i in range(ADDED_COUNT)
     ]
     updated = [
-        LocalChange(path=f"file{i}.txt", checksum="xyz789", size=LARGE_FILE_SIZE, mtime=datetime.now())
+        FileChange(path=f"file{i}.txt", checksum="xyz789", size=LARGE_FILE_SIZE, mtime=datetime.now())
         for i in range(UPDATED_COUNT)
     ]
 
-    # Initialize LocalChanges
-    local_changes = LocalChanges(added=added, updated=updated)
+    # Initialize LocalProjectChanges
+    local_changes = LocalPojectChanges(added=added, updated=updated)
 
     # Assertions
     assert len(local_changes.added) == ADDED_COUNT  # All added changes are included

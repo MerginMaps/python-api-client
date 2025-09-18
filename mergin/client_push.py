@@ -22,7 +22,7 @@ import os
 import time
 from typing import List, Tuple, Optional, ByteString
 
-from .local_changes import ChangesValidationError, LocalChange, LocalChanges
+from .local_changes import ChangesValidationError, FileChange, LocalPojectChanges
 
 from .common import (
     MAX_UPLOAD_VERSIONED_SIZE,
@@ -73,7 +73,7 @@ class UploadQueueItem:
 
         self._request_headers = {"Content-Type": "application/octet-stream"}
 
-    def upload_chunk(self, data: ByteString, checksum: str):
+    def upload_chunk_v1_api(self, data: ByteString, checksum: str):
         """
         Uploads the chunk to the server.
         """
@@ -125,7 +125,7 @@ class UploadQueueItem:
                         self.upload_chunk_v2_api(data, checksum_str)
                     else:
                         # use v1 API for uploading chunks
-                        self.upload_chunk(data, checksum_str)
+                        self.upload_chunk_v1_api(data, checksum_str)
                     break  # exit loop if upload was successful
                 except ClientError as e:
                     if attempt < UPLOAD_CHUNK_ATTEMPTS - 1:
@@ -140,10 +140,10 @@ class UploadJob:
     """Keeps all the important data about a pending upload job"""
 
     def __init__(
-        self, version: str, changes: LocalChanges, transaction_id: Optional[str], mp: MerginProject, mc, tmp_dir
+        self, version: str, changes: LocalPojectChanges, transaction_id: Optional[str], mp: MerginProject, mc, tmp_dir
     ):
         self.version = version
-        self.changes: LocalChanges = changes  # dictionary of local changes to the project
+        self.changes: LocalPojectChanges = changes  # dictionary of local changes to the project
         self.transaction_id = transaction_id  # ID of the transaction assigned by the server
         self.total_size = 0  # size of data to upload (in bytes)
         self.transferred_size = 0  # size of data already uploaded (in bytes)
@@ -167,8 +167,8 @@ class UploadJob:
         future = self.executor.submit(_do_upload, item, self)
         self.futures.append(future)
 
-    def add_items(self, items: List[UploadQueueItem]):
-        """Add multiple chunks to the upload queue"""
+    def start(self, items: List[UploadQueueItem]):
+        """Starting upload in background with multiple upload items (UploadQueueItem)"""
         self.total_size = sum(item.size for item in items)
         self.upload_queue_items = items
 
@@ -182,7 +182,10 @@ class UploadJob:
             self._submit_item_to_thread(item)
 
     def update_chunks_from_items(self):
-        """Update chunks in LocalChanges from the upload queue items."""
+        """
+        Update chunks in LocalProjectChanges from the upload queue items.
+        Used just before finalizing the transaction to set the server_chunk_id in v2 API.
+        """
         self.changes.update_chunks([(item.chunk_id, item.server_chunk_id) for item in self.upload_queue_items])
 
 
@@ -195,7 +198,7 @@ def _do_upload(item: UploadQueueItem, job: UploadJob):
     job.transferred_size += item.size
 
 
-def create_upload_chunks(mc, mp: MerginProject, local_changes: List[LocalChange]) -> List[UploadQueueItem]:
+def create_upload_chunks(mc, mp: MerginProject, local_changes: List[FileChange]) -> List[UploadQueueItem]:
     """
     Create a list of UploadQueueItem objects from the changes dictionary and calculate total size of files.
     This is used to prepare the upload queue for the upload job.
@@ -228,7 +231,7 @@ def create_upload_chunks(mc, mp: MerginProject, local_changes: List[LocalChange]
 
 
 def create_upload_job(
-    mc, mp: MerginProject, changes: LocalChanges, tmp_dir: tempfile.TemporaryDirectory
+    mc, mp: MerginProject, changes: LocalPojectChanges, tmp_dir: tempfile.TemporaryDirectory
 ) -> Optional[UploadJob]:
     """
     Prepare transaction and create an upload job for the project using the v1 API.
@@ -268,18 +271,20 @@ def create_upload_job(
     if not upload_changes:
         mp.log.info("not uploading any files")
         if push_start_resp:
+            # This is related just to v1 API
             job.server_resp = push_start_resp
         push_project_finalize(job)
         return  # all done - no pending job
 
     if transaction_id:
+        # This is related just to v1 API
         mp.log.info(f"got transaction ID {transaction_id}")
 
     # prepare file chunks for upload
     upload_queue_items = create_upload_chunks(mc, mp, upload_changes)
 
     mp.log.info(f"Starting upload chunks for project {project_id}")
-    job.add_items(upload_queue_items)
+    job.start(upload_queue_items)
     return job
 
 
@@ -451,6 +456,7 @@ def push_project_cancel(job: UploadJob):
 
     job.executor.shutdown(wait=True)
     if not job.transaction_id:
+        # If not v2 api endpoint with transaction, nothing to cancel on server
         job.mp.log.info("--- push cancelled")
         return
     try:
@@ -473,7 +479,7 @@ def remove_diff_files(job: UploadJob) -> None:
                 os.remove(diff_file)
 
 
-def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[LocalChanges, int]:
+def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[LocalPojectChanges, int]:
     """
     Get changes that need to be pushed to the server.
     """
@@ -482,10 +488,10 @@ def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[LocalChanges, int]:
     changes = filter_changes(mc, project_role, changes)
 
     try:
-        local_changes = LocalChanges(
-            added=[LocalChange(**change) for change in changes["added"]],
-            updated=[LocalChange(**change) for change in changes["updated"]],
-            removed=[LocalChange(**change) for change in changes["removed"]],
+        local_changes = LocalPojectChanges(
+            added=[FileChange(**change) for change in changes["added"]],
+            updated=[FileChange(**change) for change in changes["updated"]],
+            removed=[FileChange(**change) for change in changes["removed"]],
         )
     except ChangesValidationError as e:
         raise ClientError(
