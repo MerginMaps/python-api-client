@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Optional, List, Tuple
+from typing import Optional, List, Tuple
 
 
 @dataclass
@@ -27,6 +27,7 @@ class FileChange:
     chunks: List[str] = field(default_factory=list)
     # optional diff information for geopackage files with geodiff metadata
     diff: Optional[dict] = None
+    # File path to be used for reading a file by creating and uploading file in chunks
     upload_file: Optional[str] = None
     # some functions (MerginProject.compare_file_sets) are adding version to the change from project info
     version: Optional[str] = None
@@ -45,6 +46,7 @@ class FileChange:
             )
 
     def to_server_data(self) -> dict:
+        """Convert the FileChange instance to a dictionary format suitable for server payload."""
         result = {
             "path": self.path,
             "checksum": self.checksum,
@@ -61,7 +63,7 @@ class FileChange:
 
 
 @dataclass
-class LocalPojectChanges:
+class LocalProjectChanges:
     added: List[FileChange] = field(default_factory=list)
     updated: List[FileChange] = field(default_factory=list)
     removed: List[FileChange] = field(default_factory=list)
@@ -93,7 +95,7 @@ class LocalPojectChanges:
                     seen.add(server_chunk_id)
         return mapped
 
-    def update_chunks(self, server_chunks: List[Tuple[str, str]]) -> None:
+    def update_chunk_ids(self, server_chunks: List[Tuple[str, str]]) -> None:
         """
         Map chunk ids to chunks returned from server (server_chunk_id).
 
