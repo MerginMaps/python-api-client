@@ -1512,7 +1512,7 @@ class MerginClient:
         ws_inv = self.post(f"v2/workspaces/{workspace_id}/invitations", params, json_headers)
         return json.load(ws_inv)
 
-    def sync_project(self, project_directory, upload_progress=False):
+    def sync_project_generator(self, project_directory):
         """
         Syncs project by loop with these steps:
         1. Pull server version
@@ -1521,30 +1521,23 @@ class MerginClient:
         Repeat if there are more local changes.
 
         :param project_directory: Project's directory
-        :param upload_progress: If True, the method will be a generator yielding upload progress as (size_change, job) tuples.
         """
         mp = MerginProject(project_directory)
         has_changes = True
         server_conflict_attempts = 0
         while has_changes:
-            pull_job = pull_project_async(self, project_directory)
-            if pull_job:
-                pull_project_wait(pull_job)
-                pull_project_finalize(pull_job)
-
+            self.pull_project(project_directory)
             try:
                 job = push_project_async(self, project_directory)
                 if not job:
                     break
-                if not upload_progress:
-                    push_project_wait(job)
-                else:
-                    last_size = 0
-                    while push_project_is_running(job):
-                        sleep(SYNC_CALLBACK_WAIT)
-                        current_size = job.transferred_size
-                        yield (current_size - last_size, job)  # Yields the size change and the job object
-                        last_size = current_size
+                # waiting for progress
+                last_size = 0
+                while push_project_is_running(job):
+                    sleep(SYNC_CALLBACK_WAIT)
+                    current_size = job.transferred_size
+                    yield (current_size - last_size, job)  # Yields the size change and the job object
+                    last_size = current_size
                 push_project_finalize(job)
                 _, has_changes = get_push_changes_batch(self, mp)
                 server_conflict_attempts = 0
@@ -1558,3 +1551,14 @@ class MerginClient:
                     sleep(PUSH_ATTEMPT_WAIT)
                     continue
                 raise e
+
+    def sync_project(self, project_directory):
+        """
+        See description of _sync_project_generator().
+
+        :param project_directory: Project's directory
+        """
+        # walk through the generator to perform the sync
+        # in this method we do not yield anything to the caller
+        for _ in self.sync_project_generator(project_directory):
+            pass
