@@ -477,17 +477,36 @@ def sync(ctx):
     if mc is None:
         return
     directory = os.getcwd()
-    upload_job = None
+    current_job = None
+    current_bar = None
     try:
+        # Iterate over the generator to get updates
+        for size_change, job in mc.sync_project(directory, upload_progress=True):
+            # Check if this is a new job (a new push operation)
+            if job and job != current_job:
+                # If a previous bar exists, close it
+                if current_bar:
+                    current_bar.finish()
 
-        def on_progress(increment, push_job):
-            nonlocal upload_job
-            upload_job = push_job
+                # A new push job has started. Initialize a new progress bar.
+                click.echo(f"Starting upload")
+                current_job = job
 
-        # run pull & push cycles until there are no local changes
-        mc.sync_project(directory, progress_callback=on_progress)
+                # The length of the progress bar should be the total size of the job
+                # You'll need to get this from your job object (e.g., job.total_size)
+                total_size = job.total_size
+                current_bar = click.progressbar(
+                    length=total_size,
+                    label=f"Uploading project",
+                )
 
-        click.secho("Sync complete.", fg="green")
+            # Update the current progress bar with the size increment
+            current_bar.update(size_change)
+
+        # After the loop finishes, make sure to close the final progress bar
+        if current_bar:
+            current_bar.finish()
+        click.secho("\nProject synced successfully", fg="green")
 
     except InvalidProject as e:
         click.secho("Invalid project directory ({})".format(str(e)), fg="red")
@@ -496,8 +515,8 @@ def sync(ctx):
         return
     except KeyboardInterrupt:
         click.secho("Cancelling...")
-        if upload_job:
-            push_project_cancel(upload_job)
+        if current_job:
+            push_project_cancel(current_job)
     except Exception as e:
         _print_unhandled_exception()
 
