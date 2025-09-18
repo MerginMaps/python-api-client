@@ -495,6 +495,6 @@ def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[LocalProjectChanges, 
         )
     except ChangesValidationError as e:
         raise ClientError(
-            f"Some files exceeded maximum upload size. Files: {', '.join([c.path for c in e.invalid_changes])}. Maximum size for media files is {e.max_media_upload_size / (1024**3)} GB and for geopackage files {e.max_versioned_upload_size / (1024**3)} GB."
+            f"Some files exceeded maximum upload size. Files: {', '.join([c.path for c in e.invalid_changes])}. Maximum size for media files is {MAX_UPLOAD_MEDIA_SIZE / (1024**3)} GB and for geopackage files {MAX_UPLOAD_VERSIONED_SIZE / (1024**3)} GB."
         )
     return local_changes, sum(len(v) for v in changes.values())

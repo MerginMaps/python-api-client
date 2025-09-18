@@ -21,7 +21,7 @@ from .utils import (
     conflicted_copy_file_name,
     edit_conflict_file_name,
 )
-from .local_changes import LocalChange
+from .local_changes import FileChange
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -470,7 +470,7 @@ class MerginProject:
         changes["updated"] = [f for f in changes["updated"] if f not in not_updated]
         return changes
 
-    def copy_versioned_file_for_upload(self, f: LocalChange, tmp_dir: str) -> str:
+    def copy_versioned_file_for_upload(self, f: FileChange, tmp_dir: str) -> str:
         """
         Make a temporary copy of the versioned file using geodiff, to make sure that we have full
         content in a single file (nothing left in WAL journal)

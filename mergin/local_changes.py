@@ -10,11 +10,9 @@ MAX_UPLOAD_CHANGES = 100
 
 # The custom exception
 class ChangesValidationError(Exception):
-    def __init__(self, message, invalid_changes=[], max_media_upload_size=None, max_versioned_upload_size=None):
+    def __init__(self, message, invalid_changes=[]):
         super().__init__(message)
         self.invalid_changes = invalid_changes if invalid_changes is not None else []
-        self.max_media_upload_size = max_media_upload_size
-        self.max_versioned_upload_size = max_versioned_upload_size
 
 
 @dataclass
@@ -96,8 +94,6 @@ class LocalProjectChanges:
                 oversize_changes.append(change)
         if oversize_changes:
             error = ChangesValidationError("Some files exceed the maximum upload size", oversize_changes)
-            error.max_media_upload_size = MAX_UPLOAD_MEDIA_SIZE
-            error.max_versioned_upload_size = MAX_UPLOAD_VERSIONED_SIZE
             raise error
 
         if total_changes > MAX_UPLOAD_CHANGES:
