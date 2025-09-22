@@ -380,14 +380,18 @@ class MerginClient:
             try:
                 resp = self.get("/config", validate_auth=False)
                 config = json.load(resp)
-                if config["server_type"] == "ce":
+                stype = config.get("server_type")
+                if stype == "ce":
                     self._server_type = ServerType.CE
-                elif config["server_type"] == "ee":
+                elif stype == "ee":
                     self._server_type = ServerType.EE
-                elif config["server_type"] == "saas":
+                elif stype == "saas":
                     self._server_type = ServerType.SAAS
-            except (ClientError, KeyError):
-                self._server_type = ServerType.OLD
+            except ClientError as e:
+                if getattr(e, "status_code", None) == 404:
+                    self._server_type = ServerType.OLD
+                else:
+                    raise
 
         return self._server_type
 
