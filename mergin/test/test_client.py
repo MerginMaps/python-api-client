@@ -11,6 +11,8 @@ import pytz
 import sqlite3
 import glob
 
+from unittest.mock import patch, Mock
+
 from .. import InvalidProject
 from ..client import (
     MerginClient,
@@ -3008,3 +3010,19 @@ def test_validate_auth(mc: MerginClient):
     # this should pass and not raise an error, as the client is able to re-login
     with pytest.raises(LoginError):
         mc_auth_token_login_wrong_password.validate_auth()
+
+
+def test_server_type(mc):
+    """Test mc.server_type() method"""
+    # success
+    assert mc.server_type() == ServerType.SAAS
+    mc._server_type = None
+    with patch("mergin.client.MerginClient.get") as mock_client_get:
+        # 404
+        mock_client_get.side_effect = ClientError(detail="Not found", http_error=404)
+        assert mc.server_type() == ServerType.OLD
+        mc._server_type = None
+        # 503
+        mock_client_get.side_effect = ClientError(detail="Service unavailable", http_error=503)
+        with pytest.raises(ClientError, match="Service unavailable"):
+            mc.server_type()

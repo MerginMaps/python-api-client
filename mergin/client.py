@@ -388,7 +388,7 @@ class MerginClient:
                 elif stype == "saas":
                     self._server_type = ServerType.SAAS
             except ClientError as e:
-                if getattr(e, "status_code", None) == 404:
+                if getattr(e, "http_error", None) == 404:
                     self._server_type = ServerType.OLD
                 else:
                     raise
