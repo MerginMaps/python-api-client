@@ -21,7 +21,7 @@ from .utils import (
     conflicted_copy_file_name,
     edit_conflict_file_name,
 )
-
+from .local_changes import FileChange
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -470,20 +470,20 @@ class MerginProject:
         changes["updated"] = [f for f in changes["updated"] if f not in not_updated]
         return changes
 
-    def copy_versioned_file_for_upload(self, f, tmp_dir):
+    def copy_versioned_file_for_upload(self, f: FileChange, tmp_dir: str) -> str:
         """
         Make a temporary copy of the versioned file using geodiff, to make sure that we have full
         content in a single file (nothing left in WAL journal)
         """
-        path = f["path"]
+        path = f.path
         self.log.info("Making a temporary copy (full upload): " + path)
         tmp_file = os.path.join(tmp_dir, path)
         os.makedirs(os.path.dirname(tmp_file), exist_ok=True)
         self.geodiff.make_copy_sqlite(self.fpath(path), tmp_file)
-        f["size"] = os.path.getsize(tmp_file)
-        f["checksum"] = generate_checksum(tmp_file)
-        f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["size"] / UPLOAD_CHUNK_SIZE))]
-        f["upload_file"] = tmp_file
+        f.size = os.path.getsize(tmp_file)
+        f.checksum = generate_checksum(tmp_file)
+        f.chunks = [str(uuid.uuid4()) for i in range(math.ceil(f.size / UPLOAD_CHUNK_SIZE))]
+        f.upload_file = tmp_file
         return tmp_file
 
     def get_list_of_push_changes(self, push_changes):

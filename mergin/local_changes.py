@@ -2,6 +2,18 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, List, Tuple
 
+from .utils import is_versioned_file
+from .common import MAX_UPLOAD_MEDIA_SIZE, MAX_UPLOAD_VERSIONED_SIZE
+
+MAX_UPLOAD_CHANGES = 100
+
+
+# The custom exception
+class ChangesValidationError(Exception):
+    def __init__(self, message, invalid_changes=[]):
+        super().__init__(message)
+        self.invalid_changes = invalid_changes if invalid_changes is not None else []
+
 
 @dataclass
 class FileDiffChange:
@@ -67,6 +79,29 @@ class LocalProjectChanges:
     added: List[FileChange] = field(default_factory=list)
     updated: List[FileChange] = field(default_factory=list)
     removed: List[FileChange] = field(default_factory=list)
+
+    def __post_init__(self):
+        """
+        Enforce a limit of changes combined from `added` and `updated`.
+        """
+        upload_changes = self.get_upload_changes()
+        total_changes = len(upload_changes)
+        oversize_changes = []
+        for change in upload_changes:
+            if not is_versioned_file(change.path) and change.size > MAX_UPLOAD_MEDIA_SIZE:
+                oversize_changes.append(change)
+            elif not change.diff and change.size > MAX_UPLOAD_VERSIONED_SIZE:
+                oversize_changes.append(change)
+        if oversize_changes:
+            error = ChangesValidationError("Some files exceed the maximum upload size", oversize_changes)
+            raise error
+
+        if total_changes > MAX_UPLOAD_CHANGES:
+            # Calculate how many changes to keep from `added` and `updated`
+            added_limit = min(len(self.added), MAX_UPLOAD_CHANGES)
+            updated_limit = MAX_UPLOAD_CHANGES - added_limit
+            self.added = self.added[:added_limit]
+            self.updated = self.updated[:updated_limit]
 
     def to_server_payload(self) -> dict:
         return {

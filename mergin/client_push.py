@@ -22,9 +22,16 @@ import os
 import time
 from typing import List, Tuple, Optional, ByteString
 
-from .local_changes import FileChange, LocalProjectChanges
+from .local_changes import ChangesValidationError, FileChange, LocalProjectChanges
 
-from .common import UPLOAD_CHUNK_ATTEMPT_WAIT, UPLOAD_CHUNK_ATTEMPTS, UPLOAD_CHUNK_SIZE, ClientError, ErrorCode
+from .common import (
+    MAX_UPLOAD_VERSIONED_SIZE,
+    UPLOAD_CHUNK_ATTEMPT_WAIT,
+    UPLOAD_CHUNK_ATTEMPTS,
+    UPLOAD_CHUNK_SIZE,
+    MAX_UPLOAD_MEDIA_SIZE,
+    ClientError,
+)
 from .merginproject import MerginProject
 from .editor import filter_changes
 from .utils import get_data_checksum
@@ -176,7 +183,7 @@ class UploadJob:
 
     def update_chunks_from_items(self):
         """
-        Update chunks in LocalChanges from the upload queue items.
+        Update chunks in LocalProjectChanges from the upload queue items.
         Used just before finalizing the transaction to set the server_chunk_id in v2 API.
         """
         self.changes.update_chunk_ids([(item.chunk_id, item.server_chunk_id) for item in self.upload_queue_items])
@@ -301,7 +308,7 @@ def push_project_async(mc, directory) -> Optional[UploadJob]:
         mp.log.info(f"--- push {project_path} - nothing to do")
         return
 
-    mp.log.debug("push changes:\n" + pprint.pformat(changes))
+    mp.log.debug("push changes:\n" + pprint.pformat(asdict(changes)))
     tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
 
     # If there are any versioned files (aka .gpkg) that are not updated through a diff,
@@ -309,20 +316,15 @@ def push_project_async(mc, directory) -> Optional[UploadJob]:
     # That's because if there are pending transactions, checkpointing or switching from WAL mode
     # won't work, and we would end up with some changes left in -wal file which do not get
     # uploaded. The temporary copy using geodiff uses sqlite backup API and should copy everything.
-    for f in changes["updated"]:
-        if mp.is_versioned_file(f["path"]) and "diff" not in f:
+    for f in changes.updated:
+        if mp.is_versioned_file(f.path) and not f.diff:
             mp.copy_versioned_file_for_upload(f, tmp_dir.name)
 
-    for f in changes["added"]:
-        if mp.is_versioned_file(f["path"]):
+    for f in changes.added:
+        if mp.is_versioned_file(f.path):
             mp.copy_versioned_file_for_upload(f, tmp_dir.name)
 
-    local_changes = LocalProjectChanges(
-        added=[FileChange(**change) for change in changes["added"]],
-        updated=[FileChange(**change) for change in changes["updated"]],
-        removed=[FileChange(**change) for change in changes["removed"]],
-    )
-    job = create_upload_job(mc, mp, local_changes, tmp_dir)
+    job = create_upload_job(mc, mp, changes, tmp_dir)
     return job
 
 
@@ -477,7 +479,7 @@ def remove_diff_files(job: UploadJob) -> None:
                 os.remove(diff_file)
 
 
-def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[dict, int]:
+def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[LocalProjectChanges, int]:
     """
     Get changes that need to be pushed to the server.
     """
@@ -485,4 +487,14 @@ def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[dict, int]:
     project_role = mp.project_role()
     changes = filter_changes(mc, project_role, changes)
 
-    return changes, sum(len(v) for v in changes.values())
+    try:
+        local_changes = LocalProjectChanges(
+            added=[FileChange(**change) for change in changes["added"]],
+            updated=[FileChange(**change) for change in changes["updated"]],
+            removed=[FileChange(**change) for change in changes["removed"]],
+        )
+    except ChangesValidationError as e:
+        raise ClientError(
+            f"Some files exceeded maximum upload size. Files: {', '.join([c.path for c in e.invalid_changes])}. Maximum size for media files is {MAX_UPLOAD_MEDIA_SIZE / (1024**3)} GB and for geopackage files {MAX_UPLOAD_VERSIONED_SIZE / (1024**3)} GB."
+        )
+    return local_changes, sum(len(v) for v in changes.values())

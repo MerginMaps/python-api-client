@@ -1,7 +1,7 @@
 from itertools import filterfalse
 from typing import Callable, Dict, List
 
-from .utils import is_mergin_config, is_qgis_file, is_versioned_file
+from .utils import is_qgis_file
 
 EDITOR_ROLE_NAME = "editor"
 

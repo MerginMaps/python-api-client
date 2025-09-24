@@ -2328,8 +2328,10 @@ def test_clean_diff_files(mc):
     shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
     mc.push_project(project_dir)
 
-    diff_files = glob.glob("*-diff-*", root_dir=os.path.split(mp.fpath_meta("inserted_1_A.gpkg"))[0])
+    directory = os.path.split(mp.fpath_meta("inserted_1_A.gpkg"))[0]
+    diff_files = [f for f in os.listdir(directory) if "-diff-" in f]
 
+    # Assert that no matching files are found
     assert diff_files == []
 
 
@@ -3214,3 +3216,22 @@ def test_client_project_sync_retry(mc):
         with pytest.raises(ClientError):
             mc.sync_project(project_dir)
     assert mock_push_project_async.call_count == 2
+
+
+def test_push_file_limits(mc):
+    test_project = "test_push_file_limits"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    cleanup(mc, project, [project_dir])
+    mc.create_project(test_project)
+    mc.download_project(project, project_dir)
+    shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), project_dir)
+    # setting to some minimal value to mock limit hit
+    with patch("mergin.local_changes.MAX_UPLOAD_VERSIONED_SIZE", 1):
+        with pytest.raises(ClientError, match=f"Some files exceeded maximum upload size. Files: base.gpkg."):
+            mc.push_project(project_dir)
+
+    shutil.copy(os.path.join(TEST_DATA_DIR, "test.txt"), project_dir)
+    with patch("mergin.local_changes.MAX_UPLOAD_MEDIA_SIZE", 1):
+        with pytest.raises(ClientError, match=f"Some files exceeded maximum upload size. Files: test.txt."):
+            mc.push_project(project_dir)
