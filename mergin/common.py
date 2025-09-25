@@ -15,11 +15,11 @@ UPLOAD_CHUNK_ATTEMPT_WAIT = 5
 # size of the log file part to send (if file is larger only this size from end will be sent)
 MAX_LOG_FILE_SIZE_TO_SEND = 5 * 1024 * 1024
 
-# number of attempts to push changes (in case of network issues etc)
-PUSH_ATTEMPTS = 10
+# number of attempts of sync changes (in case of conflicted version etc.)
+SYNC_ATTEMPTS = 10
 
-# seconds to wait between attempts to push changes
-PUSH_ATTEMPT_WAIT = 5
+# seconds to wait between attempts to sync changes (in case of conflicted version etc.)
+SYNC_ATTEMPT_WAIT = 5
 
 # seconds to wait between sync callback calls
 SYNC_CALLBACK_WAIT = 0.01

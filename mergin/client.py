@@ -19,8 +19,8 @@ import warnings
 from time import sleep
 
 from .common import (
-    PUSH_ATTEMPT_WAIT,
-    PUSH_ATTEMPTS,
+    SYNC_ATTEMPT_WAIT,
+    SYNC_ATTEMPTS,
     SYNC_CALLBACK_WAIT,
     ClientError,
     LoginError,
@@ -1542,13 +1542,13 @@ class MerginClient:
                 _, has_changes = get_push_changes_batch(self, project_directory)
                 server_conflict_attempts = 0
             except ClientError as e:
-                if e.is_retryable_sync() and server_conflict_attempts < PUSH_ATTEMPTS - 1:
+                if e.is_retryable_sync() and server_conflict_attempts < SYNC_ATTEMPTS - 1:
                     # retry on conflict, e.g. when server has changes that we do not have yet
                     mp.log.info(
-                        f"Restarting sync process (conflict on server) - {server_conflict_attempts + 1}/{PUSH_ATTEMPTS}"
+                        f"Restarting sync process (conflict on server) - {server_conflict_attempts + 1}/{SYNC_ATTEMPTS}"
                     )
                     server_conflict_attempts += 1
-                    sleep(PUSH_ATTEMPT_WAIT)
+                    sleep(SYNC_ATTEMPT_WAIT)
                     continue
                 raise e
 

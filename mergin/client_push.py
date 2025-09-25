@@ -36,6 +36,8 @@ from .merginproject import MerginProject
 from .editor import filter_changes
 from .utils import get_data_checksum
 
+POST_JSON_HEADERS = {"Content-Type": "application/json"}
+
 
 class UploadChunksCache:
     """A cache for uploaded chunks to avoid re-uploading them, using checksum as key."""
@@ -248,13 +250,13 @@ def create_upload_job(
             mc.post(
                 f"/v2/projects/{project_id}/versions",
                 {**data, "check_only": True},
-                {"Content-Type": "application/json"},
+                POST_JSON_HEADERS,
             )
         else:
             resp = mc.post(
                 f"/v1/project/push/{project_path}",
                 data,
-                {"Content-Type": "application/json"},
+                POST_JSON_HEADERS,
             )
             push_start_resp = json.load(resp)
     except ClientError as err:

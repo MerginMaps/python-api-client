@@ -489,7 +489,7 @@ def sync(ctx):
                     current_bar.finish()
 
                 # A new push job has started. Initialize a new progress bar.
-                click.echo(f"Starting upload")
+                click.echo(f"\nStarting upload")
                 current_job = job
 
                 # The length of the progress bar should be the total size of the job
