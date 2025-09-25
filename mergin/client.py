@@ -1539,7 +1539,7 @@ class MerginClient:
                     yield (current_size - last_size, job)  # Yields the size change and the job object
                     last_size = current_size
                 push_project_finalize(job)
-                _, has_changes = get_push_changes_batch(self, mp)
+                _, has_changes = get_push_changes_batch(self, project_directory)
                 server_conflict_attempts = 0
             except ClientError as e:
                 if e.is_retryable_sync() and server_conflict_attempts < PUSH_ATTEMPTS - 1:

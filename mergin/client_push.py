@@ -303,7 +303,7 @@ def push_project_async(mc, directory) -> Optional[UploadJob]:
 
     mp.log.info(f"got project info: local version {local_version}")
 
-    changes, changes_len = get_push_changes_batch(mc, mp)
+    changes, changes_len = get_push_changes_batch(mc, directory)
     if not changes_len:
         mp.log.info(f"--- push {project_path} - nothing to do")
         return
@@ -479,10 +479,11 @@ def remove_diff_files(job: UploadJob) -> None:
                 os.remove(diff_file)
 
 
-def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[LocalProjectChanges, int]:
+def get_push_changes_batch(mc, directory: str) -> Tuple[LocalProjectChanges, int]:
     """
     Get changes that need to be pushed to the server.
     """
+    mp = MerginProject(directory)
     changes = mp.get_push_changes()
     project_role = mp.project_role()
     changes = filter_changes(mc, project_role, changes)
@@ -497,4 +498,7 @@ def get_push_changes_batch(mc, mp: MerginProject) -> Tuple[LocalProjectChanges, 
         raise ClientError(
             f"Some files exceeded maximum upload size. Files: {', '.join([c.path for c in e.invalid_changes])}. Maximum size for media files is {MAX_UPLOAD_MEDIA_SIZE / (1024**3)} GB and for geopackage files {MAX_UPLOAD_VERSIONED_SIZE / (1024**3)} GB."
         )
+    mp.log.info("-- Push changes --")
+    mp.log.info(pprint.pformat(changes))
+    mp.log.info(sum(len(v) for v in changes.values()))
     return local_changes, sum(len(v) for v in changes.values())
