@@ -108,7 +108,7 @@ def test_push_finalize_logs_on_5xx_real_diff(caplog, status_code, tmp_path):
         push_project_finalize(job)
 
     text = caplog.text
-    assert f"Push failed with HTTP error {status_code}" in text
+    assert f"Push failed with HTTP code {status_code}" in text
     assert "Upload details:" in text
     assert "Files:" in text
     assert modified.name in text
