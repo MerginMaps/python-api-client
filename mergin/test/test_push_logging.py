@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from pygeodiff import GeoDiff
-from mergin.client_push import push_project_finalize, UploadJob
+from mergin.client_push import UploadQueueItem, UploadQueueItem, push_project_finalize, UploadJob
 from mergin.common import ClientError
 from mergin.local_changes import FileChange, FileChange, LocalProjectChanges
 from mergin.merginproject import MerginProject
@@ -88,7 +88,17 @@ def test_push_finalize_logs_on_5xx_real_diff(caplog, status_code, tmp_path):
 
     job.total_size = 1234
     job.transferred_size = 1234
-    job.upload_queue_items = [1]
+    job.upload_queue_items = [
+        UploadQueueItem(
+            chunk_index=0,
+            chunk_id="123",
+            file_checksum="abc",
+            file_path=modified.name,
+            size=file_size,
+            mp=mp,
+            mc=mc,
+        )
+    ]
     job.executor = SimpleNamespace(shutdown=lambda wait=True: None)
     job.futures = [SimpleNamespace(done=lambda: True, exception=lambda: None, running=lambda: False)]
     job.server_resp = {"version": "n/a"}
