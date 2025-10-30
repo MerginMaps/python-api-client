@@ -857,3 +857,21 @@ class MerginProject:
         :type tables: list[str]
         """
         self.geodiff.set_tables_to_skip(tables)
+
+    def get_geodiff_changes_count(self, diff_rel_path: str):
+        """
+        Best-effort: return number of changes in the .gpkg diff (int) or None.
+        Never raises – diagnostics/logging must not fail.
+        """
+
+        diff_abs = self.fpath_meta(diff_rel_path)
+        try:
+            return pygeodiff.GeoDiff().changes_count(diff_abs)
+        except (
+            pygeodiff.GeoDiffLibError,
+            pygeodiff.GeoDiffLibConflictError,
+            pygeodiff.GeoDiffLibUnsupportedChangeError,
+            pygeodiff.GeoDiffLibVersionError,
+            FileNotFoundError,
+        ):
+            return None

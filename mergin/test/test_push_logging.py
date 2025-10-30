@@ -1,3 +1,4 @@
+import datetime
 from types import SimpleNamespace
 from pathlib import Path
 import logging
@@ -8,6 +9,7 @@ import pytest
 from pygeodiff import GeoDiff
 from mergin.client_push import push_project_finalize, UploadJob
 from mergin.common import ClientError
+from mergin.local_changes import FileChange, FileChange, LocalProjectChanges
 from mergin.merginproject import MerginProject
 from mergin.client import MerginClient
 
@@ -59,19 +61,25 @@ def test_push_finalize_logs_on_5xx_real_diff(caplog, status_code, tmp_path):
 
     # build a real UploadJob that references the diff/file sizes
     job = UploadJob(
-        project_path="u/p",
-        changes={
-            "added": [],
-            "updated": [
-                {
-                    "path": modified.name,
-                    "size": file_size,
-                    "diff": {"path": diff_rel, "size": diff_size},
-                    "chunks": [1],
-                }
+        version="v1",
+        changes=LocalProjectChanges(
+            added=[],
+            updated=[
+                FileChange(
+                    path=modified.name,
+                    size=file_size,
+                    diff={"path": diff_rel, "size": diff_size},
+                    chunks=["123"],
+                    checksum="abc",
+                    mtime=datetime.datetime.now(),
+                    upload_file=None,
+                    version=None,
+                    history=None,
+                    location=None,
+                )
             ],
-            "removed": [],
-        },
+            removed=[],
+        ),
         transaction_id=tx,
         mp=mp,
         mc=mc,

@@ -165,6 +165,29 @@ class UploadJob:
             print(f"- {item.file_path} {item.chunk_index} {item.size}")
         print("--- END ---")
 
+    def log_upload_details_error(self, err: ClientError):
+        """Log details about the upload job changes accumulated with ClientError"""
+        http_code = getattr(err, "http_error", None)
+        self.mp.log.error(
+            f"Push failed with HTTP code {http_code}. "
+            f"Upload details: {len(self.upload_queue_items)} file chunks, total size {self.total_size} bytes."
+        )
+        self.mp.log.error("Files:")
+        for f in self.changes.get_upload_changes():
+            path = f.path if f.path else "<unknown>"
+            size = f.size if f.size else "?"
+            diff_info = f.get_diff()
+            if diff_info:
+                diff_size = diff_info.size if diff_info.size else "?"
+                # best-effort: number of geodiff changes (if available)
+                changes_cnt = self.mp.get_geodiff_changes_count(diff_info.path)
+                if changes_cnt is None:
+                    self.mp.log.error(f"  - {path}, size={size}, diff_size={diff_size}, changes=n/a")
+                else:
+                    self.mp.log.error(f"  - {path}, size={size}, diff_size={diff_size}, changes={changes_cnt}")
+            else:
+                self.mp.log.error(f"  - {path}, size={size}")
+
     def _submit_item_to_thread(self, item: UploadQueueItem):
         """Upload a single item in the background"""
         future = self.executor.submit(_do_upload, item, self)
@@ -404,6 +427,10 @@ def push_project_finalize(job: UploadJob):
             if not err.is_retryable_sync():
                 # clear the upload chunks cache, as we are getting fatal from server
                 job.mc.upload_chunks_cache.clear()
+                http_code = getattr(err, "http_error", None)
+                if http_code in (502, 504):
+                    job.log_upload_details_error(err)
+            cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
             job.mp.log.error("--- push finish failed! " + str(err))
             raise err
     elif with_upload_of_files:
@@ -415,25 +442,7 @@ def push_project_finalize(job: UploadJob):
             # Log additional metadata on server error 502 or 504 (extended logging only)
             http_code = getattr(err, "http_error", None)
             if http_code in (502, 504):
-                job.mp.log.error(
-                    f"Push failed with HTTP error {http_code}. "
-                    f"Upload details: {len(job.upload_queue_items)} file chunks, total size {job.total_size} bytes."
-                )
-                job.mp.log.error("Files:")
-                for f in job.changes.get("added", []) + job.changes.get("updated", []):
-                    path = f.get("path", "<unknown>")
-                    size = f.get("size", "?")
-                    if "diff" in f:
-                        diff_info = f.get("diff", {})
-                        diff_size = diff_info.get("size", "?")
-                        # best-effort: number of geodiff changes (if available)
-                        changes_cnt = _geodiff_changes_count(job.mp, diff_info.get("path"))
-                        if changes_cnt is None:
-                            job.mp.log.error(f"  - {path}, size={size}, diff_size={diff_size}, changes=n/a")
-                        else:
-                            job.mp.log.error(f"  - {path}, size={size}, diff_size={diff_size}, changes={changes_cnt}")
-                    else:
-                        job.mp.log.error(f"  - {path}, size={size}")
+                job.log_upload_details_error(err)
 
             # server returns various error messages with filename or something generic
             # it would be better if it returned list of failed files (and reasons) whenever possible
@@ -466,25 +475,6 @@ def push_project_finalize(job: UploadJob):
     job.mp.log.info("--- push finished - new project version " + job.server_resp["version"])
 
 
-def _geodiff_changes_count(mp: MerginProject, diff_rel_path: str):
-    """
-    Best-effort: return number of changes in the .gpkg diff (int) or None.
-    Never raises – diagnostics/logging must not fail.
-    """
-
-    diff_abs = mp.fpath_meta(diff_rel_path)
-    try:
-        return pygeodiff.GeoDiff().changes_count(diff_abs)
-    except (
-        pygeodiff.GeoDiffLibError,
-        pygeodiff.GeoDiffLibConflictError,
-        pygeodiff.GeoDiffLibUnsupportedChangeError,
-        pygeodiff.GeoDiffLibVersionError,
-        FileNotFoundError,
-    ):
-        return None
-
-
 def push_project_cancel(job: UploadJob):
     """
     To be called (from main thread) to cancel a job that has uploads in progress.
@@ -499,6 +489,7 @@ def push_project_cancel(job: UploadJob):
     if not job.transaction_id:
         # If not v2 api endpoint with transaction, nothing to cancel on server
         job.mp.log.info("--- push cancelled")
+        cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
         return
     try:
         resp_cancel = job.mc.post("/v1/project/push/cancel/%s" % job.transaction_id)
