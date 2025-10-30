@@ -3,10 +3,7 @@ from datetime import datetime
 from typing import Optional, List, Tuple
 
 from .utils import is_versioned_file
-from .common import MAX_UPLOAD_MEDIA_SIZE, MAX_UPLOAD_VERSIONED_SIZE
-
-# Maximum changes uploading to server
-MAX_UPLOAD_CHANGES = 100
+from .common import MAX_UPLOAD_MEDIA_SIZE, MAX_UPLOAD_VERSIONED_SIZE, MAX_UPLOAD_CHANGES
 
 
 # The custom exception
