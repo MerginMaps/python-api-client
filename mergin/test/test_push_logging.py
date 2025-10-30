@@ -56,6 +56,7 @@ def test_push_finalize_logs_on_5xx_real_diff(caplog, status_code, tmp_path):
 
     mc = MagicMock(spec=MerginClient)
     mc.post.side_effect = mc_post
+    mc.server_features.side_effect = lambda: {"v2_push_enabled": False}
 
     tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-test-")
 
