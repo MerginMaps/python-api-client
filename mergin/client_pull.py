@@ -22,7 +22,7 @@ import concurrent.futures
 
 from .common import CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
-from .utils import save_to_file
+from .utils import cleanup_tmp_dir, save_to_file
 
 
 # status = download_project_async(...)
@@ -250,7 +250,7 @@ def download_project_finalize(job):
     # final update of project metadata
     job.mp.update_metadata(job.project_info)
 
-    job.tmp_dir.cleanup()
+    cleanup_tmp_dir(job.mp, job.tmp_dir)
 
 
 def download_project_cancel(job):
@@ -263,6 +263,7 @@ def download_project_cancel(job):
     job.is_cancelled = True
     job.executor.shutdown(wait=True)
     job.mp.log.info("--- download cancelled")
+    cleanup_tmp_dir(job.mp, job.tmp_dir)
 
 
 class UpdateTask:
@@ -550,6 +551,7 @@ def pull_project_cancel(job):
     job.is_cancelled = True
     job.executor.shutdown(wait=True)
     job.mp.log.info("--- pull cancelled")
+    cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
 
 
 class FileToMerge:
@@ -637,6 +639,7 @@ def pull_project_finalize(job: PullJob):
     except Exception as e:
         job.mp.log.error("Failed to apply pull changes: " + str(e))
         job.mp.log.info("--- pull aborted")
+        cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
         raise ClientError("Failed to apply pull changes: " + str(e))
 
     job.mp.update_metadata(job.project_info)
@@ -646,7 +649,7 @@ def pull_project_finalize(job: PullJob):
     else:
         job.mp.log.info("--- pull finished -- at version " + job.mp.version())
 
-    job.tmp_dir.cleanup()  # delete our temporary dir and all its content
+    cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
     return conflicts
 
 

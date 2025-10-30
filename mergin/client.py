@@ -392,14 +392,18 @@ class MerginClient:
         if not self._server_type:
             try:
                 config = self.server_config()
-                if config["server_type"] == "ce":
+                stype = config.get("server_type")
+                if stype == "ce":
                     self._server_type = ServerType.CE
-                elif config["server_type"] == "ee":
+                elif stype == "ee":
                     self._server_type = ServerType.EE
-                elif config["server_type"] == "saas":
+                elif stype == "saas":
                     self._server_type = ServerType.SAAS
-            except (ClientError, KeyError):
-                self._server_type = ServerType.OLD
+            except ClientError as e:
+                if getattr(e, "http_error", None) == 404:
+                    self._server_type = ServerType.OLD
+                else:
+                    raise
 
         return self._server_type
 

@@ -6,6 +6,7 @@ import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+import tempfile
 from .common import ClientError
 from typing import ByteString
 
@@ -202,7 +203,7 @@ def conflicted_copy_file_name(path, user, version):
     head, tail = os.path.split(os.path.normpath(path))
     ext = "".join(Path(tail).suffixes)
     file_name = tail.replace(ext, "")
-    # in case of QGIS project files we have to add "~" (tilde) to suffix
+    # in case of QGIS project files we TemporaryDirectoryhave to add "~" (tilde) to suffix
     # to avoid having several QGIS project files inside Mergin Maps project.
     # See https://github.com/lutraconsulting/qgis-mergin-plugin/issues/382
     # for more details
@@ -307,3 +308,17 @@ def get_data_checksum(data: ByteString) -> str:
     checksum = hashlib.sha1()
     checksum.update(data)
     return checksum.hexdigest()
+
+
+def cleanup_tmp_dir(mp, tmp_dir: tempfile.TemporaryDirectory):
+    """
+    Remove temporary from tempfile.TemporaryDirectory instance
+    This is needed beacause ignore_clanup_errors is not accepted under < Python 3.10
+    """
+
+    try:
+        tmp_dir.cleanup()
+    except PermissionError:
+        mp.log.warning(f"Permission error during tmp dir cleanup: {tmp_dir.name}")
+    except Exception as e:
+        mp.log.error(f"Error during tmp dir cleanup: {tmp_dir.name}: {e}")

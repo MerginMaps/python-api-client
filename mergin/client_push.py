@@ -32,9 +32,10 @@ from .common import (
     MAX_UPLOAD_MEDIA_SIZE,
     ClientError,
 )
-from .merginproject import MerginProject
+from .merginproject import MerginProject, pygeodiff
 from .editor import filter_changes
-from .utils import get_data_checksum
+from .utils import get_data_checksum, cleanup_tmp_dir
+
 
 POST_JSON_HEADERS = {"Content-Type": "application/json"}
 
@@ -381,6 +382,7 @@ def push_project_finalize(job: UploadJob):
             f"Transferred size ({job.transferred_size}) and expected total size ({job.total_size}) do not match!"
         )
         job.mp.log.error("--- push finish failed! " + error_msg)
+        cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
         raise ClientError("Upload error: " + error_msg)
 
     if server_features.get("v2_push_enabled"):
@@ -410,12 +412,29 @@ def push_project_finalize(job: UploadJob):
             resp = job.mc.post("/v1/project/push/finish/%s" % job.transaction_id)
             job.server_resp = json.load(resp)
         except ClientError as err:
-            # Log additional metadata on server error 502 or 504
-            if hasattr(err, "http_error") and err.http_error in (502, 504):
+            # Log additional metadata on server error 502 or 504 (extended logging only)
+            http_code = getattr(err, "http_error", None)
+            if http_code in (502, 504):
                 job.mp.log.error(
-                    f"Push failed with HTTP error {err.http_error}. "
+                    f"Push failed with HTTP error {http_code}. "
                     f"Upload details: {len(job.upload_queue_items)} file chunks, total size {job.total_size} bytes."
                 )
+                job.mp.log.error("Files:")
+                for f in job.changes.get("added", []) + job.changes.get("updated", []):
+                    path = f.get("path", "<unknown>")
+                    size = f.get("size", "?")
+                    if "diff" in f:
+                        diff_info = f.get("diff", {})
+                        diff_size = diff_info.get("size", "?")
+                        # best-effort: number of geodiff changes (if available)
+                        changes_cnt = _geodiff_changes_count(job.mp, diff_info.get("path"))
+                        if changes_cnt is None:
+                            job.mp.log.error(f"  - {path}, size={size}, diff_size={diff_size}, changes=n/a")
+                        else:
+                            job.mp.log.error(f"  - {path}, size={size}, diff_size={diff_size}, changes={changes_cnt}")
+                    else:
+                        job.mp.log.error(f"  - {path}, size={size}")
+
             # server returns various error messages with filename or something generic
             # it would be better if it returned list of failed files (and reasons) whenever possible
             job.mp.log.error("--- push finish failed! " + str(err))
@@ -428,6 +447,7 @@ def push_project_finalize(job: UploadJob):
                 job.mp.log.info("cancel response: " + resp_cancel.msg)
             except ClientError as err2:
                 job.mp.log.info("cancel response: " + str(err2))
+            cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
             raise err
 
     job.mp.update_metadata(job.server_resp)
@@ -436,14 +456,33 @@ def push_project_finalize(job: UploadJob):
     except Exception as e:
         job.mp.log.error("Failed to apply push changes: " + str(e))
         job.mp.log.info("--- push aborted")
+        cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
         raise ClientError("Failed to apply push changes: " + str(e))
 
-    job.tmp_dir.cleanup()  # delete our temporary dir and all its content
+    cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
     job.mc.upload_chunks_cache.clear()  # clear the upload chunks cache
-
     remove_diff_files(job)
 
     job.mp.log.info("--- push finished - new project version " + job.server_resp["version"])
+
+
+def _geodiff_changes_count(mp: MerginProject, diff_rel_path: str):
+    """
+    Best-effort: return number of changes in the .gpkg diff (int) or None.
+    Never raises – diagnostics/logging must not fail.
+    """
+
+    diff_abs = mp.fpath_meta(diff_rel_path)
+    try:
+        return pygeodiff.GeoDiff().changes_count(diff_abs)
+    except (
+        pygeodiff.GeoDiffLibError,
+        pygeodiff.GeoDiffLibConflictError,
+        pygeodiff.GeoDiffLibUnsupportedChangeError,
+        pygeodiff.GeoDiffLibVersionError,
+        FileNotFoundError,
+    ):
+        return None
 
 
 def push_project_cancel(job: UploadJob):
@@ -466,7 +505,9 @@ def push_project_cancel(job: UploadJob):
         job.server_resp = resp_cancel.msg
     except ClientError as err:
         job.mp.log.error("--- push cancelling failed! " + str(err))
+        cleanup_tmp_dir(job.mp, job.tmp_dir)
         raise err
+    cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
     job.mp.log.info("--- push cancel response: " + str(job.server_resp))
 
 

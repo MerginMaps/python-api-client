@@ -13,6 +13,8 @@ import sqlite3
 import glob
 from unittest.mock import patch, Mock
 
+from unittest.mock import patch, Mock
+
 from .. import InvalidProject
 from ..client import (
     MerginClient,
@@ -2328,6 +2330,7 @@ def test_clean_diff_files(mc):
     shutil.copy(mp.fpath("inserted_1_A.gpkg"), mp.fpath(f_updated))
     mc.push_project(project_dir)
 
+    # Get the directory path
     directory = os.path.split(mp.fpath_meta("inserted_1_A.gpkg"))[0]
     diff_files = [f for f in os.listdir(directory) if "-diff-" in f]
 
@@ -3235,3 +3238,19 @@ def test_push_file_limits(mc):
     with patch("mergin.local_changes.MAX_UPLOAD_MEDIA_SIZE", 1):
         with pytest.raises(ClientError, match=f"Some files exceeded maximum upload size. Files: test.txt."):
             mc.push_project(project_dir)
+
+
+def test_server_type(mc):
+    """Test mc.server_type() method"""
+    # success
+    assert mc.server_type() == ServerType.SAAS
+    mc._server_type = None
+    with patch("mergin.client.MerginClient.get") as mock_client_get:
+        # 404
+        mock_client_get.side_effect = ClientError(detail="Not found", http_error=404)
+        assert mc.server_type() == ServerType.OLD
+        mc._server_type = None
+        # 503
+        mock_client_get.side_effect = ClientError(detail="Service unavailable", http_error=503)
+        with pytest.raises(ClientError, match="Service unavailable"):
+            mc.server_type()
