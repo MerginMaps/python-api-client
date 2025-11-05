@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="mergin-client",
-    version="0.10.5",
+    version="0.11.0",
     url="https://github.com/MerginMaps/python-api-client",
     license="MIT",
     author="Lutra Consulting Ltd.",
