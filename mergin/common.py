@@ -1,5 +1,7 @@
 import os
 from enum import Enum
+from typing import List, Dict, Any
+from dataclasses import dataclass, field
 
 CHUNK_SIZE = 100 * 1024 * 1024
 
@@ -94,3 +96,23 @@ class ProjectRole(Enum):
     EDITOR = "editor"
     WRITER = "writer"
     OWNER = "owner"
+
+
+class DeltaChangeType(Enum):
+    CREATE = "create"
+    UPDATE = "update"
+    DELETE = "delete"
+    UPDATE_DIFF = "update_diff"
+
+
+@dataclass
+class ProjectDeltaItem:
+    change: DeltaChangeType
+    path: str
+    version: str
+    size: int
+    checksum: str
+    diffs: List[Dict[str, Any]] = field(default_factory=list)
+
+    def __post_init__(self):
+        self.change = DeltaChangeType(self.change)

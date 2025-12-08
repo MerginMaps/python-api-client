@@ -4,14 +4,16 @@ import math
 import os
 import re
 import shutil
+from typing import List, Dict, Any, Optional
 import uuid
 import tempfile
 from datetime import datetime
 from dateutil.tz import tzlocal
+from dataclasses import asdict
 
 from .editor import prevent_conflicted_copy
 
-from .common import UPLOAD_CHUNK_SIZE, InvalidProject, ClientError
+from .common import UPLOAD_CHUNK_SIZE, DeltaChangeType, InvalidProject, ClientError, ProjectDeltaItem
 from .utils import (
     generate_checksum,
     is_versioned_file,
@@ -141,9 +143,11 @@ class MerginProject:
         """Returns fully qualified project name: <workspace>/<name>"""
         self._read_metadata()
         if self.is_old_metadata:
-            return self._metadata["name"]
-        else:
-            return f"{self._metadata['namespace']}/{self._metadata['name']}"
+            return self._metadata.get("name")
+        workspace = self._metadata.get("workspace", {})
+        if workspace:
+            return f"{workspace.get('name')}/{self._metadata['name']}"
+        return f"{self._metadata.get('namespace')}/{self._metadata['name']}"
 
     def project_name(self) -> str:
         """Returns only project name, without its workspace name"""
@@ -189,7 +193,10 @@ class MerginProject:
                 "The project directory has been created with an old version of the Mergin Maps client. "
                 "Please delete the project directory and re-download the project."
             )
-        return self._metadata["workspace_id"]
+        workspace = self._metadata.get("workspace", {})
+        if workspace:
+            return workspace.get("id")
+        return self._metadata.get("workspace_id")
 
     def version(self) -> str:
         """Returns project version (e.g. "v123")"""
@@ -403,6 +410,31 @@ class MerginProject:
                 not_updated.append(file)
 
         changes["updated"] = [f for f in changes["updated"] if f not in not_updated]
+        return changes
+
+    def get_delta_pull_changes(self, delta_changes: List[ProjectDeltaItem]):
+        """
+        Get changes needed to be pulled from server for a specific delta.
+        This method is used to make compatibility with pull changes
+        {"added": [], "updated": [], "removed": []} structure.
+
+        :param delta_changes: list of delta changes
+        :type delta_changes: List[ProjectDeltaItem]
+        :returns: changes metadata for files to be pulled from server
+        :rtype: dict
+        """
+        changes = {"added": [], "updated": [], "removed": []}
+        for delta_item in delta_changes:
+            change = delta_item.change
+            if change == DeltaChangeType.CREATE:
+                changes["added"].append(asdict(delta_item))
+            elif change == DeltaChangeType.UPDATE:
+                changes["updated"].append(asdict(delta_item))
+            elif change == DeltaChangeType.DELETE:
+                changes["removed"].append(asdict(delta_item))
+            elif change == DeltaChangeType.UPDATE_DIFF:
+                diffs_paths = [diff["path"] for diff in delta_item.diffs]
+                changes["updated"].append({**asdict(delta_item), "diffs": diffs_paths})
         return changes
 
     def get_push_changes(self):

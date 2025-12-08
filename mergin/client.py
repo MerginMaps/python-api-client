@@ -119,6 +119,7 @@ class MerginClient:
         self._user_info = None
         self._server_type = None
         self._server_version = None
+        self._server_features = {}
         self.client_version = "Python-client/" + __version__
         if plugin_version is not None:  # this could be e.g. "Plugin/2020.1 QGIS/3.14"
             self.client_version += " " + plugin_version
@@ -309,6 +310,13 @@ class MerginClient:
         request = urllib.request.Request(url, method="DELETE")
         return self._do_request(request, validate_auth=validate_auth)
 
+    def head(self, path, data=None, headers={}, validate_auth=True):
+        url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
+        if data:
+            url += "?" + urllib.parse.urlencode(data)
+        request = urllib.request.Request(url, headers=headers, method="HEAD")
+        return self._do_request(request, validate_auth=validate_auth)
+
     def login(self, login, password):
         """
         Authenticate login credentials and store session token
@@ -411,6 +419,19 @@ class MerginClient:
                 self._server_version = ""
 
         return self._server_version
+
+    def server_features(self):
+        """
+        Returns feature flags of the server.
+        """
+        if self._server_features:
+            return self._server_features
+        config = self.server_config()
+        self._server_features = {
+            "v2_push_enabled": config.get("v2_push_enabled", False),
+            "v2_pull_enabled": config.get("v2_pull_enabled", False),
+        }
+        return self._server_features
 
     def workspaces_list(self):
         """
@@ -699,6 +720,36 @@ class MerginClient:
             resp = self.get("/v1/project/{}".format(project_path_or_id), params)
         return json.load(resp)
 
+    def project_info_v2(self, project_id: str, files_at_version=None):
+        """
+        Fetch info about project.
+
+        :param project_path_or_id: Project's full name (<namespace>/<name>) or id
+        :type project_path_or_id: String
+        :param files_at_version: Version to track files at given version
+        :type files_at_version: String
+        """
+        # since and version are mutually exclusive
+        params = {}
+        if files_at_version:
+            params = {"files_at_version": files_at_version}
+        resp = self.get(f"/v2/projects/{project_id}", params)
+        return json.load(resp)
+
+    def get_project_delta(self, project_id: str, since: str):
+        """
+        Fetch info about project delta since given version.
+
+        :param project_id: Project's id
+        :type project_id: String
+        :param since: Version to track history of geodiff files from
+        :type since: String
+        :rtype: Dict
+        """
+        params = {"since": since}
+        resp = self.get(f"/v2/projects/{project_id}/delta", params)
+        return json.load(resp)
+
     def paginated_project_versions(self, project_path, page, per_page=100, descending=False):
         """
         Get records of project's versions (history) using calculated pagination.
@@ -789,11 +840,11 @@ class MerginClient:
         :param project_path: Project's full name (<namespace>/<name>)
         :type project_path: String
 
-        :param version: Project version to download, e.g. v42
-        :type version: String
-
         :param directory: Target directory
         :type directory: String
+
+        :param version: Project version to download, e.g. v42
+        :type version: String
         """
         job = download_project_async(self, project_path, directory, version)
         download_project_wait(job)
