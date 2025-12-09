@@ -25,7 +25,7 @@ from dataclasses import asdict
 from .common import CHUNK_SIZE, ClientError, DeltaChangeType, ProjectDeltaItem
 from .merginproject import MerginProject
 from .utils import cleanup_tmp_dir, int_version, save_to_file
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 # status = download_project_async(...)
@@ -80,7 +80,7 @@ class DownloadJob:
 
 
 class DownloadDiffQueueItem:
-    """a piece of data from a project that should be downloaded - it can be either a chunk or it can be a diff"""
+    """Download item representing a diff file to be downloaded using v2 diff/raw endpoint"""
 
     def __init__(self, file_path, download_file_path):
         self.file_path = file_path  # relative path to the file within project
@@ -93,7 +93,7 @@ class DownloadDiffQueueItem:
     def download_blocking(self, mc, mp):
         """Starts download and only returns once the file has been fully downloaded and saved"""
 
-        mp.log.debug(f"Downloading {self.file_path}")
+        mp.log.debug(f"Downloading diff {self.file_path}")
         resp = mc.get(
             f"/v2/projects/{mp.project_id()}/raw/diff/{self.file_path}",
         )
@@ -149,13 +149,6 @@ def get_download_items(file, directory, diff_only=False):
         items.append(DownloadQueueItem(file["path"], size, file["version"], diff_only, part_index, download_file_path))
 
     return items
-
-
-def get_diff_download_items(path: str, directory) -> List[DownloadDiffQueueItem]:
-    """Returns an array of download queue items for diff file using v2 endpoint"""
-    file_dir = os.path.dirname(os.path.normpath(os.path.join(directory, path)))
-    basename = os.path.basename(path)
-    return [DownloadDiffQueueItem(path, os.path.join(file_dir, f"{basename}.0"))]
 
 
 def _do_download(item, mc, mp, project_path, job):
@@ -439,6 +432,7 @@ class PullJob:
             basefiles_to_patch  # list of tuples (relative path within project, list of diff files in temp dir to apply)
         )
         self.mc = mc
+        self.futures = []  # list of concurrent.futures.Future instances
 
     def dump(self):
         print("--- JOB ---", self.total_size, "bytes")
@@ -514,29 +508,32 @@ def get_merge_files(pull_changes: dict, target_dir: str, server_version: str) ->
     return result
 
 
-def get_delta_merge_files(delta_items: List[ProjectDeltaItem], target_dir: str) -> List[FileToMerge]:
+def get_delta_download_files(
+    delta_items: List[ProjectDeltaItem], target_dir: str
+) -> Tuple[List[FileToMerge], List[DownloadDiffQueueItem]]:
     """
-    Extracts list of files to be merged from delta dictionary.
+    Extracts list of files to be merged from delta dictionary. If there is any diff files to be downloaded, they
+    are returned as a separate list.
     """
-    result = []
+    merge_files = []
+    diff_files = []
     for item in delta_items:
         change = item.change
         if change == DeltaChangeType.CREATE or change == DeltaChangeType.UPDATE:
             path = item.path
             download_items = get_download_items(asdict(item), target_dir, False)
             dest_file_path = prepare_chunks_destination(target_dir, path)
-            result.append(FileToMerge(dest_file_path, download_items))
+            merge_files.append(FileToMerge(dest_file_path, download_items))
         elif change == DeltaChangeType.UPDATE_DIFF:
             diffs = item.diffs
             for diff in diffs:
-                diff_path = diff["path"]
-                download_items = get_diff_download_items(diff_path, target_dir)
-                dest_file_diff_path = os.path.normpath(os.path.join(target_dir, diff_path))
-                result.append(FileToMerge(dest_file_diff_path, download_items))
-    return result
+                # TODO: change it to id in response
+                diff_id = diff.get("path")
+                diff_files.append(DownloadDiffQueueItem(diff_id, os.path.join(target_dir, diff_id)))
+    return merge_files, diff_files
 
 
-def pull_project_async(mc, directory) -> PullJob:
+def pull_project_async(mc, directory) -> Optional[PullJob]:
     """
     Starts project pull in background and returns handle to the pending job.
     Using that object it is possible to watch progress or cancel the ongoing work.
@@ -562,8 +559,9 @@ def pull_project_async(mc, directory) -> PullJob:
     server_info = None
     server_version = None
     pull_changes = {}
+    v2_pull = mc.server_features().get("v2_pull_enabled", False)
     try:
-        if mc.server_features().get("v2_pull_enabled", False):
+        if v2_pull:
             delta = mc.get_project_delta(project_id, since=local_version)
             items = delta.get("items", [])
             items = [ProjectDeltaItem(**item) for item in items]
@@ -587,16 +585,18 @@ def pull_project_async(mc, directory) -> PullJob:
     tmp_dir = tempfile.TemporaryDirectory(prefix="mm-pull-")
     # list of FileToMerge instances, which consists of destination path and list of download items
     merge_files = []
-
-    if server_info:
+    diff_files = []
+    if not v2_pull:
         pull_changes = mp.get_pull_changes(server_info.get("files"))
         mp.log.debug("pull changes:\n" + pprint.pformat(pull_changes))
         merge_files.extend(get_merge_files(pull_changes, tmp_dir.name, server_version))
-    elif delta:
+    else:
         delta_items = delta.get("items", [])
         pull_changes = mp.get_delta_pull_changes(delta_items)
         mp.log.debug("pull changes:\n" + pprint.pformat(pull_changes))
-        merge_files.extend(get_delta_merge_files(delta_items, tmp_dir.name))
+        delta_merge_files, delta_diff_files = get_delta_download_files(delta_items, tmp_dir.name)
+        merge_files = delta_merge_files
+        diff_files = delta_diff_files
 
     # make sure we can update geodiff reference files (aka. basefiles) with diffs or
     # download their full versions so we have them up-to-date for applying changes
@@ -607,7 +607,6 @@ def pull_project_async(mc, directory) -> PullJob:
 
         basefile = mp.fpath_meta(file["path"])
         if not os.path.exists(basefile):
-            print("hej", basefile)
             # The basefile does not exist for some reason. This should not happen normally (maybe user removed the file
             # or we removed it within previous pull because we failed to apply patch the older version for some reason).
             # But it's not a problem - we will download the newest version and we're sorted.
@@ -624,13 +623,16 @@ def pull_project_async(mc, directory) -> PullJob:
 
     # make a single list of items to download
     total_size = 0
-    download_list = []
+    download_queue_items = []
+    for diff_file in diff_files:
+        download_queue_items.append(diff_file)
+        total_size += diff_file.size
     for file_to_merge in merge_files:
-        download_list.extend(file_to_merge.downloaded_items)
+        download_queue_items.extend(file_to_merge.downloaded_items)
         for item in file_to_merge.downloaded_items:
-            total_size += item.size or 100  # diff files might not have size known yet
+            total_size += item.size
 
-    mp.log.info(f"will download {len(download_list)} chunks, total size {total_size}")
+    mp.log.info(f"will download {len(download_queue_items)} chunks, total size {total_size}")
 
     job = PullJob(
         project_path,
@@ -638,7 +640,7 @@ def pull_project_async(mc, directory) -> PullJob:
         total_size,
         server_version,
         merge_files,
-        download_list,
+        download_queue_items,
         tmp_dir,
         mp,
         server_info,
@@ -649,7 +651,7 @@ def pull_project_async(mc, directory) -> PullJob:
     # start download
     job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     job.futures = []
-    for item in download_list:
+    for item in download_queue_items:
         future = job.executor.submit(_do_download, item, mc, mp, project_path, job)
         job.futures.append(future)
 

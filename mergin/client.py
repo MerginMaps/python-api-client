@@ -724,29 +724,32 @@ class MerginClient:
         """
         Fetch info about project.
 
-        :param project_path_or_id: Project's full name (<namespace>/<name>) or id
-        :type project_path_or_id: String
+        :param project_id: Project's id
+        :type project_id: String
         :param files_at_version: Version to track files at given version
         :type files_at_version: String
         """
-        # since and version are mutually exclusive
         params = {}
         if files_at_version:
             params = {"files_at_version": files_at_version}
         resp = self.get(f"/v2/projects/{project_id}", params)
         return json.load(resp)
 
-    def get_project_delta(self, project_id: str, since: str):
+    def get_project_delta(self, project_id: str, since: str, to: typing.Optional[str] = None):
         """
         Fetch info about project delta since given version.
 
         :param project_id: Project's id
         :type project_id: String
-        :param since: Version to track history of geodiff files from
+        :param since: Version to track history of files from
+        :type since: String
+        :param to: Optional version to track history of files to, if not given latest version is used
         :type since: String
         :rtype: Dict
         """
         params = {"since": since}
+        if to:
+            params["to"] = to
         resp = self.get(f"/v2/projects/{project_id}/delta", params)
         return json.load(resp)
 

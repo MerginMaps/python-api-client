@@ -2,7 +2,12 @@ import os
 import tempfile
 import pytest
 from mergin.common import ProjectDeltaItem, DeltaChangeType
-from mergin.client_pull import get_delta_server_version, prepare_chunks_destination, get_delta_merge_files, FileToMerge
+from mergin.client_pull import (
+    get_delta_server_version,
+    prepare_chunks_destination,
+    get_delta_download_files,
+    FileToMerge,
+)
 
 
 def test_get_delta_server_version():
@@ -28,7 +33,7 @@ def test_prepare_chunks_destination():
         assert not os.path.exists(expected_path)  # file should not exist yet
 
 
-def test_get_delta_merge_files():
+def test_get_delta_download_files():
     with tempfile.TemporaryDirectory() as tmp_dir:
         items = [
             ProjectDeltaItem(change=DeltaChangeType.CREATE, path="file1.txt", version="v1", size=100, checksum="123"),
@@ -45,9 +50,9 @@ def test_get_delta_merge_files():
             ),
         ]
 
-        merge_files = get_delta_merge_files(items, tmp_dir)
+        merge_files, diff_files = get_delta_download_files(items, tmp_dir)
 
-        assert len(merge_files) == 4  # 2 files + 2 diffs
+        assert len(merge_files) + len(diff_files) == 4  # 2 files + 2 diffs
 
         # Check file1.txt
         f1 = merge_files[0]
@@ -62,12 +67,8 @@ def test_get_delta_merge_files():
         assert f2.downloaded_items[0].file_path == "subdir/file2.txt"
 
         # Check diffs
-        d1 = merge_files[2]
-        assert d1.dest_file == os.path.join(tmp_dir, "diff1")
-        assert len(d1.downloaded_items) == 1
-        assert d1.downloaded_items[0].file_path == "diff1"
+        d1 = diff_files[0]
+        assert d1.download_file_path == os.path.join(tmp_dir, "diff1")
 
-        d2 = merge_files[3]
-        assert d2.dest_file == os.path.join(tmp_dir, "diff2")
-        assert len(d2.downloaded_items) == 1
-        assert d2.downloaded_items[0].file_path == "diff2"
+        d2 = diff_files[1]
+        assert d2.download_file_path == os.path.join(tmp_dir, "diff2")
