@@ -105,14 +105,8 @@ class DeltaChangeType(Enum):
     UPDATE_DIFF = "update_diff"
 
 
-@dataclass
-class ProjectDeltaItem:
-    change: DeltaChangeType
-    path: str
-    version: str
-    size: int
-    checksum: str
-    diffs: List[Dict[str, Any]] = field(default_factory=list)
-
-    def __post_init__(self):
-        self.change = DeltaChangeType(self.change)
+class PullActionType(Enum):
+    COPY = "copy"
+    COPY_CONFLICT = "copy_conflict"
+    APPLY_DIFF = "apply_diff"
+    DELETE = "delete"

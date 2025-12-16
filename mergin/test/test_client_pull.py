@@ -1,22 +1,9 @@
 import os
 import tempfile
 import pytest
-from mergin.common import ProjectDeltaItem, DeltaChangeType
-from mergin.client_pull import (
-    get_delta_server_version,
-    prepare_chunks_destination,
-    get_delta_download_files,
-    FileToMerge,
-)
-
-
-def test_get_delta_server_version():
-    items = [
-        ProjectDeltaItem(change=DeltaChangeType.CREATE, path="file1", version="v1", size=100, checksum="123"),
-        ProjectDeltaItem(change=DeltaChangeType.UPDATE, path="file2", version="v2", size=200, checksum="456"),
-        ProjectDeltaItem(change=DeltaChangeType.UPDATE, path="file3", version="v5", size=300, checksum="789"),
-    ]
-    assert get_delta_server_version(items) == "v5"
+from mergin.common import DeltaChangeType
+from mergin.models import ProjectDeltaItem, ProjectDeltaItemDiff
+from mergin.client_pull import get_delta_server_version, prepare_chunks_destination, get_delta_download_files
 
 
 def test_prepare_chunks_destination():
@@ -46,7 +33,7 @@ def test_get_delta_download_files():
                 version="v3",
                 size=300,
                 checksum="789",
-                diffs=[{"path": "diff1"}, {"path": "diff2"}],
+                diffs=[ProjectDeltaItemDiff(id="diff1"), ProjectDeltaItemDiff(id="diff2")],
             ),
         ]
 

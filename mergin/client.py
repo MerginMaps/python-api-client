@@ -17,6 +17,8 @@ import re
 import typing
 import warnings
 
+from mergin.models import ProjectDelta, ProjectDeltaItemDiff, ProjectDeltaItem
+
 from .common import (
     ClientError,
     LoginError,
@@ -735,7 +737,7 @@ class MerginClient:
         resp = self.get(f"/v2/projects/{project_id}", params)
         return json.load(resp)
 
-    def get_project_delta(self, project_id: str, since: str, to: typing.Optional[str] = None):
+    def get_project_delta(self, project_id: str, since: str, to: typing.Optional[str] = None) -> ProjectDelta:
         """
         Fetch info about project delta since given version.
 
@@ -751,7 +753,28 @@ class MerginClient:
         if to:
             params["to"] = to
         resp = self.get(f"/v2/projects/{project_id}/delta", params)
-        return json.load(resp)
+        resp_parsed = json.load(resp)
+        return ProjectDelta(
+            to_version=resp_parsed.get("to_version"),
+            items=[
+                ProjectDeltaItem(
+                    path=item["path"],
+                    size=item.get("size"),
+                    checksum=item.get("checksum"),
+                    version=item.get("version"),
+                    change=item.get("change"),
+                    diffs=(
+                        [
+                            ProjectDeltaItemDiff(
+                                id=diff.get("id"),
+                            )
+                            for diff in item.get("diffs", [])
+                        ]
+                    ),
+                )
+                for item in resp_parsed.get("items", [])
+            ],
+        )
 
     def paginated_project_versions(self, project_path, page, per_page=100, descending=False):
         """
@@ -1091,7 +1114,7 @@ class MerginClient:
         mp = MerginProject(directory)
         server_info = self.project_info(mp.project_full_name(), since=mp.version())
 
-        pull_changes = mp.get_pull_changes(server_info["files"])
+        pull_changes = mp.get_pull_delta(server_info["files"])
 
         push_changes = mp.get_push_changes()
         push_changes_summary = mp.get_list_of_push_changes(push_changes)

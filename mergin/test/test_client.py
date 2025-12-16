@@ -45,7 +45,7 @@ from ..utils import (
 from ..merginproject import pygeodiff
 from ..report import create_report
 from ..editor import EDITOR_ROLE_NAME, filter_changes, is_editor_enabled
-from ..common import ErrorCode, WorkspaceRole, ProjectRole
+from ..common import DeltaChangeType, ErrorCode, WorkspaceRole, ProjectRole
 
 SERVER_URL = os.environ.get("TEST_MERGIN_URL")
 API_USER = os.environ.get("TEST_API_USERNAME")
@@ -3025,7 +3025,6 @@ def test_pull_project(mc: MerginClient, mc2: MerginClient):
     test_project = "test_pull_project_created"
     test_project_to_pull = "test_pull_project_created_2"
     project = API_USER + "/" + test_project
-    project_to_pull = API_USER + "/" + test_project_to_pull
     project_dir = os.path.join(TMP_DIR, test_project)
     project_dir_to_pull = os.path.join(TMP_DIR, test_project_to_pull)
     project_dir_to_pull_v1 = os.path.join(TMP_DIR, test_project_to_pull + "_v1")
@@ -3039,9 +3038,10 @@ def test_pull_project(mc: MerginClient, mc2: MerginClient):
 
     if mc.server_features() and mc.server_features().get("v2_pull_enabled"):
         delta = mc.get_project_delta(mp_to_pull.project_id(), since=mp_to_pull.version())
-        assert delta.get("items")
+        assert delta.items
+        assert delta.to_version == mp.version()
         job = pull_project_async(mc, project_dir_to_pull)
-        assert len(job.download_queue_items) == len(delta.get("items")) - 1  # excluding .qgs zero size file
+        assert len(job.download_queue_items) == len(delta.items) - 1  # excluding .qgs zero size file
         assert os.path.exists(job.tmp_dir.name)
         pull_project_wait(job)
         # check project info after pull
@@ -3052,8 +3052,8 @@ def test_pull_project(mc: MerginClient, mc2: MerginClient):
         assert mp_to_pull.version() == mp.version()
         assert mp_to_pull.project_id() == mp.project_id()
         assert len(project_info.get("files")) == len(mp.files())
-        for item in delta.get("items"):
-            assert os.path.exists(mp_to_pull.fpath(item["path"]))
+        for item in delta.items:
+            assert os.path.exists(mp_to_pull.fpath(item.path))
         assert os.path.exists(mp_to_pull.fpath_meta("base.gpkg"))
 
     mc._server_features = {"v2_pull_enabled": False}  # force disable v2 pull
@@ -3069,7 +3069,7 @@ def test_pull_project(mc: MerginClient, mc2: MerginClient):
     assert mp_to_pull.version() == mp.version()
     assert mp_to_pull.project_id() == mp.project_id()
     assert len(project_info.get("files")) == len(mp.files())
-    changes = mp.get_pull_changes(mp_to_pull.files())
-    for item in changes["added"]:
-        assert os.path.exists(mp_to_pull.fpath(item["path"]))
+    delta_items = mp.get_pull_delta({"files": mp_to_pull.files(), "version": mp_to_pull.version()})
+    for item in [item for item in delta_items if item.change == DeltaChangeType.CREATE]:
+        assert os.path.exists(mp_to_pull.fpath(item.path))
     assert os.path.exists(mp_to_pull.fpath_meta("base.gpkg"))

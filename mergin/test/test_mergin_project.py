@@ -5,118 +5,8 @@ import tempfile
 import uuid
 import pytest
 from mergin.merginproject import MerginProject
-from mergin.common import DeltaChangeType, ProjectDeltaItem
-
-
-def test_get_delta_pull_changes_create():
-    """Test get_delta_pull_changes with CREATE changes."""
-    mp = MerginProject.__new__(MerginProject)
-
-    mock_response = {
-        "items": [
-            {
-                "change": "create",
-                "checksum": "22afdbbf504087ea0ff7f1a2aeca2e265cc01bb5",
-                "path": "qgs_project.qgs",
-                "size": 72024,
-                "version": "v1",
-            },
-            {
-                "change": "create",
-                "checksum": "7f46f5d1a160a71aff5450f55853b0d552958f58",
-                "path": "photo.jpg",
-                "size": 5646973,
-                "version": "v1",
-            },
-        ]
-    }
-    delta_changes = [ProjectDeltaItem(**item) for item in mock_response["items"]]
-
-    result = mp.get_delta_pull_changes(delta_changes)
-
-    assert len(result["added"]) == 2
-    assert len(result["updated"]) == 0
-    assert len(result["removed"]) == 0
-    assert result["added"][0]["path"] == "qgs_project.qgs"
-    assert result["added"][1]["path"] == "photo.jpg"
-
-
-def test_get_delta_pull_changes_update():
-    """Test get_delta_pull_changes with UPDATE changes."""
-    mp = MerginProject.__new__(MerginProject)
-
-    mock_response = {
-        "items": [
-            {
-                "change": "update",
-                "checksum": "3a8c54469e4fe498faffe66f4671fb9b0e6c0221",
-                "path": "data.gpkg",
-                "size": 126976,
-                "version": "v101",
-            }
-        ]
-    }
-    delta_changes = [ProjectDeltaItem(**item) for item in mock_response["items"]]
-
-    result = mp.get_delta_pull_changes(delta_changes)
-
-    assert len(result["added"]) == 0
-    assert len(result["updated"]) == 1
-    assert len(result["removed"]) == 0
-    assert result["updated"][0]["path"] == "data.gpkg"
-
-
-def test_get_delta_pull_changes_delete():
-    """Test get_delta_pull_changes with DELETE changes."""
-    mp = MerginProject.__new__(MerginProject)
-
-    mock_response = {
-        "items": [
-            {
-                "change": "delete",
-                "path": "old_file.txt",
-                "version": "v1",
-                "size": 0,
-                "checksum": "",
-            }
-        ]
-    }
-    delta_changes = [ProjectDeltaItem(**item) for item in mock_response["items"]]
-
-    result = mp.get_delta_pull_changes(delta_changes)
-
-    assert len(result["added"]) == 0
-    assert len(result["updated"]) == 0
-    assert len(result["removed"]) == 1
-    assert result["removed"][0]["path"] == "old_file.txt"
-
-
-def test_get_delta_pull_changes_update_diff():
-    """Test get_delta_pull_changes with UPDATE_DIFF changes."""
-    mp = MerginProject.__new__(MerginProject)
-
-    mock_response = {
-        "items": [
-            {
-                "change": "update_diff",
-                "path": "data.gpkg",
-                "diffs": [{"path": "diff1"}, {"path": "diff2"}],
-                "version": "v101",
-                "size": 0,
-                "checksum": "",
-            }
-        ]
-    }
-    delta_changes = [ProjectDeltaItem(**item) for item in mock_response["items"]]
-
-    result = mp.get_delta_pull_changes(delta_changes)
-
-    assert len(result["added"]) == 0
-    assert len(result["updated"]) == 1
-    assert len(result["removed"]) == 0
-    assert result["updated"][0]["path"] == "data.gpkg"
-    assert result["updated"][0]["diffs"][0] == "diff1"
-    assert result["updated"][0]["diffs"][1] == "diff2"
+from mergin.common import DeltaChangeType, PullActionType
+from mergin.models import ProjectDelta, ProjectDeltaItem, ProjectDeltaItemDiff
 
 
 def test_project_metadata():
@@ -184,3 +74,34 @@ def test_project_metadata():
         assert mp.workspace_name() == workspace_name
         assert mp.version() == metadata.get("version")
         assert mp.files() == metadata.get("files")
+
+
+def test_get_pull_action():
+    """Test get_pull_action with various combinations."""
+    mp = MerginProject.__new__(MerginProject)
+
+    # Test cases: (server_change, local_change, expected_action)
+    test_cases = [
+        (DeltaChangeType.CREATE, None, PullActionType.COPY),
+        (DeltaChangeType.CREATE, DeltaChangeType.CREATE, PullActionType.COPY_CONFLICT),
+        (DeltaChangeType.CREATE, DeltaChangeType.UPDATE, PullActionType.COPY_CONFLICT),
+        (DeltaChangeType.CREATE, DeltaChangeType.DELETE, PullActionType.COPY_CONFLICT),
+        (DeltaChangeType.UPDATE, None, PullActionType.COPY),
+        (DeltaChangeType.UPDATE, DeltaChangeType.CREATE, PullActionType.COPY_CONFLICT),
+        (DeltaChangeType.UPDATE, DeltaChangeType.UPDATE, PullActionType.COPY_CONFLICT),
+        (DeltaChangeType.UPDATE, DeltaChangeType.DELETE, PullActionType.COPY_CONFLICT),
+        (DeltaChangeType.UPDATE_DIFF, None, PullActionType.APPLY_DIFF),
+        (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.CREATE, PullActionType.COPY_CONFLICT),
+        (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.UPDATE, PullActionType.COPY_CONFLICT),
+        (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.DELETE, PullActionType.COPY_CONFLICT),
+        (DeltaChangeType.DELETE, None, PullActionType.DELETE),
+        (DeltaChangeType.DELETE, DeltaChangeType.CREATE, PullActionType.DELETE),
+        (DeltaChangeType.DELETE, DeltaChangeType.UPDATE, PullActionType.DELETE),
+        (DeltaChangeType.DELETE, DeltaChangeType.DELETE, PullActionType.DELETE),
+    ]
+
+    for server_change, local_change, expected_action in test_cases:
+        action = mp.get_pull_action(server_change, local_change)
+        assert (
+            action == expected_action
+        ), f"Failed for {server_change}, {local_change}. Expected {expected_action}, got {action}"
