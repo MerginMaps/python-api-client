@@ -531,34 +531,24 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
     # list of FileToMerge instances, which consists of destination path and list of download items
     merge_files = []
     diff_files = []
-    # make sure we can update geodiff reference files (aka. basefiles) with diffs or
-    # download their full versions so we have them up-to-date for applying changes
     basefiles_to_patch = []  # list of tuples (relative path within project, list of diff files in temp dir to apply)
     pull_actions = []
     local_delta = mp.get_local_delta(tmp_dir.name)
+    # Converting local to PullActions
     for item in delta.items:
+        # find corresponding local delta item
         local_item = next((i for i in local_delta if i.path == item.path), None)
-        pull_action = mp.get_pull_action(item.change, local_item.change if local_item else None)
-        if not pull_action:
+        local_item_change = local_item.change if local_item else None
+
+        # compare server and local changes to decide what to do in pull
+        pull_action_type = mp.get_pull_action(item.change, local_item_change)
+        if not pull_action_type:
             continue  # no action needed
 
-        pull_actions.append(PullAction(pull_action, item, local_item))
-        if pull_action == PullActionType.APPLY_DIFF or (
-            pull_action == PullActionType.COPY_CONFLICT and item.change == DeltaChangeType.UPDATE_DIFF
+        pull_action = PullAction(pull_action_type, item, local_item)
+        if pull_action_type == PullActionType.APPLY_DIFF or (
+            pull_action_type == PullActionType.COPY_CONFLICT and item.change == DeltaChangeType.UPDATE_DIFF
         ):
-            # if we have diff to apply, let's download the diff files
-            # if we have conflict and diff update, download the diff files
-            if v2_pull:
-                diff_files.extend(
-                    [
-                        DownloadDiffQueueItem(diff_item.id, os.path.join(tmp_dir.name, diff_item.id))
-                        for diff_item in item.diffs
-                    ]
-                )
-            else:
-                diff_merge_files = get_diff_merge_files(item, tmp_dir.name)
-                merge_files.extend(diff_merge_files)
-            # let's check the base file existence
             basefile = mp.fpath_meta(item.path)
             if not os.path.exists(basefile):
                 # The basefile does not exist for some reason. This should not happen normally (maybe user removed the file
@@ -568,12 +558,36 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
                 items = get_download_items(item.path, item.size, server_version, tmp_dir.name)
                 dest_file_path = mp.fpath(item.path, tmp_dir.name)
                 merge_files.append(FileToMerge(dest_file_path, items))
-            basefiles_to_patch.append((item.path, [diff.id for diff in item.diffs]))
-        elif pull_action == PullActionType.COPY or pull_action == PullActionType.COPY_CONFLICT:
+
+                # Force use COPY action to apply the new version instead of trying to apply diffs
+                # We are not able to get local changes anyway as base file is missing
+                pull_action.type = PullActionType.COPY_CONFLICT
+
+            # if we have diff to apply, let's download the diff files
+            # if we have conflict and diff update, download the diff files
+            elif v2_pull:
+                diff_files.extend(
+                    [
+                        DownloadDiffQueueItem(diff_item.id, os.path.join(tmp_dir.name, diff_item.id))
+                        for diff_item in item.diffs
+                    ]
+                )
+                basefiles_to_patch.append((item.path, [diff.id for diff in item.diffs]))
+
+            else:
+                # fallback for diff files using v1 endpoint /raw
+                diff_merge_files = get_diff_merge_files(item, tmp_dir.name)
+                merge_files.extend(diff_merge_files)
+                basefiles_to_patch.append((item.path, [diff.id for diff in item.diffs]))
+
+            # let's check the base file existence
+        elif pull_action_type == PullActionType.COPY or pull_action_type == PullActionType.COPY_CONFLICT:
             # simply download the server version of the files
             dest_file_path = prepare_file_destination(tmp_dir.name, item.path)
             download_items = get_download_items(item.path, item.size, server_version, tmp_dir.name)
             merge_files.append(FileToMerge(dest_file_path, download_items))
+
+        pull_actions.append(pull_action)
         # Do nothing for DELETE actions
 
     # make a single list of items to download
@@ -693,7 +707,7 @@ def pull_project_finalize(job: PullJob):
         basefile = job.mp.fpath_meta(file_path)
         server_file = job.mp.fpath(file_path, job.tmp_dir.name)
 
-        shutil.copy(basefile, server_file)
+        job.mp.geodiff.make_copy_sqlite(basefile, server_file)
         diffs = [job.mp.fpath(f, job.tmp_dir.name) for f in file_diffs]
         patch_error = job.mp.apply_diffs(server_file, diffs)
         if patch_error:
@@ -709,6 +723,7 @@ def pull_project_finalize(job: PullJob):
             os.remove(basefile)
             raise ClientError("Cannot patch basefile {}! Please try syncing again.".format(basefile))
     conflicts = []
+    job.mp.log.info(f"--- applying pull actions {job.pull_actions}")
     try:
         if job.pull_actions:
             conflicts = job.mp.apply_pull_actions(job.pull_actions, job.tmp_dir.name, job.project_info, job.mc)

@@ -280,10 +280,10 @@ def test_create_remote_project_from_local(mc):
     project_info = mc.project_info_v2(project_info.get("id"))
     assert project_info.version == source_mp.version()
     assert project_info.name == test_project
-    assert project_info.namespace == API_USER
+    assert project_info.workspace.name == API_USER
     assert project_info.id == source_mp.project_id()
 
-    version = mc.project_version_info(project_info.get("id"), "v1")
+    version = mc.project_version_info(project_info.id, "v1")
     assert version["name"] == "v1"
     assert any(f for f in version["changes"]["added"] if f["path"] == "test.qgs")
 
@@ -690,7 +690,9 @@ def test_missing_basefile_pull(mc):
 
     # try to sync again  -- it should not crash
     mc.pull_project(project_dir)
+    assert os.path.exists(os.path.join(project_dir, ".mergin", "base.gpkg"))
     mc.push_project(project_dir)
+    # check if base file exists again
 
 
 def test_empty_file_in_subdir(mc):
@@ -3068,7 +3070,7 @@ def test_pull_project(mc: MerginClient, mc2: MerginClient):
     assert mp_to_pull.version() == mp.version()
     assert mp_to_pull.project_id() == mp.project_id()
     assert len(project_info.get("files")) == len(mp.files())
-    delta_items = mp.get_pull_delta({"files": mp_to_pull.files(), "version": mp_to_pull.version()})
-    for item in [item for item in delta_items if item.change == DeltaChangeType.CREATE]:
+    delta = mp.get_pull_delta({"files": mp_to_pull.files(), "version": mp_to_pull.version()})
+    for item in [item for item in delta.items if item.change == DeltaChangeType.CREATE]:
         assert os.path.exists(mp_to_pull.fpath(item.path))
     assert os.path.exists(mp_to_pull.fpath_meta("base.gpkg"))

@@ -633,7 +633,6 @@ class MerginProject:
                 # probably the database schema has been modified if geodiff cannot create changeset.
                 # we will need to do full upload of the file
                 pass
-                print(delta_item)
             result.append(delta_item)
 
         return result
@@ -732,9 +731,7 @@ class MerginProject:
                     pass
         return changes
 
-    def apply_pull_actions(
-        self, actions: List[PullAction], downloaded_files_directory: str, server_project: dict, mc
-    ) -> List[str]:
+    def apply_pull_actions(self, actions: List[PullAction], download_dir: str, server_project: dict, mc) -> List[str]:
         """
         Apply pull actions for files.
 
@@ -743,8 +740,8 @@ class MerginProject:
 
         :param actions: list of pull actions
         :type actions: List[PullAction]
-        :param downloaded_files_directory: directory with downloaded files from server
-        :type downloaded_files_directory: str
+        :param download_dir: directory with downloaded files from server
+        :type download_dir: str
         :param server_project: project metadata from the server
         :type server_project: dict
         :param mc: mergin client
@@ -756,8 +753,8 @@ class MerginProject:
 
         for action in actions:
             path = action.pull_delta_item.path
-            src = self.fpath(path, downloaded_files_directory)
-            dest = self.fpath(path)
+            server = self.fpath(path, download_dir)
+            live = self.fpath(path)
             basefile = self.fpath_meta(path)
             action_type = action.type
             pull_change = action.pull_delta_item.change
@@ -765,35 +762,33 @@ class MerginProject:
             if action_type == PullActionType.COPY:
                 # simply copy the file from server
                 if is_versioned_file(path):
-                    self.geodiff.make_copy_sqlite(src, dest)
-                    self.geodiff.make_copy_sqlite(src, basefile)
+                    self.geodiff.make_copy_sqlite(server, live)
+                    self.geodiff.make_copy_sqlite(server, basefile)
                 else:
-                    shutil.copy(src, dest)
+                    shutil.copy(server, live)
 
             elif action_type == PullActionType.APPLY_DIFF:
                 # rebase needed only if both server and local changes are diffs
                 if pull_change == DeltaChangeType.UPDATE_DIFF and local_change == DeltaChangeType.UPDATE_DIFF:
-                    conflict = self.update_with_rebase(
-                        path, src, dest, basefile, downloaded_files_directory, mc.username()
-                    )
+                    conflict = self.update_with_rebase(path, server, live, basefile, download_dir, mc.username())
                     if conflict:
                         conflicts.append(conflict)
                 else:
                     # no rebase needed, just apply the diff
-                    self.update_without_rebase(path, src, dest, basefile, downloaded_files_directory)
+                    self.update_without_rebase(path, server, live, basefile, download_dir)
 
             elif action_type == PullActionType.COPY_CONFLICT and not prevent_conflicted_copy(path, mc, server_project):
                 conflict = self.create_conflicted_copy(path, mc.username())
                 conflicts.append(conflict)
                 if self.is_versioned_file(path):
-                    self.geodiff.make_copy_sqlite(src, dest)
-                    self.geodiff.make_copy_sqlite(src, basefile)
+                    self.geodiff.make_copy_sqlite(server, live)
+                    self.geodiff.make_copy_sqlite(server, basefile)
                 else:
-                    shutil.copy(src, dest)
+                    shutil.copy(server, live)
 
             elif action_type == PullActionType.DELETE:
                 # remove local file
-                os.remove(dest)
+                os.remove(live)
                 if self.is_versioned_file(path):
                     os.remove(basefile)
 
