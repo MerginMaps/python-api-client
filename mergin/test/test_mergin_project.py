@@ -5,7 +5,8 @@ import tempfile
 import pytest
 from mergin.merginproject import MerginProject
 from mergin.common import DeltaChangeType, PullActionType, ClientError
-from mergin.models import ProjectDeltaItem, ProjectDeltaItemDiff, ProjectDeltaItemDiff, PullAction
+from mergin.models import ProjectDeltaItem, ProjectDeltaItemDiff
+from mergin.client_pull import PullAction
 from mergin.utils import edit_conflict_file_name
 
 TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "test_data")
@@ -171,40 +172,47 @@ def test_get_pull_delta():
     assert len(diff_item.diffs) == 2
 
 
-def test_get_local_delta_mocked():
+def test_get_local_delta():
     """Test get_local_delta with mocked compare_file_sets."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         test_project = "delta_test_project"
         project_dir = os.path.join(tmp_dir, test_project)
         os.makedirs(project_dir, exist_ok=True)
-        shutil.copyfile(os.path.join(TEST_DATA_DIR, "inseAted_1_A.gpkg"), os.path.join(project_dir, "base.
+        shutil.copyfile(os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"), os.path.join(project_dir, "base.gpkg"))
         mp = MerginProject(project_dir)
-        shutil.copyfile(os.path.join(TEST_DATA_DIR, "base.gpkg"), os.path.join(project_dir, ".mergin", "base.gpkg"))gp        )
+        shutil.copyfile(os.path.join(TEST_DATA_DIR, "base.gpkg"), os.path.join(project_dir, ".mergin", "base.gpkg"))
 
-    # Mock compare_file_sets return        ue
-    mock_chang                   "added": [{"path": "new.txt", "size": 10, "checksum": "                   "removed": [{"path": "deleted.txt", "size": 20, "checksum": "                   "updat                       {"path": "updated.txt", "size": 30, "checksum":                        {"path": "base.gpkg", "size": 40, "checksum":                        ],         }
-    mp.compare_file_sets = lambda local, server: mock_c
+        # Mock compare_file_sets return value
+        mock_changes = {
+            "added": [{"path": "new.txt", "size": 10, "checksum": "c1"}],
+            "removed": [{"path": "deleted.txt", "size": 20, "checksum": "c2"}],
+            "updated": [
+                {"path": "updated.txt", "size": 30, "checksum": "c3"},
+                {"path": "base.gpkg", "size": 40, "checksum": "c4"},
+            ],
+        }
+        mp.compare_file_sets = lambda local, server: mock_changes
+
         # Mock files() to return origin info for version lookup
         mp.files = lambda: []
 
-        mp.inspect_files = lambda: []  # Dummy returnf
-        w
+        mp.inspect_files = lambda: []  # Dummy return
 
-    delta_items = mp.get_local_delta(projec        r)
-    assert len(delta_items)        4
+        delta_items = mp.get_local_delta(project_dir)
+        assert len(delta_items) == 4
 
-    # Verify        ms
-    create_item = next(i for i in delta_items if i.path == "new        ")
-    assert create_item.change == DeltaChangeType.C        E
+        # Verify items
+        create_item = next(i for i in delta_items if i.path == "new.txt")
+        assert create_item.change == DeltaChangeType.CREATE
 
-    delete_item = next(i for i in delta_items if i.path == "deleted        ")
-    assert delete_item.change == DeltaChangeType.D        E
+        delete_item = next(i for i in delta_items if i.path == "deleted.txt")
+        assert delete_item.change == DeltaChangeType.DELETE
 
-    update_item = next(i for i in delta_items if i.path == "updated        ")
-    assert update_item.change == DeltaChangeType.U        E
+        update_item = next(i for i in delta_items if i.path == "updated.txt")
+        assert update_item.change == DeltaChangeType.UPDATE
 
-    update_diff_item = next(i for i in delta_items if i.path == "base.        ")
-    assert update_diff_item.change == DeltaChangeType.UPDA
+        update_diff_item = next(i for i in delta_items if i.path == "base.gpkg")
+        assert update_diff_item.change == DeltaChangeType.UPDATE_DIFF
 
 
 def test_apply_pull_actions_apply_diff():
@@ -445,4 +453,3 @@ def test_apply_pull_actions_copy_conflict():
         assert not mp.geodiff.has_changes(os.path.join(tmp_dir, "live-server.diff"))
         assert not mp.geodiff.has_changes(os.path.join(tmp_dir, "live-base.diff"))
         assert mp.geodiff.has_changes(os.path.join(tmp_dir, "live-conflict.diff"))
-E_DIFF
