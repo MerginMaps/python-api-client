@@ -781,8 +781,14 @@ class MerginProject:
                 conflict = self.create_conflicted_copy(path, mc.username())
                 conflicts.append(conflict)
                 if self.is_versioned_file(path):
-                    self.geodiff.make_copy_sqlite(server, live)
-                    self.geodiff.make_copy_sqlite(server, basefile)
+                    try:
+                        self.geodiff.make_copy_sqlite(server, live)
+                        self.geodiff.make_copy_sqlite(server, basefile)
+                    except pygeodiff.GeoDiffLibError:
+                        self.log.info("failed to create SQLite copy for file: " + path)
+                        # create unfinished pull copy instead
+                        f_server_unfinished = self.fpath_unfinished_pull(path)
+                        self.geodiff.make_copy_sqlite(server, f_server_unfinished)
                 else:
                     shutil.copy(server, live)
 
