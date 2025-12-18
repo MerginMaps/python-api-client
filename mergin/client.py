@@ -17,7 +17,14 @@ import re
 import typing
 import warnings
 
-from mergin.models import ProjectDelta, ProjectDeltaItemDiff, ProjectDeltaItem
+from mergin.models import (
+    ProjectDelta,
+    ProjectDeltaItemDiff,
+    ProjectDeltaItem,
+    ProjectResponse,
+    ProjectFile,
+    ProjectWorkspace,
+)
 
 from .common import (
     ClientError,
@@ -722,7 +729,7 @@ class MerginClient:
             resp = self.get("/v1/project/{}".format(project_path_or_id), params)
         return json.load(resp)
 
-    def project_info_v2(self, project_id: str, files_at_version=None):
+    def project_info_v2(self, project_id: str, files_at_version=None) -> ProjectResponse:
         """
         Fetch info about project.
 
@@ -731,11 +738,37 @@ class MerginClient:
         :param files_at_version: Version to track files at given version
         :type files_at_version: String
         """
+        self.check_v2_project_info_support()
+
         params = {}
         if files_at_version:
             params = {"files_at_version": files_at_version}
         resp = self.get(f"/v2/projects/{project_id}", params)
-        return json.load(resp)
+        resp_json = json.load(resp)
+        project_workspace = resp_json.get("workspace", {})
+        return ProjectResponse(
+            id=resp_json.get("id"),
+            name=resp_json.get("name"),
+            created_at=resp_json.get("created_at"),
+            updated_at=resp_json.get("updated_at"),
+            version=resp_json.get("version"),
+            public=resp_json.get("public"),
+            role=resp_json.get("role"),
+            size=resp_json.get("size"),
+            workspace=ProjectWorkspace(
+                id=project_workspace.get("id"),
+                name=project_workspace.get("name"),
+            ),
+            files=[
+                ProjectFile(
+                    checksum=f.get("checksum"),
+                    mtime=f.get("mtime"),
+                    path=f.get("path"),
+                    size=f.get("size"),
+                )
+                for f in resp_json.get("files", [])
+            ],
+        )
 
     def get_project_delta(self, project_id: str, since: str, to: typing.Optional[str] = None) -> ProjectDelta:
         """
@@ -749,6 +782,10 @@ class MerginClient:
         :type since: String
         :rtype: Dict
         """
+        # If it is not enabled on the server, raise error
+        if not self.server_features().get("v2_pull_enabled", False):
+            raise ClientError("Project delta is not supported by the server")
+
         params = {"since": since}
         if to:
             params["to"] = to
@@ -1114,7 +1151,7 @@ class MerginClient:
         mp = MerginProject(directory)
         server_info = self.project_info(mp.project_full_name(), since=mp.version())
 
-        pull_changes = mp.get_pull_delta(server_info["files"])
+        pull_changes = mp.get_pull_changes(server_info["files"])
 
         push_changes = mp.get_push_changes()
         push_changes_summary = mp.get_list_of_push_changes(push_changes)
@@ -1385,13 +1422,21 @@ class MerginClient:
         if not is_version_acceptable(self.server_version(), f"{min_version}"):
             raise NotImplementedError(f"This needs server at version {min_version} or later")
 
+    def check_v2_project_info_support(self):
+        """
+        Check if the server is compatible with v2 endpoint for project info
+        """
+        min_version = "2025.8.2"
+        if not is_version_acceptable(self.server_version(), f"{min_version}"):
+            raise NotImplementedError(f"This needs server at version {min_version} or later")
+
     def create_user(
         self,
         email: str,
         password: str,
         workspace_id: int,
         workspace_role: WorkspaceRole,
-        username: str = None,
+        username: typing.Optional[str] = None,
         notify_user: bool = False,
     ) -> dict:
         """

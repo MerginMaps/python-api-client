@@ -278,10 +278,10 @@ def test_create_remote_project_from_local(mc):
 
     # check basic metadata about created project
     project_info = mc.project_info_v2(project_info.get("id"))
-    assert project_info["version"] == source_mp.version()
-    assert project_info["name"] == test_project
-    assert project_info["namespace"] == API_USER
-    assert project_info["id"] == source_mp.project_id()
+    assert project_info.version == source_mp.version()
+    assert project_info.name == test_project
+    assert project_info.namespace == API_USER
+    assert project_info.id == source_mp.project_id()
 
     version = mc.project_version_info(project_info.get("id"), "v1")
     assert version["name"] == "v1"
@@ -525,13 +525,12 @@ def test_sync_diff(mc):
     # check project after push
 
     project_info = mc.project_info_v2(mp.project_id(), mp.version())
-    assert project_info["version"] == "v3"
-    assert project_info["id"] == mp.project_id()
-    f_remote = next((f for f in project_info["files"] if f["path"] == f_updated), None)
-    assert next((f for f in project_info["files"] if f["path"] == "renamed.gpkg"), None)
-    assert not next((f for f in project_info["files"] if f["path"] == f_removed), None)
+    assert project_info.version == "v3"
+    assert project_info.id == mp.project_id()
+    f_remote = next((f for f in project_info.files if f.path == f_updated), None)
+    assert next((f for f in project_info.files if f.path == "renamed.gpkg"), None)
+    assert not next((f for f in project_info.files if f.path == f_removed), None)
     assert not os.path.exists(mp.fpath_meta(f_removed))
-    assert "diff" in f_remote
     assert os.path.exists(mp.fpath_meta("renamed.gpkg"))
 
     # pull project in different directory
@@ -3051,7 +3050,7 @@ def test_pull_project(mc: MerginClient, mc2: MerginClient):
         assert not os.path.exists(job.tmp_dir.name)
         assert mp_to_pull.version() == mp.version()
         assert mp_to_pull.project_id() == mp.project_id()
-        assert len(project_info.get("files")) == len(mp.files())
+        assert len(project_info.files) == len(mp.files())
         for item in delta.items:
             assert os.path.exists(mp_to_pull.fpath(item.path))
         assert os.path.exists(mp_to_pull.fpath_meta("base.gpkg"))

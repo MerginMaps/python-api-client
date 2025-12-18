@@ -14,7 +14,7 @@ from dataclasses import asdict
 from .editor import prevent_conflicted_copy
 
 from .common import UPLOAD_CHUNK_SIZE, DeltaChangeType, InvalidProject, ClientError, PullActionType
-from .models import ProjectDeltaItem, ProjectDeltaItemDiff, PullAction
+from .models import ProjectDelta, ProjectDeltaItem, ProjectDeltaItemDiff, PullAction
 from .utils import (
     generate_checksum,
     is_versioned_file,
@@ -357,21 +357,79 @@ class MerginProject:
 
         return {"renamed": [], "added": added, "removed": removed, "updated": updated}
 
-    def get_pull_delta(self, server_info: dict) -> List[ProjectDeltaItem]:
+    def get_pull_changes(self, server_files: List[dict]) -> dict:
+        """
+        Calculate changes needed to be pulled from server.
+
+        Calculate diffs between local files metadata and server's ones. Because simple metadata like file size or
+        checksum are not enough to determine geodiff files changes, evaluate also their history (provided by server).
+
+        .. seealso:: self.compare_file_sets
+
+        :param server_files: list of server files' metadata with mandatory 'history' field (see also self.inspect_files(),
+        self.project_info(project_path, since=v1))
+        :type server_files: list[dict]
+        :returns: changes metadata for files to be pulled from server
+        :rtype: dict
+        """
+
+        # first let's have a look at the added/updated/removed files
+        changes = self.compare_file_sets(self.files(), server_files)
+
+        # then let's inspect our versioned files (geopackages) if there are any relevant changes
+        not_updated = []
+        for file in changes["updated"]:
+            if not self.is_versioned_file(file["path"]):
+                continue
+
+            diffs = []
+            diffs_size = 0
+            is_updated = False
+
+            # get sorted list of the history (they may not be sorted or using lexical sorting - "v10", "v11", "v5", "v6", ...)
+            history_list = []
+            for version_str, version_info in file["history"].items():
+                history_list.append((int_version(version_str), version_info))
+            history_list = sorted(history_list, key=lambda item: item[0])  # sort tuples based on version numbers
+
+            # need to track geodiff file history to see if there were any changes
+            for version, version_info in history_list:
+                if version <= int_version(self.version()):
+                    continue  # ignore history of no interest
+                is_updated = True
+                if "diff" in version_info:
+                    diffs.append(version_info["diff"]["path"])
+                    diffs_size += version_info["diff"]["size"]
+                else:
+                    diffs = []
+                    break  # we found force update in history, does not make sense to download diffs
+
+            if is_updated:
+                file["diffs"] = diffs
+            else:
+                not_updated.append(file)
+
+        changes["updated"] = [f for f in changes["updated"] if f not in not_updated]
+        return changes
+
+    def get_pull_delta(self, server_info: dict) -> ProjectDelta:
         """
         Calculate delta needed to be pulled from server.
 
         Calculate diffs between local files metadata and server's ones. Because simple metadata like file size or
         checksum are not enough to determine geodiff files changes, evaluate also their history (provided by server).
-        For small files ask for full versions of geodiff files, otherwise determine list of diffs needed to update file.
+
+        This method is similar to get_pull_changes but returns ProjectDelta object instead of raw dict.
 
         .. seealso:: self.compare_file_sets
+        .. seealso:: ProjectDelta
+        .. seealso:: self.get_pull_changes
 
         :param server_info: project metadata,
         self.project_info(project_path, since=v1))
         :type server_info: dict
         :returns: changes metadata for files to be pulled from server
-        :rtype: List[ProjectDeltaItem]
+        :rtype: ProjectDelta
         """
 
         # first let's have a look at the added/updated/removed files
@@ -379,7 +437,11 @@ class MerginProject:
         server_files = server_info.get("files", [])
         server_version = server_info.get("version", "")
         changes = self.compare_file_sets(self.files(), server_files)
-        for change in changes["added"]:
+
+        added = changes.get("added", [])
+        removed = changes.get("removed", [])
+        updated = changes.get("updated", [])
+        for change in added:
             result.append(
                 ProjectDeltaItem(
                     change=DeltaChangeType.CREATE,
@@ -389,7 +451,7 @@ class MerginProject:
                     version=server_version,
                 )
             )
-        for change in changes["removed"]:
+        for change in removed:
             result.append(
                 ProjectDeltaItem(
                     change=DeltaChangeType.DELETE,
@@ -401,7 +463,7 @@ class MerginProject:
             )
 
         # then let's inspect our versioned files (geopackages) if there are any relevant changes
-        for change in changes["updated"]:
+        for change in updated:
             path = change.get("path")
             if not self.is_versioned_file(path):
                 result.append(
@@ -448,7 +510,7 @@ class MerginProject:
                         diffs=diffs,
                     )
                 )
-        return result
+        return ProjectDelta(to_version=server_version, items=result)
 
     def get_pull_action(
         self, server_change: DeltaChangeType, local_change: Optional[DeltaChangeType] = None
@@ -456,33 +518,40 @@ class MerginProject:
         """
         Determine pull actions for files by comparing server_change and local_change.
         """
+        # FATAL combinations
+        if (server_change, local_change) in [
+            (DeltaChangeType.CREATE, DeltaChangeType.UPDATE),
+            (DeltaChangeType.CREATE, DeltaChangeType.DELETE),
+            (DeltaChangeType.CREATE, DeltaChangeType.UPDATE_DIFF),
+            (DeltaChangeType.UPDATE, DeltaChangeType.CREATE),
+            (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.CREATE),
+            (DeltaChangeType.DELETE, DeltaChangeType.CREATE),
+        ]:
+            self.log.critical(f"Invalid combination of changes: server {server_change}, local {local_change}")
+            raise ClientError(f"Invalid combination of changes: server {server_change}, local {local_change}")
+
         pull_action_map = {
             (DeltaChangeType.CREATE, None): PullActionType.COPY,
             (DeltaChangeType.CREATE, DeltaChangeType.CREATE): PullActionType.COPY_CONFLICT,
-            # (DeltaChangeType.CREATE, DeltaChangeType.UPDATE): FATAL,
-            # (DeltaChangeType.CREATE, DeltaChangeType.DELETE): FATAL,
-            # (DeltaChangeType.CREATE, DeltaChangeType.UPDATE_DIFF): FATAL**2,
             (DeltaChangeType.UPDATE, None): PullActionType.COPY,
-            # (DeltaChangeType.UPDATE, DeltaChangeType.CREATE): FATAL,
             (DeltaChangeType.UPDATE, DeltaChangeType.UPDATE): PullActionType.COPY_CONFLICT,
             (DeltaChangeType.UPDATE, DeltaChangeType.DELETE): PullActionType.COPY,
             (DeltaChangeType.UPDATE, DeltaChangeType.UPDATE_DIFF): PullActionType.COPY_CONFLICT,
             (DeltaChangeType.UPDATE_DIFF, None): PullActionType.APPLY_DIFF,  # without rebase
-            # (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.CREATE): FATAL,
             (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.UPDATE): PullActionType.COPY_CONFLICT,
             (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.DELETE): PullActionType.COPY,
             (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.UPDATE_DIFF): PullActionType.APPLY_DIFF,  # rebase
             (DeltaChangeType.DELETE, None): PullActionType.DELETE,
-            # (DeltaChangeType.DELETE, DeltaChangeType.CREATE): FATAL,
             (DeltaChangeType.DELETE, DeltaChangeType.UPDATE): None,
             (DeltaChangeType.DELETE, DeltaChangeType.DELETE): None,
             (DeltaChangeType.DELETE, DeltaChangeType.UPDATE_DIFF): None,
         }
+
         return pull_action_map.get((server_change, local_change))
 
     def get_local_delta(self, diff_directory: str) -> List[ProjectDeltaItem]:
         """
-        Calculate changes needed to be pushed to server.
+        Calculate local delta needed to be pushed to server.
 
         Calculate diffs between local files metadata and actual files in project directory. Because simple metadata like
         file size or checksum are not enough to determine geodiff files changes, geodiff tool is used to determine change
@@ -490,8 +559,8 @@ class MerginProject:
 
         .. seealso:: self.compare_file_sets
 
-        :param diff_directory: directory where temporary diff files can be stored for diff files
-        :returns: changes metadata for files to be pushed to server
+        :param diff_directory: directory where temporary diff files can be stored
+        :returns: delta items needed for files needed to be applied on a server
         :rtype: List[ProjectDeltaItem]
         """
         result = []
@@ -504,20 +573,20 @@ class MerginProject:
             result.append(
                 ProjectDeltaItem(
                     change=DeltaChangeType.CREATE,
-                    path=change["path"],
-                    size=change["size"],
-                    checksum=change["checksum"],
-                    version=change["version"],
+                    path=change.get("path"),
+                    size=change.get("size"),
+                    checksum=change.get("checksum"),
+                    version="",
                 )
             )
         for change in removed:
             result.append(
                 ProjectDeltaItem(
                     change=DeltaChangeType.DELETE,
-                    path=change["path"],
-                    size=change["size"],
-                    checksum=change["checksum"],
-                    version=change["version"],
+                    path=change.get("path"),
+                    size=change.get("size"),
+                    checksum=change.get("checksum"),
+                    version="",
                 )
             )
 
@@ -527,10 +596,10 @@ class MerginProject:
                 result.append(
                     ProjectDeltaItem(
                         change=DeltaChangeType.UPDATE,
-                        path=change["path"],
-                        size=change["size"],
-                        checksum=change["checksum"],
-                        version=change["version"],
+                        path=change.get("path"),
+                        size=change.get("size"),
+                        checksum=change.get("checksum"),
+                        version="",
                     )
                 )
                 continue
@@ -545,7 +614,7 @@ class MerginProject:
                 path=path,
                 size=change["size"],
                 checksum=change["checksum"],
-                version=change["version"],
+                version="",
             )
             checkpoint_size, checkpoint_checksum = do_sqlite_checkpoint(path, self.log)
             if checkpoint_size and checkpoint_checksum:
@@ -553,16 +622,18 @@ class MerginProject:
                 delta_item.checksum = checkpoint_checksum
 
             try:
-                self.geodiff.create_changeset(origin_file, current_file, self.fpath(diff_file, diff_directory))
-                if self.geodiff.has_changes(self.fpath(diff_file, diff_directory)):
+                diff_location = self.fpath(diff_file, diff_directory)
+                self.geodiff.create_changeset(origin_file, current_file, diff_location)
+                if self.geodiff.has_changes(diff_location):
                     delta_item.checksum = change.get("origin_checksum")
                     delta_item.change = DeltaChangeType.UPDATE_DIFF
-                    os.remove(diff_file)
+                    os.remove(diff_location)
             except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as e:
                 self.log.warning("failed to create changeset for " + path)
                 # probably the database schema has been modified if geodiff cannot create changeset.
                 # we will need to do full upload of the file
                 pass
+                print(delta_item)
             result.append(delta_item)
 
         return result
@@ -661,21 +732,19 @@ class MerginProject:
                     pass
         return changes
 
-    def apply_pull_actions(self, actions: List[PullAction], temp_dir: str, server_project: dict, mc):
+    def apply_pull_actions(
+        self, actions: List[PullAction], downloaded_files_directory: str, server_project: dict, mc
+    ) -> List[str]:
         """
-        Apply actions for files.
+        Apply pull actions for files.
 
         Update project files according to pull action. Apply changes to geodiff basefiles as well
         so they are up to date with server. In case of conflicts create backups from locally modified versions.
 
-        .. seealso:: self.get_pull_actions
-
-        :param changes: metadata for pulled files
-        :type changes: dict[str, list[dict]]
-        :param temp_dir: directory with downloaded files from server
-        :type temp_dir: str
-        :param user_name: name of the user that is pulling the changes
-        :type user_name: str
+        :param actions: list of pull actions
+        :type actions: List[PullAction]
+        :param downloaded_files_directory: directory with downloaded files from server
+        :type downloaded_files_directory: str
         :param server_project: project metadata from the server
         :type server_project: dict
         :param mc: mergin client
@@ -684,15 +753,10 @@ class MerginProject:
         :rtype: list[str]
         """
         conflicts = []
-        local_changes = self.get_push_changes()
-
-        local_files_map = {}
-        for f in self.inspect_files():
-            local_files_map.update({f["path"]: f})
 
         for action in actions:
             path = action.pull_delta_item.path
-            src = self.fpath(path, temp_dir)
+            src = self.fpath(path, downloaded_files_directory)
             dest = self.fpath(path)
             basefile = self.fpath_meta(path)
             action_type = action.type
@@ -709,12 +773,14 @@ class MerginProject:
             elif action_type == PullActionType.APPLY_DIFF:
                 # rebase needed only if both server and local changes are diffs
                 if pull_change == DeltaChangeType.UPDATE_DIFF and local_change == DeltaChangeType.UPDATE_DIFF:
-                    conflict = self.update_with_rebase(path, src, dest, basefile, temp_dir, mc.username())
+                    conflict = self.update_with_rebase(
+                        path, src, dest, basefile, downloaded_files_directory, mc.username()
+                    )
                     if conflict:
                         conflicts.append(conflict)
                 else:
                     # no rebase needed, just apply the diff
-                    self.update_without_rebase(path, src, dest, basefile, temp_dir)
+                    self.update_without_rebase(path, src, dest, basefile, downloaded_files_directory)
 
             elif action_type == PullActionType.COPY_CONFLICT and not prevent_conflicted_copy(path, mc, server_project):
                 conflict = self.create_conflicted_copy(path, mc.username())
@@ -722,10 +788,14 @@ class MerginProject:
                 if self.is_versioned_file(path):
                     self.geodiff.make_copy_sqlite(src, dest)
                     self.geodiff.make_copy_sqlite(src, basefile)
+                else:
+                    shutil.copy(src, dest)
 
             elif action_type == PullActionType.DELETE:
                 # remove local file
                 os.remove(dest)
+                if self.is_versioned_file(path):
+                    os.remove(basefile)
 
         return conflicts
 
@@ -874,7 +944,7 @@ class MerginProject:
                 else:
                     pass
 
-    def create_conflicted_copy(self, file, user_name):
+    def create_conflicted_copy(self, file: str, user_name: str):
         """
         Create conflicted copy file next to its origin.
 
