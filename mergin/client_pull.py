@@ -135,11 +135,18 @@ class FileToMerge:
             raise ClientError("Download of file {} failed. Please try it again.".format(self.dest_file))
 
 
-def get_download_items(file_path: str, file_size: int, file_version: str, directory: str, diff_only=False):
+def get_download_items(
+    file_path: str,
+    file_size: int,
+    file_version: str,
+    download_directory: str,
+    download_path: Optional[str] = None,
+    diff_only=False,
+):
     """Returns an array of download queue items"""
 
-    file_dir = os.path.dirname(os.path.normpath(os.path.join(directory, file_path)))
-    basename = os.path.basename(file_path) if diff_only else os.path.basename(file_path)
+    file_dir = os.path.dirname(os.path.normpath(os.path.join(download_directory, file_path)))
+    basename = os.path.basename(download_path) if download_path else os.path.basename(file_path)
     chunks = math.ceil(file_size / CHUNK_SIZE)
 
     items = []
@@ -467,7 +474,7 @@ def get_diff_merge_files(delta_item: ProjectDeltaItem, target_dir: str) -> List[
 
     for diff in delta_item.diffs:
         dest_file_path = prepare_file_destination(target_dir, diff.id)
-        download_items = get_download_items(diff.id, diff.size, diff.version, target_dir, True)
+        download_items = get_download_items(delta_item.path, diff.size, diff.version, target_dir, diff.id, True)
         result.append(FileToMerge(dest_file_path, download_items))
     return result
 
@@ -558,7 +565,7 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
                 # or we removed it within previous pull because we failed to apply patch the older version for some reason).
                 # But it's not a problem - we will download the newest version and we're sorted.
                 mp.log.info(f"missing base file for {item.path} -> going to download it (version {server_version})")
-                items = get_download_items(item.path, item.size, server_version, tmp_dir.name, diff_only=False)
+                items = get_download_items(item.path, item.size, server_version, tmp_dir.name)
                 dest_file_path = mp.fpath(item.path, tmp_dir.name)
                 merge_files.append(FileToMerge(dest_file_path, items))
             basefiles_to_patch.append((item.path, [diff.id for diff in item.diffs]))
@@ -665,8 +672,11 @@ def pull_project_finalize(job: PullJob):
     if not job.project_info and job.v2_pull:
         project_info_response = job.mc.project_info(job.project_path, version=job.version)
         job.project_info = asdict(project_info_response)
-    else:
-        raise ClientError("Missing project info for pull finalization")
+
+    if not job.project_info:
+        job.mp.log.error("No project info available to finalize pull")
+        job.mp.log.info("--- pull aborted")
+        raise ClientError("No project info available to finalize pull")
 
     # merge downloaded chunks
     try:
@@ -781,7 +791,14 @@ def download_diffs_async(mc, project_directory, file_path, versions):
     total_size = 0
     for file in fetch_files:
         diff = file.get("diff")
-        items = get_download_items(diff["path"], diff["size"], file["version"], mp.cache_dir, diff_only=True)
+        items = get_download_items(
+            file.get("path"),
+            diff["size"],
+            file["version"],
+            mp.cache_dir,
+            download_path=diff.get("path"),
+            diff_only=True,
+        )
         dest_file_path = mp.fpath_cache(diff["path"], version=file["version"])
         if os.path.exists(dest_file_path):
             continue

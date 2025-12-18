@@ -29,28 +29,24 @@ def test_get_diff_merge_files():
             size=300,
             checksum="789",
             diffs=[
-                ProjectDeltaItemDiff(id="diff1", size=10, version="v3"),
-                ProjectDeltaItemDiff(id="diff2", size=20, version="v3"),
+                ProjectDeltaItemDiff(id="diff2", size=20, version="v2"),
             ],
         )
 
         merge_files = get_diff_merge_files(item, tmp_dir)
 
-        assert len(merge_files) == 2
+        assert len(merge_files) == 1
 
-        # Check diff1
-        f1 = merge_files[0]
-        assert f1.dest_file == os.path.join(tmp_dir, "diff1")
-        assert len(f1.downloaded_items) == 1
-        assert f1.downloaded_items[0].file_path == "diff1"
-
-        # Check diff2
-        f2 = merge_files[1]
+        # Check diff
+        f2 = merge_files[0]
         assert f2.dest_file == os.path.join(tmp_dir, "diff2")
         assert len(f2.downloaded_items) == 1
-        assert f2.downloaded_items[0].file_path == "diff2"
+        assert f2.downloaded_items[0].file_path == "data.gpkg"
+        assert f2.downloaded_items[0].size == 20
+        assert f2.downloaded_items[0].version == "v2"
 
 
+@pytest.fixture
 def test_get_download_items():
     with tempfile.TemporaryDirectory() as tmp_dir:
         # Case 1: Small file (one chunk)
@@ -86,6 +82,9 @@ def test_get_download_items():
         assert len(items) == 0
 
         # Case 4: Diff only
-        items = get_download_items("diff_file", 50, "v1", tmp_dir, diff_only=True)
+        items = get_download_items("base.gpkg", 50, "v1", tmp_dir, download_path="diff_file", diff_only=True)
         assert len(items) == 1
         assert items[0].diff_only is True
+        assert items[0].file_path == "base.gpkg"
+        assert items[0].size == 50
+        assert items[0].download_file_path == os.path.join(tmp_dir, "diff_file.0")
