@@ -51,12 +51,13 @@ class MerginProject:
 
     def __new__(cls, directory):
         directory = os.path.abspath(directory)
-        if instance := cls.project_cache.get(directory):
+        instance = cls.project_cache.get(directory)
+        if instance:
             return instance
-
-        instance = super().__new__(cls)
-        cls.project_cache[directory] = instance
-        return instance
+        else:
+            instance = super().__new__(cls)
+            cls.project_cache[directory] = instance
+            return instance
 
     def __init__(self, directory):
         # __init__ still gets called after __new__, even if it returns a
