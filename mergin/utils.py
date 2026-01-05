@@ -7,6 +7,8 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 import tempfile
+from enum import Enum
+from typing import Optional, Type, Union
 from .common import ClientError, WorkspaceRole
 
 
@@ -311,7 +313,7 @@ def cleanup_tmp_dir(mp, tmp_dir: tempfile.TemporaryDirectory):
         mp.log.error(f"Error during tmp dir cleanup: {tmp_dir.name}: {e}")
 
 
-def normalize_role(role, enum_cls):
+def normalize_role(role: Union[str, Enum], enum_cls: Type[Enum]) -> Optional[Enum]:
     if isinstance(role, enum_cls):
         return role
 
