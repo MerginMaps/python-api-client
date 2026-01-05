@@ -1417,7 +1417,7 @@ class MerginClient:
         """
         self.check_collaborators_members_support()
 
-        role_enum = normalize_role(project_role, WorkspaceRole)
+        role_enum = normalize_role(project_role, ProjectRole)
         if role_enum is None:
             raise ValueError("bad role")
 
@@ -1432,7 +1432,7 @@ class MerginClient:
         """
         self.check_collaborators_members_support()
 
-        role_enum = normalize_role(project_role, WorkspaceRole)
+        role_enum = normalize_role(project_role, ProjectRole)
         if role_enum is None:
             raise ValueError("bad role")
         params = {"role": project_role.value}
