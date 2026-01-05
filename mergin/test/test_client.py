@@ -38,6 +38,7 @@ from ..utils import (
     unique_path_name,
     conflicted_copy_file_name,
     edit_conflict_file_name,
+    normalize_role,
 )
 from ..merginproject import pygeodiff
 from ..report import create_report
@@ -3026,3 +3027,16 @@ def test_server_type(mc):
         mock_client_get.side_effect = ClientError(detail="Service unavailable", http_error=503)
         with pytest.raises(ClientError, match="Service unavailable"):
             mc.server_type()
+
+
+def test_string_roles():
+    assert normalize_role("guest", WorkspaceRole) == WorkspaceRole.GUEST
+    assert normalize_role("  GuEsT  ", WorkspaceRole) == WorkspaceRole.GUEST
+    assert normalize_role("writer", ProjectRole) == ProjectRole.WRITER
+    assert normalize_role("  WRITER ", ProjectRole) == ProjectRole.WRITER
+
+    assert normalize_role("guuuest", WorkspaceRole) is None
+    assert normalize_role("ownerr", ProjectRole) is None
+    assert normalize_role("", WorkspaceRole) is None
+    assert normalize_role(None, WorkspaceRole) is None
+    assert normalize_role(123, WorkspaceRole) is None

@@ -7,7 +7,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 import tempfile
-from .common import ClientError
+from .common import ClientError, WorkspaceRole
 
 
 def generate_checksum(file, chunk_size=4096):
@@ -309,3 +309,16 @@ def cleanup_tmp_dir(mp, tmp_dir: tempfile.TemporaryDirectory):
         mp.log.warning(f"Permission error during tmp dir cleanup: {tmp_dir.name}")
     except Exception as e:
         mp.log.error(f"Error during tmp dir cleanup: {tmp_dir.name}: {e}")
+
+
+def normalize_role(role, enum_cls):
+    if isinstance(role, enum_cls):
+        return role
+
+    if isinstance(role, str):
+        try:
+            return enum_cls(role.strip().lower())
+        except ValueError:
+            return None
+
+    return None
