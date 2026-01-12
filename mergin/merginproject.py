@@ -141,9 +141,11 @@ class MerginProject:
         """Returns fully qualified project name: <workspace>/<name>"""
         self._read_metadata()
         if self.is_old_metadata:
-            return self._metadata["name"]
-        else:
-            return f"{self._metadata['namespace']}/{self._metadata['name']}"
+            return self._metadata.get("name")
+        workspace = self._metadata.get("workspace", {})
+        if workspace:
+            return f"{workspace.get('name')}/{self._metadata['name']}"
+        return f"{self._metadata.get('namespace')}/{self._metadata['name']}"
 
     def project_name(self) -> str:
         """Returns only project name, without its workspace name"""
@@ -193,7 +195,11 @@ class MerginProject:
                 "The project directory has been created with an old version of the Mergin Maps client. "
                 "Please delete the project directory and re-download the project."
             )
-        return self._metadata["workspace_id"]
+
+        workspace = self._metadata.get("workspace", {})
+        if workspace:
+            return workspace.get("id")
+        return self._metadata.get("workspace_id")
 
     def version(self) -> str:
         """Returns project version (e.g. "v123")"""

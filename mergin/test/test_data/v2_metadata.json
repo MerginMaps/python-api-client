@@ -1,0 +1,34 @@
+{
+  "created_at": "2025-12-04T15:51:55Z",
+  "files": [
+    {
+      "checksum": "22afdbbf504087ea0ff7f1a2aeca2e265cc01bb5",
+      "mtime": "2025-12-04T15:52:09Z",
+      "path": "qgs_project.qgs",
+      "size": 72024
+    },
+    {
+      "checksum": "7f46f5d1a160a71aff5450f55853b0d552958f58",
+      "mtime": "2025-12-04T15:52:09Z",
+      "path": "photo.jpg",
+      "size": 5646973
+    },
+    {
+      "checksum": "3a8c54469e4fe498faffe66f4671fb9b0e6c0221",
+      "mtime": "2025-12-04T15:54:21Z",
+      "path": "data.gpkg",
+      "size": 126976
+    }
+  ],
+  "id": "e5cd45e5-8250-422a-ac16-e8c771689fd8",
+  "name": "diff_8dfb",
+  "public": false,
+  "role": "owner",
+  "size": 5845973,
+  "updated_at": "2025-12-04T15:54:21Z",
+  "version": "v101",
+  "workspace": {
+    "id": 1,
+    "name": "my-workspace"
+  }
+}
