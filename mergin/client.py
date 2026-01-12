@@ -1338,7 +1338,7 @@ class MerginClient:
         self.check_collaborators_members_support()
         role_enum = normalize_role(workspace_role, WorkspaceRole)
         if role_enum is None:
-            raise ValueError(f'Invalid role: {workspace_role}')
+            raise ValueError(f"Invalid role: {workspace_role}")
 
         params = {
             "email": email,
@@ -1384,7 +1384,7 @@ class MerginClient:
 
         role_enum = normalize_role(workspace_role, WorkspaceRole)
         if role_enum is None:
-            raise ValueError(f'Invalid role: {workspace_role}')
+            raise ValueError(f"Invalid role: {workspace_role}")
 
         params = {
             "reset_projects_roles": reset_projects_roles,
@@ -1419,7 +1419,7 @@ class MerginClient:
 
         role_enum = normalize_role(project_role, ProjectRole)
         if role_enum is None:
-            raise ValueError(f'Invalid role: {project_role}')
+            raise ValueError(f"Invalid role: {project_role}")
 
         params = {"role": project_role.value, "user": user}
         project_collaborator = self.post(f"v2/projects/{project_id}/collaborators", params, json_headers)
@@ -1434,7 +1434,7 @@ class MerginClient:
 
         role_enum = normalize_role(project_role, ProjectRole)
         if role_enum is None:
-            raise ValueError(f'Invalid role: {project_role}')
+            raise ValueError(f"Invalid role: {project_role}")
         params = {"role": project_role.value}
 
         project_collaborator = self.patch(f"v2/projects/{project_id}/collaborators/{user_id}", params, json_headers)
@@ -1522,7 +1522,7 @@ class MerginClient:
 
         role_enum = normalize_role(workspace_role, WorkspaceRole)
         if role_enum is None:
-            raise ValueError(f'Invalid role: {workspace_role}')
+            raise ValueError(f"Invalid role: {workspace_role}")
 
         params = {"email": email, "role": role_enum.value}
         ws_inv = self.post(f"v2/workspaces/{workspace_id}/invitations", params, json_headers)
