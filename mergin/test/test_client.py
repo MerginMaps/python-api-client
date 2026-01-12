@@ -3029,14 +3029,23 @@ def test_server_type(mc):
             mc.server_type()
 
 
-def test_string_roles():
-    assert normalize_role("guest", WorkspaceRole) == WorkspaceRole.GUEST
-    assert normalize_role("  GuEsT  ", WorkspaceRole) == WorkspaceRole.GUEST
-    assert normalize_role("writer", ProjectRole) == ProjectRole.WRITER
-    assert normalize_role("  WRITER ", ProjectRole) == ProjectRole.WRITER
-
-    assert normalize_role("guuuest", WorkspaceRole) is None
-    assert normalize_role("ownerr", ProjectRole) is None
-    assert normalize_role("", WorkspaceRole) is None
-    assert normalize_role(None, WorkspaceRole) is None
-    assert normalize_role(123, WorkspaceRole) is None
+@pytest.mark.parametrize(
+    "value, role_enum, expected",
+    [
+        ("guest", WorkspaceRole, WorkspaceRole.GUEST),
+        ("  GuEsT  ", WorkspaceRole, WorkspaceRole.GUEST),
+        ("writer", ProjectRole, ProjectRole.WRITER),
+        ("  WRITER ", ProjectRole, ProjectRole.WRITER),
+        ("guuuest", WorkspaceRole, None),
+        ("ownerr", ProjectRole, None),
+        ("", WorkspaceRole, None),
+        (None, WorkspaceRole, None),
+        (123, WorkspaceRole, None),
+    ],
+)
+def test_normalize_role_parametrized(value, role_enum, expected):
+    result = normalize_role(value, role_enum)
+    if expected is None:
+        assert result is None
+    else:
+        assert result == expected

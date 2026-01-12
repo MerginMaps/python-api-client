@@ -314,6 +314,10 @@ def cleanup_tmp_dir(mp, tmp_dir: tempfile.TemporaryDirectory):
 
 
 def normalize_role(role: Union[str, Enum], enum_cls: Type[Enum]) -> Optional[Enum]:
+    """
+    Takes a role as a string or an Enum member and returns the corresponding Enum member
+    from the given enum class. Returns None if the input is invalid or no match is found.
+    """
     if isinstance(role, enum_cls):
         return role
 
