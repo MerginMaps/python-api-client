@@ -17,7 +17,7 @@ import re
 import typing
 import warnings
 
-from mergin.models import (
+from .models import (
     ProjectDelta,
     ProjectDeltaItemDiff,
     ProjectDeltaItem,

@@ -561,6 +561,7 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
                 # Force use COPY_CONFLICT action to apply the new version instead of trying to apply diffs
                 # We are not able to get local changes anyway as base file is missing
                 pull_action.type = PullActionType.COPY_CONFLICT
+                pull_actions.append(pull_action)
                 continue
 
             # if we have diff to apply, let's download the diff files
