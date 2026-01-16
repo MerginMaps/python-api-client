@@ -453,8 +453,8 @@ class PullJob:
 
     def dump(self):
         print("--- JOB ---", self.total_size, "bytes")
-        for file_to_merge in self.files_to_merge:
-            print("- {}  ... download items={}".format(file_to_merge.dest_file, len(file_to_merge.downloaded_items)))
+        for download_file in self.download_files:
+            print("- {}  ... download items={}".format(download_file.dest_file, len(download_file.downloaded_items)))
         print("--")
         for basefile, diffs in self.basefiles_to_patch:
             print("patch basefile {}  with {} diffs".format(basefile, len(diffs)))
@@ -813,7 +813,7 @@ def download_diffs_async(mc, project_directory, file_path, versions):
         diff_data["diff"] = version_data["diff"]
         fetch_files.append(diff_data)
 
-    files_to_merge = []  # list of FileToMerge instances
+    download_files = []  # list of DownloadFile instances
     download_list = []  # list of all items to be downloaded
     total_size = 0
     for file in fetch_files:
@@ -829,7 +829,7 @@ def download_diffs_async(mc, project_directory, file_path, versions):
         dest_file_path = mp.fpath_cache(diff["path"], version=file["version"])
         if os.path.exists(dest_file_path):
             continue
-        files_to_merge.append(DownloadFile(dest_file_path, items))
+        download_files.append(DownloadFile(dest_file_path, items))
         download_list.extend(items)
         for item in items:
             total_size += item.size
@@ -841,7 +841,7 @@ def download_diffs_async(mc, project_directory, file_path, versions):
         None,
         total_size,
         None,
-        files_to_merge,
+        download_files,
         download_list,
         mp.cache_dir,
         mp,
@@ -860,7 +860,7 @@ def download_diffs_async(mc, project_directory, file_path, versions):
     return job
 
 
-def download_diffs_finalize(job):
+def download_diffs_finalize(job: PullJob) -> List[str]:
     """To be called after download_diffs_async
 
     Returns:
@@ -881,9 +881,9 @@ def download_diffs_finalize(job):
 
     # merge downloaded chunks
     try:
-        for file_to_merge in job.files_to_merge:
-            file_to_merge.merge()
-            diffs.append(file_to_merge.dest_file)
+        for download_file in job.download_files:
+            download_file.from_chunks()
+            diffs.append(download_file.dest_file)
     except ClientError as err:
         job.mp.log.error("Error merging chunks of downloaded file: " + str(err))
         job.mp.log.info("--- diffs pull aborted")
