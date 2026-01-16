@@ -38,6 +38,7 @@ from ..utils import (
     unique_path_name,
     conflicted_copy_file_name,
     edit_conflict_file_name,
+    normalize_role,
 )
 from ..merginproject import pygeodiff
 from ..report import create_report
@@ -3026,3 +3027,25 @@ def test_server_type(mc):
         mock_client_get.side_effect = ClientError(detail="Service unavailable", http_error=503)
         with pytest.raises(ClientError, match="Service unavailable"):
             mc.server_type()
+
+
+@pytest.mark.parametrize(
+    "value, role_enum, expected",
+    [
+        ("guest", WorkspaceRole, WorkspaceRole.GUEST),
+        ("  GuEsT  ", WorkspaceRole, WorkspaceRole.GUEST),
+        ("writer", ProjectRole, ProjectRole.WRITER),
+        ("  WRITER ", ProjectRole, ProjectRole.WRITER),
+        ("guuuest", WorkspaceRole, None),
+        ("ownerr", ProjectRole, None),
+        ("", WorkspaceRole, None),
+        (None, WorkspaceRole, None),
+        (123, WorkspaceRole, None),
+    ],
+)
+def test_normalize_role_parametrized(value, role_enum, expected):
+    result = normalize_role(value, role_enum)
+    if expected is None:
+        assert result is None
+    else:
+        assert result == expected
