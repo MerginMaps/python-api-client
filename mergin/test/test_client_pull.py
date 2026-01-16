@@ -3,24 +3,10 @@ import tempfile
 import pytest
 from mergin.common import DeltaChangeType, CHUNK_SIZE
 from mergin.models import ProjectDeltaItem, ProjectDeltaItemDiff
-from mergin.client_pull import prepare_file_destination, get_diff_merge_files, get_download_items
+from mergin.client_pull import get_download_diff_files, get_download_diff_files, get_download_items
 
 
-def test_prepare_file_destination():
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        path = "subdir/file.txt"
-        dest = prepare_file_destination(tmp_dir, path)
-
-        expected_dir = os.path.join(tmp_dir, "subdir")
-        expected_path = os.path.join(expected_dir, "file.txt")
-
-        assert dest == expected_path
-        assert os.path.exists(expected_dir)
-        assert os.path.isdir(expected_dir)
-        assert not os.path.exists(expected_path)  # file should not exist yet
-
-
-def test_get_diff_merge_files():
+def test_get_diff_download_files():
     with tempfile.TemporaryDirectory() as tmp_dir:
         item = ProjectDeltaItem(
             change=DeltaChangeType.UPDATE_DIFF,
@@ -33,12 +19,12 @@ def test_get_diff_merge_files():
             ],
         )
 
-        merge_files = get_diff_merge_files(item, tmp_dir)
+        files = get_download_diff_files(item, tmp_dir)
 
-        assert len(merge_files) == 1
+        assert len(files) == 1
 
         # Check diff
-        f2 = merge_files[0]
+        f2 = files[0]
         assert f2.dest_file == os.path.join(tmp_dir, "diff2")
         assert len(f2.downloaded_items) == 1
         assert f2.downloaded_items[0].file_path == "data.gpkg"

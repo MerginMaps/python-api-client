@@ -753,8 +753,8 @@ class MerginProject:
 
         for action in actions:
             path = action.pull_delta_item.path
-            server = self.fpath(path, download_dir)
-            live = self.fpath(path)
+            server_file = self.fpath(path, download_dir)
+            live_file = self.fpath(path)
             basefile = self.fpath_meta(path)
             action_type = action.type
             pull_change = action.pull_delta_item.change
@@ -762,41 +762,44 @@ class MerginProject:
             if action_type == PullActionType.COPY:
                 # simply copy the file from server
                 if is_versioned_file(path):
-                    self.geodiff.make_copy_sqlite(server, live)
-                    self.geodiff.make_copy_sqlite(server, basefile)
+                    self.geodiff.make_copy_sqlite(server_file, live_file)
+                    self.geodiff.make_copy_sqlite(server_file, basefile)
                 else:
-                    shutil.copy(server, live)
+                    shutil.copy(server_file, live_file)
 
             elif action_type == PullActionType.APPLY_DIFF:
                 # rebase needed only if both server and local changes are diffs
                 if pull_change == DeltaChangeType.UPDATE_DIFF and local_change == DeltaChangeType.UPDATE_DIFF:
-                    conflict = self.update_with_rebase(path, server, live, basefile, download_dir, mc.username())
+                    conflict = self.update_with_rebase(
+                        path, server_file, live_file, basefile, download_dir, mc.username()
+                    )
                     if conflict:
                         conflicts.append(conflict)
                 else:
                     # no rebase needed, just apply the diff
-                    self.update_without_rebase(path, server, live, basefile, download_dir)
+                    self.update_without_rebase(path, server_file, live_file, basefile, download_dir)
 
             elif action_type == PullActionType.COPY_CONFLICT and not prevent_conflicted_copy(path, mc, server_project):
                 conflict = self.create_conflicted_copy(path, mc.username())
                 conflicts.append(conflict)
                 if self.is_versioned_file(path):
                     try:
-                        self.geodiff.make_copy_sqlite(server, live)
-                        self.geodiff.make_copy_sqlite(server, basefile)
+                        self.geodiff.make_copy_sqlite(server_file, live_file)
+                        self.geodiff.make_copy_sqlite(server_file, basefile)
                     except pygeodiff.GeoDiffLibError:
                         self.log.info("failed to create SQLite copy for file: " + path)
                         # create unfinished pull copy instead
                         f_server_unfinished = self.fpath_unfinished_pull(path)
-                        self.geodiff.make_copy_sqlite(server, f_server_unfinished)
+                        self.geodiff.make_copy_sqlite(server_file, f_server_unfinished)
                 else:
-                    shutil.copy(server, live)
+                    shutil.copy(server_file, live_file)
 
             elif action_type == PullActionType.DELETE:
                 # remove local file
-                os.remove(live)
-                if self.is_versioned_file(path):
-                    os.remove(basefile)
+                if os.path.exists(live_file):
+                    os.remove(live_file)
+                    if self.is_versioned_file(path):
+                        os.remove(basefile)
 
         return conflicts
 

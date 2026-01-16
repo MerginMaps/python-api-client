@@ -319,13 +319,6 @@ class MerginClient:
         request = urllib.request.Request(url, method="DELETE")
         return self._do_request(request, validate_auth=validate_auth)
 
-    def head(self, path, data=None, headers={}, validate_auth=True):
-        url = urllib.parse.urljoin(self.url, urllib.parse.quote(path))
-        if data:
-            url += "?" + urllib.parse.urlencode(data)
-        request = urllib.request.Request(url, headers=headers, method="HEAD")
-        return self._do_request(request, validate_auth=validate_auth)
-
     def login(self, login, password):
         """
         Authenticate login credentials and store session token
@@ -745,7 +738,7 @@ class MerginClient:
             params = {"files_at_version": files_at_version}
         resp = self.get(f"/v2/projects/{project_id}", params)
         resp_json = json.load(resp)
-        project_workspace = resp_json.get("workspace", {})
+        project_workspace = resp_json.get("workspace")
         return ProjectResponse(
             id=resp_json.get("id"),
             name=resp_json.get("name"),

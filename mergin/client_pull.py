@@ -80,6 +80,42 @@ class DownloadJob:
         print("--- END ---")
 
 
+class DownloadQueueItem:
+    """a piece of data from a project that should be downloaded - it can be either a chunk or it can be a diff"""
+
+    def __init__(self, file_path, size, version, diff_only, part_index, download_file_path):
+        self.file_path = file_path  # relative path to the file within project
+        self.size = size  # size of the item in bytes
+        self.version = version  # version of the file ("v123")
+        self.diff_only = diff_only  # whether downloading diff or full version
+        self.part_index = part_index  # index of the chunk
+        self.download_file_path = download_file_path  # full path to a temporary file which will receive the content
+
+    def __repr__(self):
+        return "<DownloadQueueItem path={} version={} diff_only={} part_index={} size={} dest={}>".format(
+            self.file_path, self.version, self.diff_only, self.part_index, self.size, self.download_file_path
+        )
+
+    def download_blocking(self, mc, mp, project_path):
+        """Starts download and only returns once the file has been fully downloaded and saved"""
+
+        mp.log.debug(
+            f"Downloading {self.file_path} version={self.version} diff={self.diff_only} part={self.part_index}"
+        )
+        start = self.part_index * (1 + CHUNK_SIZE)
+        resp = mc.get(
+            "/v1/project/raw/{}".format(project_path),
+            data={"file": self.file_path, "version": self.version, "diff": self.diff_only},
+            headers={"Range": "bytes={}-{}".format(start, start + CHUNK_SIZE)},
+        )
+        if resp.status in [200, 206]:
+            mp.log.debug(f"Download finished: {self.file_path}")
+            save_to_file(resp, self.download_file_path)
+        else:
+            mp.log.error(f"Download failed: {self.file_path}")
+            raise ClientError("Failed to download part {} of file {}".format(self.part_index, self.file_path))
+
+
 class DownloadDiffQueueItem:
     """Download item representing a diff file to be downloaded using v2 diff/raw endpoint"""
 
@@ -107,20 +143,24 @@ class DownloadDiffQueueItem:
             raise ClientError(f"Failed to download of diff file {self.file_path} to {self.download_file_path}")
 
 
-class FileToMerge:
+class DownloadFile:
     """
     Keeps information about how to create a file (path specified by dest_file) from a couple
     of downloaded items (chunks) - each item is DownloadQueueItem object which has path
-    to the temporary file containing its data. Calling merge() will create the destination file
+    to the temporary file containing its data. Calling from_chunks() will create the destination file
     and remove the temporary files of the chunks
     """
 
-    def __init__(self, dest_file, downloaded_items, size_check=True):
+    def __init__(self, dest_file, downloaded_items: typing.List[DownloadQueueItem], size_check=True):
         self.dest_file = dest_file  # full path to the destination file to be created
         self.downloaded_items = downloaded_items  # list of pieces of the destination file to be merged
         self.size_check = size_check  # whether we want to do merged file size check
 
-    def merge(self):
+    def from_chunks(self):
+        """Merges downloaded chunks into a single file at dest_file path"""
+        file_dir = os.path.dirname(self.dest_file)
+        os.makedirs(file_dir, exist_ok=True)
+
         with open(self.dest_file, "wb") as final:
             for item in self.downloaded_items:
                 with open(item.download_file_path, "rb") as chunk:
@@ -142,8 +182,8 @@ def get_download_items(
     download_directory: str,
     download_path: Optional[str] = None,
     diff_only=False,
-):
-    """Returns an array of download queue items"""
+) -> List[DownloadQueueItem]:
+    """Returns an array of download queue items (chunks) for the given file"""
 
     file_dir = os.path.dirname(os.path.normpath(os.path.join(download_directory, file_path)))
     basename = os.path.basename(download_path) if download_path else os.path.basename(file_path)
@@ -158,7 +198,7 @@ def get_download_items(
     return items
 
 
-def _do_download(item, mc, mp, project_path, job):
+def _do_download(item: typing.Union[DownloadQueueItem, DownloadDiffQueueItem], mc, mp, project_path, job):
     """runs in worker thread"""
     if job.is_cancelled:
         return
@@ -341,7 +381,13 @@ class UpdateTask:
     """
 
     # TODO: methods other than COPY
-    def __init__(self, file_path, download_queue_items, destination_file=None, latest_version=True):
+    def __init__(
+        self,
+        file_path,
+        download_queue_items: typing.List[DownloadQueueItem],
+        destination_file=None,
+        latest_version=True,
+    ):
         self.file_path = file_path
         self.destination_file = destination_file
         self.download_queue_items = download_queue_items
@@ -362,49 +408,13 @@ class UpdateTask:
         # ignore check if we download not-latest version of gpkg file (possibly reconstructed on server on demand)
         check_size = self.latest_version or not mp.is_versioned_file(self.file_path)
         # merge chunks together (and delete them afterwards)
-        file_to_merge = FileToMerge(dest_file_path, self.download_queue_items, check_size)
-        file_to_merge.merge()
+        file_to_merge = DownloadFile(dest_file_path, self.download_queue_items, check_size)
+        file_to_merge.from_chunks()
 
         # Make a copy of the file to meta dir only if there is no user-specified path for the file.
         # destination_file is None for full project download and takes a meaningful value for a single file download.
         if mp.is_versioned_file(self.file_path) and self.destination_file is None:
             mp.geodiff.make_copy_sqlite(mp.fpath(self.file_path), mp.fpath_meta(self.file_path))
-
-
-class DownloadQueueItem:
-    """a piece of data from a project that should be downloaded - it can be either a chunk or it can be a diff"""
-
-    def __init__(self, file_path, size, version, diff_only, part_index, download_file_path):
-        self.file_path = file_path  # relative path to the file within project
-        self.size = size  # size of the item in bytes
-        self.version = version  # version of the file ("v123")
-        self.diff_only = diff_only  # whether downloading diff or full version
-        self.part_index = part_index  # index of the chunk
-        self.download_file_path = download_file_path  # full path to a temporary file which will receive the content
-
-    def __repr__(self):
-        return "<DownloadQueueItem path={} version={} diff_only={} part_index={} size={} dest={}>".format(
-            self.file_path, self.version, self.diff_only, self.part_index, self.size, self.download_file_path
-        )
-
-    def download_blocking(self, mc, mp, project_path):
-        """Starts download and only returns once the file has been fully downloaded and saved"""
-
-        mp.log.debug(
-            f"Downloading {self.file_path} version={self.version} diff={self.diff_only} part={self.part_index}"
-        )
-        start = self.part_index * (1 + CHUNK_SIZE)
-        resp = mc.get(
-            "/v1/project/raw/{}".format(project_path),
-            data={"file": self.file_path, "version": self.version, "diff": self.diff_only},
-            headers={"Range": "bytes={}-{}".format(start, start + CHUNK_SIZE)},
-        )
-        if resp.status in [200, 206]:
-            mp.log.debug(f"Download finished: {self.file_path}")
-            save_to_file(resp, self.download_file_path)
-        else:
-            mp.log.error(f"Download failed: {self.file_path}")
-            raise ClientError("Failed to download part {} of file {}".format(self.part_index, self.file_path))
 
 
 class PullJob:
@@ -414,25 +424,24 @@ class PullJob:
         pull_actions,
         total_size,
         version,
-        files_to_merge,
+        download_files: List[DownloadFile],
         download_queue_items,
         tmp_dir,
         mp,
         project_info,
         basefiles_to_patch,
         mc,
+        v2_pull_enabled=False,
     ):
         self.project_path = project_path
-        self.pull_actions: Optional[List[PullAction]] = (
-            pull_actions  # dictionary with changes (dict[str, list[dict]] - keys: "added", "updated", ...)
-        )
+        self.pull_actions: Optional[List[PullAction]] = pull_actions
         self.total_size = total_size  # size of data to download (in bytes)
         self.transferred_size = 0
         self.version = version
-        self.files_to_merge = files_to_merge  # list of FileToMerge instances
+        self.download_files = download_files  # list of DownloadFile instances
         self.download_queue_items = download_queue_items
         self.tmp_dir = tmp_dir  # TemporaryDirectory instance where we store downloaded files
-        self.mp: MerginProject = mp  # MerginProject instance
+        self.mp: MerginProject = mp
         self.is_cancelled = False
         self.project_info = project_info  # parsed JSON with project info returned from the server
         self.basefiles_to_patch = (
@@ -440,7 +449,7 @@ class PullJob:
         )
         self.mc = mc
         self.futures = []  # list of concurrent.futures.Future instances
-        self.v2_pull = mc.server_features().get("v2_pull_enabled", False)
+        self.v2_pull_enabled = v2_pull_enabled  # whether v2 pull mechanism is used
 
     def dump(self):
         print("--- JOB ---", self.total_size, "bytes")
@@ -455,27 +464,16 @@ class PullJob:
         print("--- END ---")
 
 
-def prepare_file_destination(target_dir: str, path: str) -> str:
-    """Prepares destination path for downloaded files chunks"""
-
-    # figure out destination path for the file
-    file_dir = os.path.dirname(os.path.normpath(os.path.join(target_dir, path)))
-    basename = os.path.basename(path)
-    dest_file_path = os.path.join(file_dir, basename)
-    os.makedirs(file_dir, exist_ok=True)
-    return dest_file_path
-
-
-def get_diff_merge_files(delta_item: ProjectDeltaItem, target_dir: str) -> List[FileToMerge]:
+def get_download_diff_files(delta_item: ProjectDeltaItem, target_dir: str) -> List[DownloadFile]:
     """
-    Extracts list of diff files to be downloaded from delta item using v1 endpoint.
+    Extracts list of diff files to be downloaded from delta item using v1 endpoint per chunk.
     """
     result = []
 
     for diff in delta_item.diffs:
-        dest_file_path = prepare_file_destination(target_dir, diff.id)
+        dest_file_path = os.path.normpath(os.path.join(target_dir, diff.id))
         download_items = get_download_items(delta_item.path, diff.size, diff.version, target_dir, diff.id, True)
-        result.append(FileToMerge(dest_file_path, download_items))
+        result.append(DownloadFile(dest_file_path, download_items))
     return result
 
 
@@ -504,9 +502,10 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
     delta = None
     server_info = None
     server_version = None
-    v2_pull = mc.server_features().get("v2_pull_enabled", False)
+    v2_pull_enabled = mc.server_features().get("v2_pull_enabled", False)
     try:
-        if v2_pull:
+        if v2_pull_enabled:
+            mp.log.info("Using v2 pull delta endpoint")
             delta: ProjectDelta = mc.get_project_delta(project_id, since=local_version)
             server_version = delta.to_version
         else:
@@ -528,8 +527,8 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
     mp.log.info(f"got project versions: local version {local_version} / server version {server_version}")
 
     tmp_dir = tempfile.TemporaryDirectory(prefix="mm-pull-")
-    # list of FileToMerge instances, which consists of destination path and list of download items
-    merge_files = []
+    # list of DownloadFile instances, which consists of destination path and list of download items
+    download_files = []
     diff_files = []
     basefiles_to_patch = []  # list of tuples (relative path within project, list of diff files in temp dir to apply)
     pull_actions = []
@@ -557,15 +556,17 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
                 mp.log.info(f"missing base file for {item.path} -> going to download it (version {server_version})")
                 items = get_download_items(item.path, item.size, server_version, tmp_dir.name)
                 dest_file_path = mp.fpath(item.path, tmp_dir.name)
-                merge_files.append(FileToMerge(dest_file_path, items))
+                download_files.append(DownloadFile(dest_file_path, items))
 
-                # Force use COPY action to apply the new version instead of trying to apply diffs
+                # Force use COPY_CONFLICT action to apply the new version instead of trying to apply diffs
                 # We are not able to get local changes anyway as base file is missing
                 pull_action.type = PullActionType.COPY_CONFLICT
+                continue
 
             # if we have diff to apply, let's download the diff files
             # if we have conflict and diff update, download the diff files
-            elif v2_pull:
+            if v2_pull_enabled:
+                # using v2 endpoint to download diff files, without chunks. Then we are creating DownloadDiffQueueItem instances for each diff file.
                 diff_files.extend(
                     [
                         DownloadDiffQueueItem(diff_item.id, os.path.join(tmp_dir.name, diff_item.id))
@@ -576,16 +577,16 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
 
             else:
                 # fallback for diff files using v1 endpoint /raw
-                diff_merge_files = get_diff_merge_files(item, tmp_dir.name)
-                merge_files.extend(diff_merge_files)
+                # download chunks and create DownloadFile instances for each diff file
+                diff_download_files = get_download_diff_files(item, tmp_dir.name)
+                download_files.extend(diff_download_files)
                 basefiles_to_patch.append((item.path, [diff.id for diff in item.diffs]))
 
-            # let's check the base file existence
         elif pull_action_type == PullActionType.COPY or pull_action_type == PullActionType.COPY_CONFLICT:
             # simply download the server version of the files
-            dest_file_path = prepare_file_destination(tmp_dir.name, item.path)
+            dest_file_path = os.path.normpath(os.path.join(tmp_dir.name, item.path))
             download_items = get_download_items(item.path, item.size, server_version, tmp_dir.name)
-            merge_files.append(FileToMerge(dest_file_path, download_items))
+            download_files.append(DownloadFile(dest_file_path, download_items))
 
         pull_actions.append(pull_action)
         # Do nothing for DELETE actions
@@ -593,10 +594,11 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
     # make a single list of items to download
     total_size = 0
     download_queue_items = []
+    # Diff files downloaded without chunks (downloaded as a whole, do need to be merged)
     for diff_file in diff_files:
         download_queue_items.append(diff_file)
         total_size += diff_file.size
-    for file_to_merge in merge_files:
+    for file_to_merge in download_files:
         download_queue_items.extend(file_to_merge.downloaded_items)
         for item in file_to_merge.downloaded_items:
             total_size += item.size
@@ -608,13 +610,14 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
         pull_actions,
         total_size,
         server_version,
-        merge_files,
+        download_files,
         download_queue_items,
         tmp_dir,
         mp,
         server_info,
         basefiles_to_patch,
         mc,
+        v2_pull_enabled,
     )
 
     # start download
@@ -683,19 +686,28 @@ def pull_project_finalize(job: PullJob):
             raise future.exception()
 
     job.mp.log.info("finalizing pull")
-    if not job.project_info and job.v2_pull:
-        project_info_response = job.mc.project_info(job.project_path, version=job.version)
-        job.project_info = asdict(project_info_response)
+    try:
+        if not job.project_info and job.v2_pull_enabled:
+            project_info_response = job.mc.project_info_v2(job.mp.project_id(), files_at_version=job.version)
+            job.project_info = asdict(project_info_response)
+    except NotImplementedError as e:
+        job.mp.log.error("Failed to get project info v2 in this server version: " + str(e))
+        job.mp.log.info("--- pull aborted")
+        raise ClientError("Failed to get project info v2 as server not support it: " + str(e))
+    except ClientError as e:
+        job.mp.log.error("Failed to get project info v2: " + str(e))
+        job.mp.log.info("--- pull aborted")
+        raise
 
     if not job.project_info:
         job.mp.log.error("No project info available to finalize pull")
         job.mp.log.info("--- pull aborted")
         raise ClientError("No project info available to finalize pull")
 
-    # merge downloaded chunks
+    # create files from downloaded chunks
     try:
-        for file_to_merge in job.files_to_merge:
-            file_to_merge.merge()
+        for download_file in job.download_files:
+            download_file.from_chunks()
     except ClientError as err:
         job.mp.log.error("Error merging chunks of downloaded file: " + str(err))
         job.mp.log.info("--- pull aborted")
@@ -817,7 +829,7 @@ def download_diffs_async(mc, project_directory, file_path, versions):
         dest_file_path = mp.fpath_cache(diff["path"], version=file["version"])
         if os.path.exists(dest_file_path):
             continue
-        files_to_merge.append(FileToMerge(dest_file_path, items))
+        files_to_merge.append(DownloadFile(dest_file_path, items))
         download_list.extend(items)
         for item in items:
             total_size += item.size
