@@ -556,7 +556,7 @@ class MerginClient:
             MerginProject.write_metadata(directory, project_info)
             mp = MerginProject(directory)
             if mp.inspect_files():
-                self.push_project(directory)
+                self.sync_project(directory)
 
     def paginated_projects_list(
         self,
