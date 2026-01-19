@@ -161,6 +161,10 @@ class MerginProject:
         slash_index = full_name.index("/")
         return full_name[:slash_index]
 
+    def project_role(self) -> str:
+        self._read_metadata()
+        return self._metadata.get("role")
+
     def project_id(self) -> str:
         """Returns ID of the project (UUID using 8-4-4-4-12 formatting without braces)
 
@@ -193,6 +197,7 @@ class MerginProject:
                 "The project directory has been created with an old version of the Mergin Maps client. "
                 "Please delete the project directory and re-download the project."
             )
+
         workspace = self._metadata.get("workspace", {})
         if workspace:
             return workspace.get("id")
@@ -700,20 +705,20 @@ class MerginProject:
         changes["updated"] = [f for f in changes["updated"] if f not in not_updated]
         return changes
 
-    def copy_versioned_file_for_upload(self, f, tmp_dir):
+    def copy_versioned_file_for_upload(self, f: FileChange, tmp_dir: str) -> str:
         """
         Make a temporary copy of the versioned file using geodiff, to make sure that we have full
         content in a single file (nothing left in WAL journal)
         """
-        path = f["path"]
+        path = f.path
         self.log.info("Making a temporary copy (full upload): " + path)
         tmp_file = os.path.join(tmp_dir, path)
         os.makedirs(os.path.dirname(tmp_file), exist_ok=True)
         self.geodiff.make_copy_sqlite(self.fpath(path), tmp_file)
-        f["size"] = os.path.getsize(tmp_file)
-        f["checksum"] = generate_checksum(tmp_file)
-        f["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(f["size"] / UPLOAD_CHUNK_SIZE))]
-        f["upload_file"] = tmp_file
+        f.size = os.path.getsize(tmp_file)
+        f.checksum = generate_checksum(tmp_file)
+        f.chunks = [str(uuid.uuid4()) for i in range(math.ceil(f.size / UPLOAD_CHUNK_SIZE))]
+        f.upload_file = tmp_file
         return tmp_file
 
     def get_list_of_push_changes(self, push_changes):
@@ -935,13 +940,14 @@ class MerginProject:
                     self.geodiff.make_copy_sqlite(self.fpath(path), basefile)
                 elif k == "updated":
                     # in case for geopackage cannot be created diff (e.g. forced update with committed changes from wal file)
-                    if "diff" not in item:
+                    diff = item.get("diff")
+                    if not diff:
                         self.log.info("updating basefile (copy) for: " + path)
                         self.geodiff.make_copy_sqlite(self.fpath(path), basefile)
                     else:
                         self.log.info("updating basefile (diff) for: " + path)
                         # better to apply diff to previous basefile to avoid issues with geodiff tmp files
-                        changeset = self.fpath_meta(item["diff"]["path"])
+                        changeset = self.fpath_meta(diff["path"])
                         patch_error = self.apply_diffs(basefile, [changeset])
                         if patch_error:
                             # in case of local sync issues it is safier to remove basefile, next time it will be downloaded from server
@@ -1083,3 +1089,21 @@ class MerginProject:
         :type tables: list[str]
         """
         self.geodiff.set_tables_to_skip(tables)
+
+    def get_geodiff_changes_count(self, diff_rel_path: str):
+        """
+        Best-effort: return number of changes in the .gpkg diff (int) or None.
+        Never raises – diagnostics/logging must not fail.
+        """
+
+        diff_abs = self.fpath_meta(diff_rel_path)
+        try:
+            return pygeodiff.GeoDiff().changes_count(diff_abs)
+        except (
+            pygeodiff.GeoDiffLibError,
+            pygeodiff.GeoDiffLibConflictError,
+            pygeodiff.GeoDiffLibUnsupportedChangeError,
+            pygeodiff.GeoDiffLibVersionError,
+            FileNotFoundError,
+        ):
+            return None

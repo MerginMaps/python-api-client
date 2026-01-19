@@ -7,7 +7,9 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 import tempfile
-from .common import ClientError
+from enum import Enum
+from typing import Optional, Type, Union, ByteString
+from .common import ClientError, WorkspaceRole
 
 
 def generate_checksum(file, chunk_size=4096):
@@ -297,6 +299,18 @@ def bytes_to_human_size(bytes: int):
         return f"{round( bytes / 1024.0 / 1024.0 / 1024.0 / 1024.0, precision )} TB"
 
 
+def get_data_checksum(data: ByteString) -> str:
+    """
+    Generate sha1 checksum for given data.
+
+    :param data: data to calculate checksum
+    :return: sha1 checksum
+    """
+    checksum = hashlib.sha1()
+    checksum.update(data)
+    return checksum.hexdigest()
+
+
 def cleanup_tmp_dir(mp, tmp_dir: tempfile.TemporaryDirectory):
     """
     Remove temporary from tempfile.TemporaryDirectory instance
@@ -309,3 +323,20 @@ def cleanup_tmp_dir(mp, tmp_dir: tempfile.TemporaryDirectory):
         mp.log.warning(f"Permission error during tmp dir cleanup: {tmp_dir.name}")
     except Exception as e:
         mp.log.error(f"Error during tmp dir cleanup: {tmp_dir.name}: {e}")
+
+
+def normalize_role(role: Union[str, Enum], enum_cls: Type[Enum]) -> Optional[Enum]:
+    """
+    Takes a role as a string or an Enum member and returns the corresponding Enum member
+    from the given enum class. Returns None if the input is invalid or no match is found.
+    """
+    if isinstance(role, enum_cls):
+        return role
+
+    if isinstance(role, str):
+        try:
+            return enum_cls(role.strip().lower())
+        except ValueError:
+            return None
+
+    return None
