@@ -36,7 +36,6 @@ from .merginproject import MerginProject, pygeodiff
 from .editor import filter_changes
 from .utils import get_data_checksum, cleanup_tmp_dir
 
-
 POST_JSON_HEADERS = {"Content-Type": "application/json"}
 
 
