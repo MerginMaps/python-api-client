@@ -3150,7 +3150,7 @@ def test_client_pull_project_async(mc):
 
     job = pull_project_async(mc, project_dir_pull)
     assert job
-    assert len(job.pull_changes.get("added")) == 2
+    assert len(job.pull_actions) == 2
     pull_project_wait(job)
     assert job.total_size == job.transferred_size
     pull_project_finalize(job)
