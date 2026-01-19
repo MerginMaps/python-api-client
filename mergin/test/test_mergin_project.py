@@ -177,11 +177,33 @@ def test_get_local_delta():
     with tempfile.TemporaryDirectory() as tmp_dir:
         test_project = "delta_test_project"
         project_dir = os.path.join(tmp_dir, test_project)
+        # prepare mergin project with base geopackage
         os.makedirs(project_dir, exist_ok=True)
-        shutil.copyfile(os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"), os.path.join(project_dir, "base.gpkg"))
         mp = MerginProject(project_dir)
         shutil.copyfile(os.path.join(TEST_DATA_DIR, "base.gpkg"), os.path.join(project_dir, ".mergin", "base.gpkg"))
+        # Mock files() to return origin info for version lookup
+        mp.files = lambda: []
+        mp.inspect_files = lambda: []  # Dummy return
 
+        # check if geopackage is updated (is_open) but missing - geodiff lib error, than updated file is reported
+        mock_changes = {
+            "updated": [
+                {"path": "base.gpkg", "size": 40, "checksum": "c4"},
+            ],
+        }
+        mp.compare_file_sets = lambda origin, server: mock_changes
+        delta_items = mp.get_local_delta(project_dir)
+        assert len(delta_items) == 1
+        assert delta_items[0].path == "base.gpkg"
+        assert delta_items[0].change == DeltaChangeType.UPDATE
+
+        # check if geopackage is updated (is_open) but not diffable - no changes should be reported
+        shutil.copyfile(os.path.join(TEST_DATA_DIR, "base.gpkg"), os.path.join(project_dir, "base.gpkg"))
+        delta_items = mp.get_local_delta(project_dir)
+        assert len(delta_items) == 0
+
+        # now test with real changes
+        shutil.copyfile(os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"), os.path.join(project_dir, "base.gpkg"))
         # Mock compare_file_sets return value
         mock_changes = {
             "added": [{"path": "new.txt", "size": 10, "checksum": "c1"}],
@@ -191,12 +213,7 @@ def test_get_local_delta():
                 {"path": "base.gpkg", "size": 40, "checksum": "c4"},
             ],
         }
-        mp.compare_file_sets = lambda local, server: mock_changes
-
-        # Mock files() to return origin info for version lookup
-        mp.files = lambda: []
-
-        mp.inspect_files = lambda: []  # Dummy return
+        mp.compare_file_sets = lambda origin, server: mock_changes
 
         delta_items = mp.get_local_delta(project_dir)
         assert len(delta_items) == 4
