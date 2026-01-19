@@ -7,8 +7,9 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 import tempfile
-from .common import ClientError
-from typing import ByteString
+from enum import Enum
+from typing import Optional, Type, Union, ByteString
+from .common import ClientError, WorkspaceRole
 
 
 def generate_checksum(file, chunk_size=4096):
@@ -322,3 +323,20 @@ def cleanup_tmp_dir(mp, tmp_dir: tempfile.TemporaryDirectory):
         mp.log.warning(f"Permission error during tmp dir cleanup: {tmp_dir.name}")
     except Exception as e:
         mp.log.error(f"Error during tmp dir cleanup: {tmp_dir.name}: {e}")
+
+
+def normalize_role(role: Union[str, Enum], enum_cls: Type[Enum]) -> Optional[Enum]:
+    """
+    Takes a role as a string or an Enum member and returns the corresponding Enum member
+    from the given enum class. Returns None if the input is invalid or no match is found.
+    """
+    if isinstance(role, enum_cls):
+        return role
+
+    if isinstance(role, str):
+        try:
+            return enum_cls(role.strip().lower())
+        except ValueError:
+            return None
+
+    return None

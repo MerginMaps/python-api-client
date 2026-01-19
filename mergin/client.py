@@ -17,6 +17,8 @@ import re
 import typing
 import warnings
 from time import sleep
+from enum import Enum
+from typing import Optional, Type, Union
 
 from .common import (
     SYNC_ATTEMPT_WAIT,
@@ -51,6 +53,13 @@ from .client_push import (
     UploadChunksCache,
 )
 from .utils import DateTimeEncoder, get_versions_with_file_changes, int_version, is_version_acceptable
+from .utils import (
+    DateTimeEncoder,
+    get_versions_with_file_changes,
+    int_version,
+    is_version_acceptable,
+    normalize_role,
+)
 from .version import __version__
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
@@ -1337,7 +1346,7 @@ class MerginClient:
         email: str,
         password: str,
         workspace_id: int,
-        workspace_role: WorkspaceRole,
+        workspace_role: Union[str, WorkspaceRole],
         username: str = None,
         notify_user: bool = False,
     ) -> dict:
@@ -1352,11 +1361,15 @@ class MerginClient:
         param notify_user: flag for email notifications - confirmation email will be sent
         """
         self.check_collaborators_members_support()
+        role_enum = normalize_role(workspace_role, WorkspaceRole)
+        if role_enum is None:
+            raise ValueError(f"Invalid role: {workspace_role}")
+
         params = {
             "email": email,
             "password": password,
             "workspace_id": workspace_id,
-            "role": workspace_role.value,
+            "role": role_enum.value,
             "notify_user": notify_user,
         }
         if username:
@@ -1381,7 +1394,11 @@ class MerginClient:
         return json.load(resp)
 
     def update_workspace_member(
-        self, workspace_id: int, user_id: int, workspace_role: WorkspaceRole, reset_projects_roles: bool = False
+        self,
+        workspace_id: int,
+        user_id: int,
+        workspace_role: Union[str, WorkspaceRole],
+        reset_projects_roles: bool = False,
     ) -> dict:
         """
         Update workspace role of a workspace member, optionally resets the projects role
@@ -1389,9 +1406,14 @@ class MerginClient:
         param reset_projects_roles: all project specific roles will be removed
         """
         self.check_collaborators_members_support()
+
+        role_enum = normalize_role(workspace_role, WorkspaceRole)
+        if role_enum is None:
+            raise ValueError(f"Invalid role: {workspace_role}")
+
         params = {
             "reset_projects_roles": reset_projects_roles,
-            "workspace_role": workspace_role.value,
+            "workspace_role": role_enum.value,
         }
         workspace_member = self.patch(f"v2/workspaces/{workspace_id}/members/{user_id}", params, json_headers)
         return json.load(workspace_member)
@@ -1411,7 +1433,7 @@ class MerginClient:
         project_collaborators = self.get(f"v2/projects/{project_id}/collaborators")
         return json.load(project_collaborators)
 
-    def add_project_collaborator(self, project_id: str, user: str, project_role: ProjectRole) -> dict:
+    def add_project_collaborator(self, project_id: str, user: str, project_role: Union[str, ProjectRole]) -> dict:
         """
         Add a user to project collaborators and grant them a project role.
         Fails if user is already a member of the project.
@@ -1419,17 +1441,27 @@ class MerginClient:
         param user: login (username or email) of the user
         """
         self.check_collaborators_members_support()
+
+        role_enum = normalize_role(project_role, ProjectRole)
+        if role_enum is None:
+            raise ValueError(f"Invalid role: {project_role}")
+
         params = {"role": project_role.value, "user": user}
         project_collaborator = self.post(f"v2/projects/{project_id}/collaborators", params, json_headers)
         return json.load(project_collaborator)
 
-    def update_project_collaborator(self, project_id: str, user_id: int, project_role: ProjectRole) -> dict:
+    def update_project_collaborator(self, project_id: str, user_id: int, project_role: Union[str, ProjectRole]) -> dict:
         """
         Update project role of the existing project collaborator.
         Fails if user is not a member of the project yet.
         """
         self.check_collaborators_members_support()
+
+        role_enum = normalize_role(project_role, ProjectRole)
+        if role_enum is None:
+            raise ValueError(f"Invalid role: {project_role}")
         params = {"role": project_role.value}
+
         project_collaborator = self.patch(f"v2/projects/{project_id}/collaborators/{user_id}", params, json_headers)
         return json.load(project_collaborator)
 
@@ -1505,14 +1537,19 @@ class MerginClient:
             request = urllib.request.Request(url, data=payload, headers=header)
             return self._do_request(request)
 
-    def create_invitation(self, workspace_id: int, email: str, workspace_role: WorkspaceRole):
+    def create_invitation(self, workspace_id: int, email: str, workspace_role: Union[str, WorkspaceRole]):
         """
         Create invitation to workspace for specific role
         """
         min_version = "2025.6.1"
         if not is_version_acceptable(self.server_version(), min_version):
             raise NotImplementedError(f"This needs server at version {min_version} or later")
-        params = {"email": email, "role": workspace_role.value}
+
+        role_enum = normalize_role(workspace_role, WorkspaceRole)
+        if role_enum is None:
+            raise ValueError(f"Invalid role: {workspace_role}")
+
+        params = {"email": email, "role": role_enum.value}
         ws_inv = self.post(f"v2/workspaces/{workspace_id}/invitations", params, json_headers)
         return json.load(ws_inv)
 
