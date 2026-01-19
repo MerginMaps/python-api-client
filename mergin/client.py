@@ -16,8 +16,14 @@ from enum import Enum, auto
 import re
 import typing
 import warnings
+from time import sleep
+from enum import Enum
+from typing import Optional, Type, Union
 
 from .common import (
+    SYNC_ATTEMPT_WAIT,
+    SYNC_ATTEMPTS,
+    SYNC_CALLBACK_WAIT,
     ClientError,
     LoginError,
     WorkspaceRole,
@@ -38,8 +44,22 @@ from .client_pull import (
     download_diffs_finalize,
 )
 from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
-from .client_push import push_project_async, push_project_wait, push_project_finalize
+from .client_push import (
+    get_push_changes_batch,
+    push_project_async,
+    push_project_is_running,
+    push_project_wait,
+    push_project_finalize,
+    UploadChunksCache,
+)
 from .utils import DateTimeEncoder, get_versions_with_file_changes, int_version, is_version_acceptable
+from .utils import (
+    DateTimeEncoder,
+    get_versions_with_file_changes,
+    int_version,
+    is_version_acceptable,
+    normalize_role,
+)
 from .version import __version__
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
@@ -119,6 +139,8 @@ class MerginClient:
         self._user_info = None
         self._server_type = None
         self._server_version = None
+        self._server_features = {}
+        self.upload_chunks_cache = UploadChunksCache()
         self.client_version = "Python-client/" + __version__
         if plugin_version is not None:  # this could be e.g. "Plugin/2020.1 QGIS/3.14"
             self.client_version += " " + plugin_version
@@ -378,8 +400,7 @@ class MerginClient:
         """
         if not self._server_type:
             try:
-                resp = self.get("/config", validate_auth=False)
-                config = json.load(resp)
+                config = self.server_config()
                 stype = config.get("server_type")
                 if stype == "ce":
                     self._server_type = ServerType.CE
@@ -404,13 +425,25 @@ class MerginClient:
         """
         if self._server_version is None:
             try:
-                resp = self.get("/config", validate_auth=False)
-                config = json.load(resp)
+                config = self.server_config()
                 self._server_version = config["version"]
             except (ClientError, KeyError):
                 self._server_version = ""
 
         return self._server_version
+
+    def server_features(self):
+        """
+        Returns feature flags of the server.
+        """
+        if self._server_features:
+            return self._server_features
+        config = self.server_config()
+        self._server_features = {
+            "v2_push_enabled": config.get("v2_push_enabled", False),
+            "v2_pull_enabled": config.get("v2_pull_enabled", False),
+        }
+        return self._server_features
 
     def workspaces_list(self):
         """
@@ -532,7 +565,7 @@ class MerginClient:
             MerginProject.write_metadata(directory, project_info)
             mp = MerginProject(directory)
             if mp.inspect_files():
-                self.push_project(directory)
+                self.sync_project(directory)
 
     def paginated_projects_list(
         self,
@@ -802,7 +835,7 @@ class MerginClient:
     def user_info(self):
         server_type = self.server_type()
         if server_type == ServerType.OLD:
-            resp = self.get("/v1/user/" + self.username())
+            resp = self.get(f"/v1/user/{self.username()}")
         else:
             resp = self.get("/v1/user/profile")
         return json.load(resp)
@@ -1313,7 +1346,7 @@ class MerginClient:
         email: str,
         password: str,
         workspace_id: int,
-        workspace_role: WorkspaceRole,
+        workspace_role: Union[str, WorkspaceRole],
         username: str = None,
         notify_user: bool = False,
     ) -> dict:
@@ -1328,11 +1361,15 @@ class MerginClient:
         param notify_user: flag for email notifications - confirmation email will be sent
         """
         self.check_collaborators_members_support()
+        role_enum = normalize_role(workspace_role, WorkspaceRole)
+        if role_enum is None:
+            raise ValueError(f"Invalid role: {workspace_role}")
+
         params = {
             "email": email,
             "password": password,
             "workspace_id": workspace_id,
-            "role": workspace_role.value,
+            "role": role_enum.value,
             "notify_user": notify_user,
         }
         if username:
@@ -1357,7 +1394,11 @@ class MerginClient:
         return json.load(resp)
 
     def update_workspace_member(
-        self, workspace_id: int, user_id: int, workspace_role: WorkspaceRole, reset_projects_roles: bool = False
+        self,
+        workspace_id: int,
+        user_id: int,
+        workspace_role: Union[str, WorkspaceRole],
+        reset_projects_roles: bool = False,
     ) -> dict:
         """
         Update workspace role of a workspace member, optionally resets the projects role
@@ -1365,9 +1406,14 @@ class MerginClient:
         param reset_projects_roles: all project specific roles will be removed
         """
         self.check_collaborators_members_support()
+
+        role_enum = normalize_role(workspace_role, WorkspaceRole)
+        if role_enum is None:
+            raise ValueError(f"Invalid role: {workspace_role}")
+
         params = {
             "reset_projects_roles": reset_projects_roles,
-            "workspace_role": workspace_role.value,
+            "workspace_role": role_enum.value,
         }
         workspace_member = self.patch(f"v2/workspaces/{workspace_id}/members/{user_id}", params, json_headers)
         return json.load(workspace_member)
@@ -1387,7 +1433,7 @@ class MerginClient:
         project_collaborators = self.get(f"v2/projects/{project_id}/collaborators")
         return json.load(project_collaborators)
 
-    def add_project_collaborator(self, project_id: str, user: str, project_role: ProjectRole) -> dict:
+    def add_project_collaborator(self, project_id: str, user: str, project_role: Union[str, ProjectRole]) -> dict:
         """
         Add a user to project collaborators and grant them a project role.
         Fails if user is already a member of the project.
@@ -1395,17 +1441,27 @@ class MerginClient:
         param user: login (username or email) of the user
         """
         self.check_collaborators_members_support()
+
+        role_enum = normalize_role(project_role, ProjectRole)
+        if role_enum is None:
+            raise ValueError(f"Invalid role: {project_role}")
+
         params = {"role": project_role.value, "user": user}
         project_collaborator = self.post(f"v2/projects/{project_id}/collaborators", params, json_headers)
         return json.load(project_collaborator)
 
-    def update_project_collaborator(self, project_id: str, user_id: int, project_role: ProjectRole) -> dict:
+    def update_project_collaborator(self, project_id: str, user_id: int, project_role: Union[str, ProjectRole]) -> dict:
         """
         Update project role of the existing project collaborator.
         Fails if user is not a member of the project yet.
         """
         self.check_collaborators_members_support()
+
+        role_enum = normalize_role(project_role, ProjectRole)
+        if role_enum is None:
+            raise ValueError(f"Invalid role: {project_role}")
         params = {"role": project_role.value}
+
         project_collaborator = self.patch(f"v2/projects/{project_id}/collaborators/{user_id}", params, json_headers)
         return json.load(project_collaborator)
 
@@ -1481,13 +1537,71 @@ class MerginClient:
             request = urllib.request.Request(url, data=payload, headers=header)
             return self._do_request(request)
 
-    def create_invitation(self, workspace_id: int, email: str, workspace_role: WorkspaceRole):
+    def create_invitation(self, workspace_id: int, email: str, workspace_role: Union[str, WorkspaceRole]):
         """
         Create invitation to workspace for specific role
         """
         min_version = "2025.6.1"
         if not is_version_acceptable(self.server_version(), min_version):
             raise NotImplementedError(f"This needs server at version {min_version} or later")
-        params = {"email": email, "role": workspace_role.value}
+
+        role_enum = normalize_role(workspace_role, WorkspaceRole)
+        if role_enum is None:
+            raise ValueError(f"Invalid role: {workspace_role}")
+
+        params = {"email": email, "role": role_enum.value}
         ws_inv = self.post(f"v2/workspaces/{workspace_id}/invitations", params, json_headers)
         return json.load(ws_inv)
+
+    def sync_project_generator(self, project_directory):
+        """
+        Syncs project by loop with these steps:
+        1. Pull server version
+        2. Get local changes
+        3. Push first change batch
+        Repeat if there are more local changes.
+
+        :param project_directory: Project's directory
+        """
+        mp = MerginProject(project_directory)
+        has_changes = True
+        server_conflict_attempts = 0
+        while has_changes:
+            self.pull_project(project_directory)
+            try:
+                job = push_project_async(self, project_directory)
+                if not job:
+                    break
+                # waiting for progress
+                last_size = 0
+                while push_project_is_running(job):
+                    sleep(SYNC_CALLBACK_WAIT)
+                    current_size = job.transferred_size
+                    yield (current_size - last_size, job)  # Yields the size change and the job object
+                    last_size = current_size
+                push_project_finalize(job)
+                _, has_changes = get_push_changes_batch(self, project_directory)
+                server_conflict_attempts = 0
+            except ClientError as e:
+                if e.is_retryable_sync() and server_conflict_attempts < SYNC_ATTEMPTS - 1:
+                    # retry on conflict, e.g. when server has changes that we do not have yet
+                    mp.log.info(
+                        f"Restarting sync process (conflict on server) - {server_conflict_attempts + 1}/{SYNC_ATTEMPTS}"
+                    )
+                    server_conflict_attempts += 1
+                    sleep(SYNC_ATTEMPT_WAIT)
+                    continue
+                raise e
+
+    def sync_project(self, project_directory):
+        """
+        Syncs project by pulling server changes and pushing local changes. There is intorduced retry mechanism
+        for handling server conflicts (when server has changes that we do not have yet or somebody else is syncing).
+        See description of _sync_project_generator().
+
+        :param project_directory: Project's directory
+        """
+        # walk through the generator to perform the sync
+        # in this method we do not yield anything to the caller
+        for _ in self.sync_project_generator(project_directory):
+            pass
