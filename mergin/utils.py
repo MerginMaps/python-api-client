@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 import tempfile
 from enum import Enum
-from typing import Optional, Type, Union
+from typing import Optional, Type, Union, ByteString
 from .common import ClientError, WorkspaceRole
 
 
@@ -297,6 +297,18 @@ def bytes_to_human_size(bytes: int):
         return f"{round( bytes / 1024.0 / 1024.0 / 1024.0, precision )} GB"
     else:
         return f"{round( bytes / 1024.0 / 1024.0 / 1024.0 / 1024.0, precision )} TB"
+
+
+def get_data_checksum(data: ByteString) -> str:
+    """
+    Generate sha1 checksum for given data.
+
+    :param data: data to calculate checksum
+    :return: sha1 checksum
+    """
+    checksum = hashlib.sha1()
+    checksum.update(data)
+    return checksum.hexdigest()
 
 
 def cleanup_tmp_dir(mp, tmp_dir: tempfile.TemporaryDirectory):

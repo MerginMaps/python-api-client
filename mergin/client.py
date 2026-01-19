@@ -16,10 +16,14 @@ from enum import Enum, auto
 import re
 import typing
 import warnings
+from time import sleep
 from enum import Enum
 from typing import Optional, Type, Union
 
 from .common import (
+    SYNC_ATTEMPT_WAIT,
+    SYNC_ATTEMPTS,
+    SYNC_CALLBACK_WAIT,
     ClientError,
     LoginError,
     WorkspaceRole,
@@ -40,7 +44,15 @@ from .client_pull import (
     download_diffs_finalize,
 )
 from .client_pull import pull_project_async, pull_project_wait, pull_project_finalize
-from .client_push import push_project_async, push_project_wait, push_project_finalize
+from .client_push import (
+    get_push_changes_batch,
+    push_project_async,
+    push_project_is_running,
+    push_project_wait,
+    push_project_finalize,
+    UploadChunksCache,
+)
+from .utils import DateTimeEncoder, get_versions_with_file_changes, int_version, is_version_acceptable
 from .utils import (
     DateTimeEncoder,
     get_versions_with_file_changes,
@@ -127,6 +139,8 @@ class MerginClient:
         self._user_info = None
         self._server_type = None
         self._server_version = None
+        self._server_features = {}
+        self.upload_chunks_cache = UploadChunksCache()
         self.client_version = "Python-client/" + __version__
         if plugin_version is not None:  # this could be e.g. "Plugin/2020.1 QGIS/3.14"
             self.client_version += " " + plugin_version
@@ -386,8 +400,7 @@ class MerginClient:
         """
         if not self._server_type:
             try:
-                resp = self.get("/config", validate_auth=False)
-                config = json.load(resp)
+                config = self.server_config()
                 stype = config.get("server_type")
                 if stype == "ce":
                     self._server_type = ServerType.CE
@@ -412,13 +425,25 @@ class MerginClient:
         """
         if self._server_version is None:
             try:
-                resp = self.get("/config", validate_auth=False)
-                config = json.load(resp)
+                config = self.server_config()
                 self._server_version = config["version"]
             except (ClientError, KeyError):
                 self._server_version = ""
 
         return self._server_version
+
+    def server_features(self):
+        """
+        Returns feature flags of the server.
+        """
+        if self._server_features:
+            return self._server_features
+        config = self.server_config()
+        self._server_features = {
+            "v2_push_enabled": config.get("v2_push_enabled", False),
+            "v2_pull_enabled": config.get("v2_pull_enabled", False),
+        }
+        return self._server_features
 
     def workspaces_list(self):
         """
@@ -540,7 +565,7 @@ class MerginClient:
             MerginProject.write_metadata(directory, project_info)
             mp = MerginProject(directory)
             if mp.inspect_files():
-                self.push_project(directory)
+                self.sync_project(directory)
 
     def paginated_projects_list(
         self,
@@ -810,7 +835,7 @@ class MerginClient:
     def user_info(self):
         server_type = self.server_type()
         if server_type == ServerType.OLD:
-            resp = self.get("/v1/user/" + self.username())
+            resp = self.get(f"/v1/user/{self.username()}")
         else:
             resp = self.get("/v1/user/profile")
         return json.load(resp)
@@ -1527,3 +1552,56 @@ class MerginClient:
         params = {"email": email, "role": role_enum.value}
         ws_inv = self.post(f"v2/workspaces/{workspace_id}/invitations", params, json_headers)
         return json.load(ws_inv)
+
+    def sync_project_generator(self, project_directory):
+        """
+        Syncs project by loop with these steps:
+        1. Pull server version
+        2. Get local changes
+        3. Push first change batch
+        Repeat if there are more local changes.
+
+        :param project_directory: Project's directory
+        """
+        mp = MerginProject(project_directory)
+        has_changes = True
+        server_conflict_attempts = 0
+        while has_changes:
+            self.pull_project(project_directory)
+            try:
+                job = push_project_async(self, project_directory)
+                if not job:
+                    break
+                # waiting for progress
+                last_size = 0
+                while push_project_is_running(job):
+                    sleep(SYNC_CALLBACK_WAIT)
+                    current_size = job.transferred_size
+                    yield (current_size - last_size, job)  # Yields the size change and the job object
+                    last_size = current_size
+                push_project_finalize(job)
+                _, has_changes = get_push_changes_batch(self, project_directory)
+                server_conflict_attempts = 0
+            except ClientError as e:
+                if e.is_retryable_sync() and server_conflict_attempts < SYNC_ATTEMPTS - 1:
+                    # retry on conflict, e.g. when server has changes that we do not have yet
+                    mp.log.info(
+                        f"Restarting sync process (conflict on server) - {server_conflict_attempts + 1}/{SYNC_ATTEMPTS}"
+                    )
+                    server_conflict_attempts += 1
+                    sleep(SYNC_ATTEMPT_WAIT)
+                    continue
+                raise e
+
+    def sync_project(self, project_directory):
+        """
+        Syncs project by pulling server changes and pushing local changes. There is intorduced retry mechanism
+        for handling server conflicts (when server has changes that we do not have yet or somebody else is syncing).
+        See description of _sync_project_generator().
+
+        :param project_directory: Project's directory
+        """
+        # walk through the generator to perform the sync
+        # in this method we do not yield anything to the caller
+        for _ in self.sync_project_generator(project_directory):
+            pass

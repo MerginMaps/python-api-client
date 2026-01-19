@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import os
@@ -10,6 +11,7 @@ import pytest
 import pytz
 import sqlite3
 import glob
+from unittest.mock import patch, Mock
 
 from unittest.mock import patch, Mock
 
@@ -24,13 +26,16 @@ from ..client import (
     TokenError,
     ServerType,
 )
-from ..client_push import push_project_async, push_project_cancel
+from ..client_push import push_project_async, push_project_cancel, push_project_finalize, push_project_wait
 from ..client_pull import (
     download_project_async,
     download_project_wait,
     download_project_finalize,
     download_project_is_running,
     download_project_cancel,
+    pull_project_async,
+    pull_project_finalize,
+    pull_project_wait,
 )
 from ..utils import (
     generate_checksum,
@@ -292,6 +297,67 @@ def test_create_remote_project_from_local(mc):
         mc.download_project(project, download_dir)
 
 
+def test_new_project_sync_v1_api(mc):
+    """
+    Create a new project, download it, add a file and then do sync - it should not fail
+    This is using v1 endpoint.
+    """
+    server_features = mc.server_features()
+    mc._server_features = {"v2_push_enabled": False}
+    test_project = "test_new_project_sync_v1"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
+
+    cleanup(mc, project, [project_dir])
+    # create remote project
+    mc.create_project(test_project)
+
+    # download the project
+    mc.download_project(project, project_dir)
+
+    # add a test file
+    shutil.copy(os.path.join(TEST_DATA_DIR, "test.txt"), project_dir)
+
+    # do a full sync - it should not fail
+    mc.pull_project(project_dir)
+    mc.push_project(project_dir)
+
+    # make sure everything is up-to-date
+    mp = MerginProject(project_dir)
+    local_changes = mp.get_push_changes()
+    assert not local_changes["added"] and not local_changes["removed"] and not local_changes["updated"]
+    mc._server_features = server_features
+
+
+def test_new_project_sync_v2_api(mc):
+    """
+    Create a new project, download it, add a file and then do sync - it should not fail
+    This is using v2 endpoint.
+    """
+    test_project = "test_new_project_sync_v2"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
+
+    cleanup(mc, project, [project_dir])
+    # create remote project
+    mc.create_project(test_project)
+
+    # download the project
+    mc.download_project(project, project_dir)
+
+    # add a test file
+    shutil.copy(os.path.join(TEST_DATA_DIR, "test.txt"), project_dir)
+
+    # do a full sync - it should not fail
+    mc.pull_project(project_dir)
+    mc.push_project(project_dir)
+
+    # make sure everything is up-to-date
+    mp = MerginProject(project_dir)
+    local_changes = mp.get_push_changes()
+    assert not local_changes["added"] and not local_changes["removed"] and not local_changes["updated"]
+
+
 def test_push_pull_changes(mc):
     test_project = "test_push"
     project = API_USER + "/" + test_project
@@ -364,7 +430,7 @@ def test_push_pull_changes(mc):
     f_conflict_checksum = generate_checksum(os.path.join(project_dir_2, f_updated))
 
     # not at latest server version
-    with pytest.raises(ClientError, match="Please update your local copy"):
+    with pytest.raises(ClientError, match="mismatch"):
         mc.push_project(project_dir_2)
 
     # check changes in project_dir_2 before applied
@@ -386,6 +452,28 @@ def test_push_pull_changes(mc):
         == f_conflict_checksum
     )
     assert generate_checksum(os.path.join(project_dir_2, f_updated)) == f_remote_checksum
+
+
+def test_sync_remove(mc):
+    """
+    Integration test for sync process, where just files are removed.
+    In that case, there is not chunks creation (UploadQueueItems) and process is going directly to finalize.
+    """
+    test_project = "test_sync_remove"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
+    project_dir_removed = os.path.join(TMP_DIR, f"{test_project}_removed")  # primary project dir for updates
+    cleanup(mc, project, [project_dir, project_dir_removed])
+    # create remote project
+    mc.create_project(test_project)
+    # download the project
+    mc.download_project(project, project_dir)
+    mc.download_project(project, project_dir_removed)
+    shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), project_dir)
+    mc.sync_project(project_dir)
+    mc.sync_project(project_dir_removed)
+    os.remove(os.path.join(project_dir_removed, "base.gpkg"))  # Remove base.gpkg
+    mc.sync_project(project_dir_removed)
 
 
 def test_cancel_push(mc):
@@ -590,33 +678,6 @@ def test_force_gpkg_update(mc):
     assert project_info["version"] == "v2"
     f_remote = next((f for f in project_info["files"] if f["path"] == f_updated), None)
     assert "diff" not in f_remote
-
-
-def test_new_project_sync(mc):
-    """Create a new project, download it, add a file and then do sync - it should not fail"""
-
-    test_project = "test_new_project_sync"
-    project = API_USER + "/" + test_project
-    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
-
-    cleanup(mc, project, [project_dir])
-    # create remote project
-    mc.create_project(test_project)
-
-    # download the project
-    mc.download_project(project, project_dir)
-
-    # add a test file
-    shutil.copy(os.path.join(TEST_DATA_DIR, "test.txt"), project_dir)
-
-    # do a full sync - it should not fail
-    mc.pull_project(project_dir)
-    mc.push_project(project_dir)
-
-    # make sure everything is up-to-date
-    mp = MerginProject(project_dir)
-    local_changes = mp.get_push_changes()
-    assert not local_changes["added"] and not local_changes["removed"] and not local_changes["updated"]
 
 
 def test_missing_basefile_pull(mc):
@@ -1306,6 +1367,7 @@ def _create_test_table(db_file):
     cursor.execute("CREATE TABLE test (fid SERIAL, txt TEXT);")
     cursor.execute("INSERT INTO test VALUES (123, 'hello');")
     cursor.execute("COMMIT;")
+    con.close()
 
 
 def _create_spatial_table(db_file):
@@ -2605,14 +2667,12 @@ def test_download_failure(mc):
 def test_editor(mc: MerginClient):
     """Test editor handler class and push with editor"""
 
-    project_info = {"role": "editor"}
     if not mc.has_editor_support():
-        assert is_editor_enabled(mc, project_info) is False
+        assert is_editor_enabled(mc, EDITOR_ROLE_NAME) is False
         return
 
     # mock that user is editor
-    project_info["role"] = EDITOR_ROLE_NAME
-    assert is_editor_enabled(mc, project_info) is True
+    assert is_editor_enabled(mc, EDITOR_ROLE_NAME) is True
 
     # unit test for editor methods
     qgs_changeset = {
@@ -2620,7 +2680,7 @@ def test_editor(mc: MerginClient):
         "updated": [{"path": "/folder/project.updated.Qgs"}],
         "removed": [{"path": "/folder/project.removed.qgs"}],
     }
-    qgs_changeset = filter_changes(mc, project_info, qgs_changeset)
+    qgs_changeset = filter_changes(mc, EDITOR_ROLE_NAME, qgs_changeset)
     assert sum(len(v) for v in qgs_changeset.values()) == 2
 
 
@@ -3011,6 +3071,174 @@ def test_validate_auth(mc: MerginClient):
     # this should pass and not raise an error, as the client is able to re-login
     with pytest.raises(LoginError):
         mc_auth_token_login_wrong_password.validate_auth()
+
+
+def test_uploaded_chunks_cache(mc):
+    """Create a new project, download it, add a file and then do sync - it should not fail"""
+
+    if not mc.server_features().get("v2_push_enabled"):
+        pytest.skip("Server does not support v2 push")
+    test_project = "test_uploaded_chunks_cache"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
+
+    cleanup(mc, project, [project_dir])
+    # create remote project
+    mc.create_project(test_project)
+
+    # download the project
+    mc.download_project(project, project_dir)
+    mp = MerginProject(project_dir)
+
+    # add a test file
+    file = os.path.join(TEST_DATA_DIR, "test.txt")
+    shutil.copy(os.path.join(TEST_DATA_DIR, "test.txt"), project_dir)
+    shutil.copy(os.path.join(TEST_DATA_DIR, "test.txt"), os.path.join(project_dir, "test2.txt"))
+
+    with open(file, "rb") as file_handle:
+        data = file_handle.read()
+        checksum = hashlib.sha1()
+        checksum.update(data)
+        checksum_str = checksum.hexdigest()
+        resp = mc.post(f"/v2/projects/{mp.project_id()}/chunks", data, {"Content-Type": "application/octet-stream"})
+    resp_dict = json.load(resp)
+    chunk_id = resp_dict.get("id")
+    mc.upload_chunks_cache.add(checksum_str, chunk_id)
+    job = push_project_async(mc, project_dir)
+    push_project_wait(job)
+    push_project_finalize(job)
+    assert job.upload_queue_items[0].server_chunk_id == chunk_id
+    assert job.upload_queue_items[1].server_chunk_id == chunk_id
+    assert mc.upload_chunks_cache.cache == {}
+
+
+def test_client_push_project_async(mc):
+    """
+    Integration tests for low level client_push functions
+    """
+    test_project = "test_client_push"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
+    cleanup(mc, project, [project_dir])
+    # create remote project
+    mc.create_project(test_project)
+    # download the project
+    mc.download_project(project, project_dir)
+    shutil.copy(os.path.join(TEST_DATA_DIR, "test.txt"), project_dir)
+    shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), project_dir)
+    job = push_project_async(mc, project_dir)
+    assert job
+    assert len(job.upload_queue_items) == 2
+    assert len(job.changes.added) == 2
+    assert len(job.changes.updated) == 0
+    assert len(job.changes.removed) == 0
+    push_project_wait(job)
+    assert job.is_cancelled == False
+    assert job.total_size == job.transferred_size
+    assert job.version == "v0"
+    push_project_finalize(job)
+    assert not os.path.exists(job.tmp_dir.name)
+
+
+def test_client_pull_project_async(mc):
+    """
+    Integration tests for low level client_pull functions
+    """
+    test_project = "test_client_pull"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
+    project_dir_pull = os.path.join(TMP_DIR, f"{test_project}_pull")  # primary project dir for updates
+    cleanup(mc, project, [project_dir, project_dir_pull])
+    # create remote project
+    mc.create_project(test_project)
+    # download the project
+    mc.download_project(project, project_dir)
+    mc.download_project(project, project_dir_pull)
+    shutil.copy(os.path.join(TEST_DATA_DIR, "test.txt"), project_dir)
+    shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), project_dir)
+    mc.sync_project(project_dir)
+
+    job = pull_project_async(mc, project_dir_pull)
+    assert job
+    assert len(job.pull_changes.get("added")) == 2
+    pull_project_wait(job)
+    assert job.total_size == job.transferred_size
+    pull_project_finalize(job)
+    assert not os.path.exists(job.tmp_dir.name)
+
+
+def test_client_project_sync(mc):
+    test_project = "test_client_project_sync"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    project_dir_2 = os.path.join(TMP_DIR, f"{test_project}_2")
+    cleanup(mc, project, [project_dir, project_dir_2])
+    # create remote project
+    mc.create_project(test_project)
+    # download the project
+    mc.download_project(project, project_dir)
+    mc.download_project(project, project_dir_2)
+    shutil.copy(os.path.join(TEST_DATA_DIR, "test.txt"), project_dir)
+    shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), project_dir)
+    mc.sync_project(project_dir)
+    shutil.copy(
+        os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"),
+        os.path.join(project_dir_2, "base.gpkg"),
+    )
+    mc.sync_project(project_dir_2)
+
+
+def test_client_project_sync_retry(mc):
+    test_project = "test_client_project_sync_retry"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    cleanup(mc, project, [project_dir])
+    mc.create_project(test_project)
+    mc.download_project(project, project_dir)
+    shutil.copy(os.path.join(TEST_DATA_DIR, "test.txt"), project_dir)
+    with patch("mergin.client.push_project_finalize", autospec=True) as mock_push_project_finalize:
+        mock_push_project_finalize.side_effect = ClientError("test error")
+        with pytest.raises(ClientError, match="test error"):
+            mc.sync_project(project_dir)
+        assert mock_push_project_finalize.call_count == 1
+
+    with patch("mergin.client.push_project_async") as mock_push_project_async, patch("mergin.client.SYNC_ATTEMPTS", 2):
+        mock_push_project_async.side_effect = ClientError(
+            detail="",
+            server_code=ErrorCode.AnotherUploadRunning.value,
+        )
+        with pytest.raises(ClientError):
+            mc.sync_project(project_dir)
+    assert mock_push_project_async.call_count == 2
+
+    # for v1 endpoints we are rising retry just from push start
+    with patch("mergin.client.push_project_async") as mock_push_project_async, patch("mergin.client.SYNC_ATTEMPTS", 2):
+        mock_push_project_async.side_effect = ClientError(
+            detail="Another process is running. Please try later.",
+            http_error=400,
+        )
+        with pytest.raises(ClientError):
+            mc.sync_project(project_dir)
+    assert mock_push_project_async.call_count == 2
+
+
+def test_push_file_limits(mc):
+    test_project = "test_push_file_limits"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    cleanup(mc, project, [project_dir])
+    mc.create_project(test_project)
+    mc.download_project(project, project_dir)
+    shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), project_dir)
+    # setting to some minimal value to mock limit hit
+    with patch("mergin.local_changes.MAX_UPLOAD_VERSIONED_SIZE", 1):
+        with pytest.raises(ClientError, match=f"Some files exceeded maximum upload size. Files: base.gpkg."):
+            mc.push_project(project_dir)
+
+    shutil.copy(os.path.join(TEST_DATA_DIR, "test.txt"), project_dir)
+    with patch("mergin.local_changes.MAX_UPLOAD_MEDIA_SIZE", 1):
+        with pytest.raises(ClientError, match=f"Some files exceeded maximum upload size. Files: test.txt."):
+            mc.push_project(project_dir)
 
 
 def test_server_type(mc):
