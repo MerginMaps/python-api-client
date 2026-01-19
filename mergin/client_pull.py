@@ -24,7 +24,6 @@ from .common import CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
 from .utils import cleanup_tmp_dir, save_to_file
 
-
 # status = download_project_async(...)
 #
 # for completely async approach:
