@@ -624,10 +624,13 @@ class MerginProject:
             try:
                 diff_location = self.fpath(diff_file, diff_directory)
                 self.geodiff.create_changeset(origin_file, current_file, diff_location)
-                if self.geodiff.has_changes(diff_location):
-                    delta_item.checksum = change.get("origin_checksum")
-                    delta_item.change = DeltaChangeType.UPDATE_DIFF
+                if not self.geodiff.has_changes(diff_location):
                     os.remove(diff_location)
+                    continue
+
+                delta_item.checksum = change.get("origin_checksum")
+                delta_item.change = DeltaChangeType.UPDATE_DIFF
+                os.remove(diff_location)
             except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as e:
                 self.log.warning("failed to create changeset for " + path)
                 # probably the database schema has been modified if geodiff cannot create changeset.
