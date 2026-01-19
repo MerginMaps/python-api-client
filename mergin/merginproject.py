@@ -24,6 +24,7 @@ from .utils import (
     conflicted_copy_file_name,
     edit_conflict_file_name,
 )
+from .local_changes import FileChange
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -786,7 +787,9 @@ class MerginProject:
                     # no rebase needed, just apply the diff
                     self.update_without_rebase(path, server_file, live_file, basefile, download_dir)
 
-            elif action_type == PullActionType.COPY_CONFLICT and not prevent_conflicted_copy(path, mc, server_project):
+            elif action_type == PullActionType.COPY_CONFLICT and not prevent_conflicted_copy(
+                path, mc, server_project.get("role")
+            ):
                 conflict = self.create_conflicted_copy(path, mc.username())
                 conflicts.append(conflict)
                 if self.is_versioned_file(path):
