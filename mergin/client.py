@@ -20,6 +20,15 @@ from time import sleep
 from enum import Enum
 from typing import Optional, Type, Union
 
+from .models import (
+    ProjectDelta,
+    ProjectDeltaItemDiff,
+    ProjectDeltaItem,
+    ProjectResponse,
+    ProjectFile,
+    ProjectWorkspace,
+)
+
 from .common import (
     SYNC_ATTEMPT_WAIT,
     SYNC_ATTEMPTS,
@@ -732,6 +741,90 @@ class MerginClient:
             resp = self.get("/v1/project/{}".format(project_path_or_id), params)
         return json.load(resp)
 
+    def project_info_v2(self, project_id: str, files_at_version=None) -> ProjectResponse:
+        """
+        Fetch info about project.
+
+        :param project_id: Project's id
+        :type project_id: String
+        :param files_at_version: Version to track files at given version
+        :type files_at_version: String
+        """
+        self.check_v2_project_info_support()
+
+        params = {}
+        if files_at_version:
+            params = {"files_at_version": files_at_version}
+        resp = self.get(f"/v2/projects/{project_id}", params)
+        resp_json = json.load(resp)
+        project_workspace = resp_json.get("workspace")
+        return ProjectResponse(
+            id=resp_json.get("id"),
+            name=resp_json.get("name"),
+            created_at=resp_json.get("created_at"),
+            updated_at=resp_json.get("updated_at"),
+            version=resp_json.get("version"),
+            public=resp_json.get("public"),
+            role=resp_json.get("role"),
+            size=resp_json.get("size"),
+            workspace=ProjectWorkspace(
+                id=project_workspace.get("id"),
+                name=project_workspace.get("name"),
+            ),
+            files=[
+                ProjectFile(
+                    checksum=f.get("checksum"),
+                    mtime=f.get("mtime"),
+                    path=f.get("path"),
+                    size=f.get("size"),
+                )
+                for f in resp_json.get("files", [])
+            ],
+        )
+
+    def get_project_delta(self, project_id: str, since: str, to: typing.Optional[str] = None) -> ProjectDelta:
+        """
+        Fetch info about project delta since given version.
+
+        :param project_id: Project's id
+        :type project_id: String
+        :param since: Version to track history of files from
+        :type since: String
+        :param to: Optional version to track history of files to, if not given latest version is used
+        :type since: String
+        :rtype: Dict
+        """
+        # If it is not enabled on the server, raise error
+        if not self.server_features().get("v2_pull_enabled", False):
+            raise ClientError("Project delta is not supported by the server")
+
+        params = {"since": since}
+        if to:
+            params["to"] = to
+        resp = self.get(f"/v2/projects/{project_id}/delta", params)
+        resp_parsed = json.load(resp)
+        return ProjectDelta(
+            to_version=resp_parsed.get("to_version"),
+            items=[
+                ProjectDeltaItem(
+                    path=item["path"],
+                    size=item.get("size"),
+                    checksum=item.get("checksum"),
+                    version=item.get("version"),
+                    change=item.get("change"),
+                    diffs=(
+                        [
+                            ProjectDeltaItemDiff(
+                                id=diff.get("id"),
+                            )
+                            for diff in item.get("diffs", [])
+                        ]
+                    ),
+                )
+                for item in resp_parsed.get("items", [])
+            ],
+        )
+
     def paginated_project_versions(self, project_path, page, per_page=100, descending=False):
         """
         Get records of project's versions (history) using calculated pagination.
@@ -822,11 +915,11 @@ class MerginClient:
         :param project_path: Project's full name (<namespace>/<name>)
         :type project_path: String
 
-        :param version: Project version to download, e.g. v42
-        :type version: String
-
         :param directory: Target directory
         :type directory: String
+
+        :param version: Project version to download, e.g. v42
+        :type version: String
         """
         job = download_project_async(self, project_path, directory, version)
         download_project_wait(job)
@@ -1341,13 +1434,21 @@ class MerginClient:
         if not is_version_acceptable(self.server_version(), f"{min_version}"):
             raise NotImplementedError(f"This needs server at version {min_version} or later")
 
+    def check_v2_project_info_support(self):
+        """
+        Check if the server is compatible with v2 endpoint for project info
+        """
+        min_version = "2025.8.2"
+        if not is_version_acceptable(self.server_version(), f"{min_version}"):
+            raise NotImplementedError(f"This needs server at version {min_version} or later")
+
     def create_user(
         self,
         email: str,
         password: str,
         workspace_id: int,
         workspace_role: Union[str, WorkspaceRole],
-        username: str = None,
+        username: Optional[str] = None,
         notify_user: bool = False,
     ) -> dict:
         """

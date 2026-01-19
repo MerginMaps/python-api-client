@@ -1,5 +1,7 @@
 import os
 from enum import Enum
+from typing import List, Dict, Any
+from dataclasses import dataclass, field
 
 CHUNK_SIZE = 100 * 1024 * 1024
 
@@ -152,3 +154,17 @@ class ProjectRole(Enum):
     EDITOR = "editor"
     WRITER = "writer"
     OWNER = "owner"
+
+
+class DeltaChangeType(Enum):
+    CREATE = "create"
+    UPDATE = "update"
+    DELETE = "delete"
+    UPDATE_DIFF = "update_diff"
+
+
+class PullActionType(Enum):
+    COPY = "copy"
+    COPY_CONFLICT = "copy_conflict"
+    APPLY_DIFF = "apply_diff"
+    DELETE = "delete"

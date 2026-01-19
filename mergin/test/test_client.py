@@ -48,7 +48,7 @@ from ..utils import (
 from ..merginproject import pygeodiff
 from ..report import create_report
 from ..editor import EDITOR_ROLE_NAME, filter_changes, is_editor_enabled
-from ..common import ErrorCode, WorkspaceRole, ProjectRole
+from ..common import DeltaChangeType, ErrorCode, WorkspaceRole, ProjectRole
 
 SERVER_URL = os.environ.get("TEST_MERGIN_URL")
 API_USER = os.environ.get("TEST_API_USERNAME")
@@ -267,19 +267,26 @@ def test_create_remote_project_from_local(mc):
 
     # check basic metadata about created project
     project_info = mc.project_info(project)
-    assert project_info["version"] == "v1"
+    assert project_info["version"] == source_mp.version()
     assert project_info["name"] == test_project
     assert project_info["namespace"] == API_USER
     assert project_info["id"] == source_mp.project_id()
 
     # check project metadata retrieval by id
     project_info = mc.project_info(source_mp.project_id())
-    assert project_info["version"] == "v1"
+    assert project_info["version"] == source_mp.version()
     assert project_info["name"] == test_project
     assert project_info["namespace"] == API_USER
     assert project_info["id"] == source_mp.project_id()
 
-    version = mc.project_version_info(project_info.get("id"), "v1")
+    # check basic metadata about created project
+    project_info = mc.project_info_v2(project_info.get("id"))
+    assert project_info.version == source_mp.version()
+    assert project_info.name == test_project
+    assert project_info.workspace.name == API_USER
+    assert project_info.id == source_mp.project_id()
+
+    version = mc.project_version_info(project_info.id, "v1")
     assert version["name"] == "v1"
     assert any(f for f in version["changes"]["added"] if f["path"] == "test.qgs")
 
@@ -411,6 +418,20 @@ def test_push_pull_changes(mc):
     assert mp.version() == "v2"
 
     project_info = mc.project_info(project)
+    assert project_info["version"] == "v2"
+    assert not next((f for f in project_info["files"] if f["path"] == f_removed), None)
+    assert not next((f for f in project_info["files"] if f["path"] == f_renamed), None)
+    assert next((f for f in project_info["files"] if f["path"] == "renamed.txt"), None)
+    assert next((f for f in project_info["files"] if f["path"] == f_added), None)
+    f_remote_checksum = next((f["checksum"] for f in project_info["files"] if f["path"] == f_updated), None)
+    assert generate_checksum(os.path.join(project_dir, f_updated)) == f_remote_checksum
+    assert project_info["id"] == mp.project_id()
+    assert len(project_info["files"]) == len(mp.inspect_files())
+    project_version = mc.project_version_info(project_info["id"], "v2")
+    updated_file = [f for f in project_version["changes"]["updated"] if f["path"] == f_updated][0]
+    assert "origin_checksum" not in updated_file  # internal client info
+
+    project_info = mc.project_info(mp.project_id(), mp.version())
     assert project_info["version"] == "v2"
     assert not next((f for f in project_info["files"] if f["path"] == f_removed), None)
     assert not next((f for f in project_info["files"] if f["path"] == f_renamed), None)
@@ -574,6 +595,7 @@ def test_sync_diff(mc):
     f_renamed = "test_dir/modified_1_geom.gpkg"
     shutil.move(mp.fpath(f_renamed), mp.fpath("renamed.gpkg"))
     mc.push_project(project_dir)
+    mp = MerginProject(project_dir)
 
     # check project after push
     project_info = mc.project_info(project)
@@ -584,6 +606,17 @@ def test_sync_diff(mc):
     assert not next((f for f in project_info["files"] if f["path"] == f_removed), None)
     assert not os.path.exists(mp.fpath_meta(f_removed))
     assert "diff" in f_remote
+    assert os.path.exists(mp.fpath_meta("renamed.gpkg"))
+
+    # check project after push
+
+    project_info = mc.project_info_v2(mp.project_id(), mp.version())
+    assert project_info.version == "v3"
+    assert project_info.id == mp.project_id()
+    f_remote = next((f for f in project_info.files if f.path == f_updated), None)
+    assert next((f for f in project_info.files if f.path == "renamed.gpkg"), None)
+    assert not next((f for f in project_info.files if f.path == f_removed), None)
+    assert not os.path.exists(mp.fpath_meta(f_removed))
     assert os.path.exists(mp.fpath_meta("renamed.gpkg"))
 
     # pull project in different directory
@@ -716,7 +749,9 @@ def test_missing_basefile_pull(mc):
 
     # try to sync again  -- it should not crash
     mc.pull_project(project_dir)
+    assert os.path.exists(os.path.join(project_dir, ".mergin", "base.gpkg"))
     mc.push_project(project_dir)
+    # check if base file exists again
 
 
 def test_empty_file_in_subdir(mc):
@@ -2460,51 +2495,6 @@ def test_reset_local_changes(mc: MerginClient):
     assert len(push_changes["updated"]) == 0
 
 
-def test_project_metadata(mc):
-    test_project = "test_project_metadata"
-    project = API_USER + "/" + test_project
-    project_dir = os.path.join(TMP_DIR, test_project)
-
-    cleanup(mc, project, [project_dir])
-
-    # prepare local project
-    shutil.copytree(TEST_DATA_DIR, project_dir)
-
-    # copy metadata in old format
-    os.makedirs(os.path.join(project_dir, ".mergin"), exist_ok=True)
-    metadata_file = os.path.join(project_dir, "old_metadata.json")
-    # rewrite metadata nemespace to prevent failing tests with other user than test_plugin
-    with open(metadata_file, "r") as f:
-        metadata = json.load(f)
-    metadata["name"] = f"{API_USER}/{test_project}"
-    project_metadata_file = os.path.join(project_dir, ".mergin", "mergin.json")
-    with open(project_metadata_file, "w") as f:
-        json.dump(metadata, f, indent=2)
-
-    # verify we have correct metadata
-    mp = MerginProject(project_dir)
-    assert mp.project_full_name() == f"{API_USER}/{test_project}"
-    assert mp.project_name() == test_project
-    assert mp.workspace_name() == API_USER
-    assert mp.version() == "v0"
-
-    # copy metadata in new format
-    metadata_file = os.path.join(project_dir, "new_metadata.json")
-    # rewrite metadata nemespace to prevent failing tests with other user than test_plugin
-    with open(metadata_file, "r") as f:
-        metadata = json.load(f)
-    metadata["namespace"] = API_USER
-    with open(project_metadata_file, "w") as f:
-        json.dump(metadata, f, indent=2)
-
-    # verify we have correct metadata
-    mp = MerginProject(project_dir)
-    assert mp.project_full_name() == f"{API_USER}/{test_project}"
-    assert mp.project_name() == test_project
-    assert mp.workspace_name() == API_USER
-    assert mp.version() == "v0"
-
-
 def test_project_rename(mc: MerginClient):
     """Check project can be renamed"""
 
@@ -3160,7 +3150,7 @@ def test_client_pull_project_async(mc):
 
     job = pull_project_async(mc, project_dir_pull)
     assert job
-    assert len(job.pull_changes.get("added")) == 2
+    assert len(job.pull_actions) == 2
     pull_project_wait(job)
     assert job.total_size == job.transferred_size
     pull_project_finalize(job)
@@ -3255,6 +3245,61 @@ def test_server_type(mc):
         mock_client_get.side_effect = ClientError(detail="Service unavailable", http_error=503)
         with pytest.raises(ClientError, match="Service unavailable"):
             mc.server_type()
+
+
+def test_pull_project(mc: MerginClient, mc2: MerginClient):
+    """Test pull_project method"""
+    test_project = "test_pull_project_created"
+    test_project_to_pull = "test_pull_project_created_2"
+    project = API_USER + "/" + test_project
+    project_dir = os.path.join(TMP_DIR, test_project)
+    project_dir_to_pull = os.path.join(TMP_DIR, test_project_to_pull)
+    project_dir_to_pull_v1 = os.path.join(TMP_DIR, test_project_to_pull + "_v1")
+
+    cleanup(mc, project, [project_dir, project_dir_to_pull, project_dir_to_pull_v1])
+
+    mp = create_versioned_project(mc, test_project, project_dir, "base.gpkg", remove=False)
+    # download project to another dir
+    mc.download_project(project, project_dir_to_pull, version="v0")
+    mp_to_pull = MerginProject(project_dir_to_pull)
+
+    if mc.server_features() and mc.server_features().get("v2_pull_enabled"):
+        delta = mc.get_project_delta(mp_to_pull.project_id(), since=mp_to_pull.version())
+        assert delta.items
+        assert delta.to_version == mp.version()
+        job = pull_project_async(mc, project_dir_to_pull)
+        assert len(job.download_queue_items) == len(delta.items) - 1  # excluding .qgs zero size file
+        assert os.path.exists(job.tmp_dir.name)
+        pull_project_wait(job)
+        # check project info after pull
+        project_info = mc.project_info_v2(mp_to_pull.project_id(), files_at_version=mp.version())
+        pull_project_finalize(job)
+        mp_to_pull = MerginProject(project_dir_to_pull)
+        assert not os.path.exists(job.tmp_dir.name)
+        assert mp_to_pull.version() == mp.version()
+        assert mp_to_pull.project_id() == mp.project_id()
+        assert len(project_info.files) == len(mp.files())
+        for item in delta.items:
+            assert os.path.exists(mp_to_pull.fpath(item.path))
+        assert os.path.exists(mp_to_pull.fpath_meta("base.gpkg"))
+
+    mc._server_features = {"v2_pull_enabled": False}  # force disable v2 pull
+    mc.download_project(project, project_dir_to_pull_v1, version="v0")
+    job = pull_project_async(mc, project_dir_to_pull_v1)
+    assert os.path.exists(job.tmp_dir.name)
+    pull_project_wait(job)
+    # check project info after pull
+    project_info = mc.project_info(mp_to_pull.project_full_name())
+    pull_project_finalize(job)
+    mp_to_pull = MerginProject(project_dir_to_pull_v1)
+    assert not os.path.exists(job.tmp_dir.name)
+    assert mp_to_pull.version() == mp.version()
+    assert mp_to_pull.project_id() == mp.project_id()
+    assert len(project_info.get("files")) == len(mp.files())
+    delta = mp.get_pull_delta({"files": mp_to_pull.files(), "version": mp_to_pull.version()})
+    for item in [item for item in delta.items if item.change == DeltaChangeType.CREATE]:
+        assert os.path.exists(mp_to_pull.fpath(item.path))
+    assert os.path.exists(mp_to_pull.fpath_meta("base.gpkg"))
 
 
 @pytest.mark.parametrize(
