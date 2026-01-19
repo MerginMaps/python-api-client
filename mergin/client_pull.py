@@ -28,7 +28,6 @@ from .merginproject import MerginProject
 from .utils import cleanup_tmp_dir, int_version, save_to_file
 from typing import List, Optional, Tuple
 
-
 # status = download_project_async(...)
 #
 # for completely async approach:

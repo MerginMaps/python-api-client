@@ -25,7 +25,6 @@ from .utils import (
     edit_conflict_file_name,
 )
 
-
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
 
