@@ -24,7 +24,6 @@ from .common import CHUNK_SIZE, ClientError
 from .merginproject import MerginProject
 from .utils import cleanup_tmp_dir, save_to_file
 
-
 # status = download_project_async(...)
 #
 # for completely async approach:
@@ -385,7 +384,7 @@ class PullJob:
         print("--- END ---")
 
 
-def pull_project_async(mc, directory):
+def pull_project_async(mc, directory) -> PullJob:
     """
     Starts project pull in background and returns handle to the pending job.
     Using that object it is possible to watch progress or cancel the ongoing work.

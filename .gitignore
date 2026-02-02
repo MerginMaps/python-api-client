@@ -12,4 +12,5 @@ htmlcov
 .pytest_cache
 deps
 venv
+debug.py
 .vscode/

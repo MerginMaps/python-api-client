@@ -1,3 +1,4 @@
+import datetime
 from types import SimpleNamespace
 from pathlib import Path
 import logging
@@ -6,8 +7,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from pygeodiff import GeoDiff
-from mergin.client_push import push_project_finalize, UploadJob
+from mergin.client_push import UploadQueueItem, UploadQueueItem, push_project_finalize, UploadJob
 from mergin.common import ClientError
+from mergin.local_changes import FileChange, FileChange, LocalProjectChanges
 from mergin.merginproject import MerginProject
 from mergin.client import MerginClient
 
@@ -54,24 +56,31 @@ def test_push_finalize_logs_on_5xx_real_diff(caplog, status_code, tmp_path):
 
     mc = MagicMock(spec=MerginClient)
     mc.post.side_effect = mc_post
+    mc.server_features.side_effect = lambda: {"v2_push_enabled": False}
 
     tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-test-")
 
     # build a real UploadJob that references the diff/file sizes
     job = UploadJob(
-        project_path="u/p",
-        changes={
-            "added": [],
-            "updated": [
-                {
-                    "path": modified.name,
-                    "size": file_size,
-                    "diff": {"path": diff_rel, "size": diff_size},
-                    "chunks": [1],
-                }
+        version="v1",
+        changes=LocalProjectChanges(
+            added=[],
+            updated=[
+                FileChange(
+                    path=modified.name,
+                    size=file_size,
+                    diff={"path": diff_rel, "size": diff_size},
+                    chunks=["123"],
+                    checksum="abc",
+                    mtime=datetime.datetime.now(),
+                    upload_file=None,
+                    version=None,
+                    history=None,
+                    location=None,
+                )
             ],
-            "removed": [],
-        },
+            removed=[],
+        ),
         transaction_id=tx,
         mp=mp,
         mc=mc,
@@ -80,7 +89,17 @@ def test_push_finalize_logs_on_5xx_real_diff(caplog, status_code, tmp_path):
 
     job.total_size = 1234
     job.transferred_size = 1234
-    job.upload_queue_items = [1]
+    job.upload_queue_items = [
+        UploadQueueItem(
+            chunk_index=0,
+            chunk_id="123",
+            file_checksum="abc",
+            file_path=modified.name,
+            size=file_size,
+            mp=mp,
+            mc=mc,
+        )
+    ]
     job.executor = SimpleNamespace(shutdown=lambda wait=True: None)
     job.futures = [SimpleNamespace(done=lambda: True, exception=lambda: None, running=lambda: False)]
     job.server_resp = {"version": "n/a"}
@@ -89,7 +108,7 @@ def test_push_finalize_logs_on_5xx_real_diff(caplog, status_code, tmp_path):
         push_project_finalize(job)
 
     text = caplog.text
-    assert f"Push failed with HTTP error {status_code}" in text
+    assert f"Push failed with HTTP code {status_code}" in text
     assert "Upload details:" in text
     assert "Files:" in text
     assert modified.name in text
