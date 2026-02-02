@@ -12,9 +12,5 @@ htmlcov
 .pytest_cache
 deps
 venv
-<<<<<<< HEAD
-.vscode/
-=======
 debug.py
 .vscode/
->>>>>>> master

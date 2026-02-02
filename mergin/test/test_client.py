@@ -710,36 +710,6 @@ def test_force_gpkg_update(mc):
     assert "diff" not in f_remote
 
 
-<<<<<<< HEAD
-def test_new_project_sync(mc):
-    """Create a new project, download it, add a file and then do sync - it should not fail"""
-
-    test_project = "test_new_project_sync"
-    project = create_project_path(test_project, mc)
-    project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
-
-    cleanup(mc, project, [project_dir])
-    # create remote project
-    mc.create_project(test_project)
-
-    # download the project
-    mc.download_project(project, project_dir)
-
-    # add a test file
-    shutil.copy(os.path.join(TEST_DATA_DIR, "test.txt"), project_dir)
-
-    # do a full sync - it should not fail
-    mc.pull_project(project_dir)
-    mc.push_project(project_dir)
-
-    # make sure everything is up-to-date
-    mp = MerginProject(project_dir)
-    local_changes = mp.get_push_changes()
-    assert not local_changes["added"] and not local_changes["removed"] and not local_changes["updated"]
-
-
-=======
->>>>>>> master
 def test_missing_basefile_pull(mc):
     """Test pull of a project where basefile of a .gpkg is missing for some reason
     (it should gracefully handle it by downloading the missing basefile)
