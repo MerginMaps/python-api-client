@@ -122,7 +122,7 @@ def mc2():
 
 def create_user_in_workspace(workspace_id: int, mc: MerginClient, role: WorkspaceRole):
     client = mc.create_user(
-        email=f"mc2UserInWorkspace{create_random_suffix()}@example.com",
+        email=f"apitest_userInWorkspace_{create_random_suffix()}@example.com",
         password="Testpass123",
         workspace_id=workspace_id,
         workspace_role=role,
@@ -335,7 +335,7 @@ def test_new_project_sync_v1_api(mc):
     server_features = mc.server_features()
     mc._server_features = {"v2_push_enabled": False}
     test_project = "test_new_project_sync_v1"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
 
     cleanup(mc, project, [project_dir])
@@ -365,7 +365,7 @@ def test_new_project_sync_v2_api(mc):
     This is using v2 endpoint.
     """
     test_project = "test_new_project_sync_v2"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
 
     cleanup(mc, project, [project_dir])
@@ -490,7 +490,7 @@ def test_sync_remove(mc):
     In that case, there is not chunks creation (UploadQueueItems) and process is going directly to finalize.
     """
     test_project = "test_sync_remove"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
     project_dir_removed = os.path.join(TMP_DIR, f"{test_project}_removed")  # primary project dir for updates
     cleanup(mc, project, [project_dir, project_dir_removed])
@@ -3120,7 +3120,7 @@ def test_uploaded_chunks_cache(mc):
     if not mc.server_features().get("v2_push_enabled"):
         pytest.skip("Server does not support v2 push")
     test_project = "test_uploaded_chunks_cache"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
 
     cleanup(mc, project, [project_dir])
@@ -3158,7 +3158,7 @@ def test_client_push_project_async(mc):
     Integration tests for low level client_push functions
     """
     test_project = "test_client_push"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
     cleanup(mc, project, [project_dir])
     # create remote project
@@ -3186,7 +3186,7 @@ def test_client_pull_project_async(mc):
     Integration tests for low level client_pull functions
     """
     test_project = "test_client_pull"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
     project_dir_pull = os.path.join(TMP_DIR, f"{test_project}_pull")  # primary project dir for updates
     cleanup(mc, project, [project_dir, project_dir_pull])
@@ -3210,7 +3210,7 @@ def test_client_pull_project_async(mc):
 
 def test_client_project_sync(mc):
     test_project = "test_client_project_sync"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     project_dir_2 = os.path.join(TMP_DIR, f"{test_project}_2")
     cleanup(mc, project, [project_dir, project_dir_2])
@@ -3231,7 +3231,7 @@ def test_client_project_sync(mc):
 
 def test_client_project_sync_retry(mc):
     test_project = "test_client_project_sync_retry"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     cleanup(mc, project, [project_dir])
     mc.create_project(test_project)
@@ -3265,7 +3265,7 @@ def test_client_project_sync_retry(mc):
 
 def test_push_file_limits(mc):
     test_project = "test_push_file_limits"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     cleanup(mc, project, [project_dir])
     mc.create_project(test_project)
