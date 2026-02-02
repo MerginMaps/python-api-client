@@ -10,7 +10,7 @@ env:
 concurrency:
   group: ci-${{github.ref}}-autotests
   cancel-in-progress: true
-  
+
 jobs:
   tests:
     runs-on: ubuntu-latest
