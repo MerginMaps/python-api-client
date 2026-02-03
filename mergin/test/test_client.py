@@ -58,13 +58,24 @@ USER_PWD2 = os.environ.get("TEST_API_PASSWORD2")
 TMP_DIR = tempfile.gettempdir()
 TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "test_data")
 CHANGED_SCHEMA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "modified_schema")
-STORAGE_WORKSPACE = os.environ.get("TEST_STORAGE_WORKSPACE", "testpluginstorage")
 
 json_headers = {"Content-Type": "application/json"}
 
 
+def get_default_overrides():
+    return {"projects": 100, "api_allowed": True}
+
+
 def get_limit_overrides(storage: int):
     return {"storage": storage, "projects": 2, "api_allowed": True}
+
+
+def teardown(mc: MerginClient, client_workspace_id):
+    mc.patch(
+        f"/v1/tests/workspaces/{client_workspace_id}",
+        {"limits_override": get_default_overrides()},
+        {"Content-Type": "application/json"},
+    )
 
 
 def create_project_path(name, mc):
@@ -75,54 +86,81 @@ def create_project_path(name, mc):
 def mc():
     assert SERVER_URL and SERVER_URL.rstrip("/") != "https://app.merginmaps.com"
 
-    user = f"apitest_{create_random_suffix()}@example.com"
-    password = "testpass123"
+    if API_USER != "" and USER_PWD != "":  # if API_USER and USER_PWD is provided we log in user and use him for tests
+        user = API_USER
+        password = USER_PWD
 
-    anon_client = MerginClient(SERVER_URL)
-    anon_client.post(
-        "/v1/tests/users",
-        {"email": user, "password": password},
-        json_headers,
-        validate_auth=False,
-    )
+        client = create_client(user, password)
+        yield client
 
-    client = create_client(user, password)
-    info = client.user_info()
-    user_id = info["id"]
-    create_workspace_for_client(client)
+    else:  # if user is not provided we create one
+        # user emial is generated with random
+        user = f"apitest_{create_random_suffix()}@example.com"
+        password = "testpass123"
 
-    yield client
+        anon_client = MerginClient(SERVER_URL)
+        anon_client.post(
+            "/v1/tests/users",
+            {"email": user, "password": password},
+            json_headers,
+            validate_auth=False,
+        )
 
-    anon_client.delete(f"/v1/tests/users/{user_id}", validate_auth=False)
+        # create MerginClient object and workspace for him
+        client = create_client(user, password)
+        create_workspace_for_client(client)
+
+        # we yield client
+        yield client
+
+        # afterwards we disable client and workspace
+        delete_test_user_and_workspace(client)
 
 
 @pytest.fixture(scope="function")
 def mc2():
     assert SERVER_URL and SERVER_URL.rstrip("/") != "https://app.merginmaps.com"
 
-    user = f"apitest2_{create_random_suffix()}@example.com"
-    password = "testpass123"
+    if API_USER2 != "" and USER_PWD2 != "":
+        user = API_USER2
+        password = USER_PWD2
 
-    anon_client = MerginClient(SERVER_URL)
-    anon_client.post(
-        "/v1/tests/users",
-        {"email": user, "password": password},
-        json_headers,
-        validate_auth=False,
-    )
+        client = create_client(user, password)
+        yield client
+    else:
+        user = f"apitest2_{create_random_suffix()}@example.com"
+        password = "testpass123"
 
-    client = create_client(user, password)
+        anon_client = MerginClient(SERVER_URL)
+        anon_client.post(
+            "/v1/tests/users",
+            {"email": user, "password": password},
+            json_headers,
+            validate_auth=False,
+        )
+
+        client = create_client(user, password)
+        create_workspace_for_client(client)
+
+        yield client
+
+        delete_test_user_and_workspace(client)
+
+
+def delete_test_user_and_workspace(client: MerginClient):
+    """Takes MC object and call delete /v1/tests/users/{user_id} which sets inactive_sice and set active to false."""
     info = client.user_info()
     user_id = info["id"]
-    create_workspace_for_client(client)
-    yield client
 
+    anon_client = MerginClient(SERVER_URL)
     anon_client.delete(f"/v1/tests/users/{user_id}", validate_auth=False)
 
 
 def create_user_in_workspace(workspace_id: int, mc: MerginClient, role: WorkspaceRole):
+    """Creates user inside of workspace"""
+
     client = mc.create_user(
-        email=f"apitest_userInWorkspace_{create_random_suffix()}@example.com",
+        email=f"apitest_userInWorkspace{create_random_suffix()}@example.com",
         password="Testpass123",
         workspace_id=workspace_id,
         workspace_role=role,
@@ -906,7 +944,7 @@ def test_available_workspace_storage(mc: MerginClient):
 
     # get info about storage capacity
     storage_remaining = 0
-    client_workspace = mc.workspaces_list()[0]  # ask for alternative
+    client_workspace = mc.workspaces_list()[0]
 
     current_storage = client_workspace["storage"]
     client_workspace_id = client_workspace["id"]
@@ -948,6 +986,8 @@ def test_available_workspace_storage(mc: MerginClient):
 
         # remove dummy big file from a disk
         remove_folders([project_dir])
+
+    teardown(mc, client_workspace_id)
 
 
 def test_available_storage_validation2(mc, mc2):
@@ -2715,7 +2755,7 @@ def test_editor(mc: MerginClient):
 def test_editor_push(mc: MerginClient):
     """Test push with editor"""
 
-    test_project_name = "test_editor_push"
+    test_project_name = f"test_editor_push{create_random_suffix()}"
     test_project_fullname = create_project_path(test_project_name, mc)
 
     mc.create_project(test_project_fullname)
@@ -2723,9 +2763,6 @@ def test_editor_push(mc: MerginClient):
     mc_workspace_id = project_info.get("workspace_id")
 
     mc2 = create_user_in_workspace(mc_workspace_id, mc, WorkspaceRole.READER)
-
-    if not mc.has_editor_support():
-        return
 
     project_dir = os.path.join(TMP_DIR, test_project_name)
     project_dir2 = os.path.join(TMP_DIR, test_project_name + "_2")
@@ -2801,10 +2838,11 @@ def test_editor_push(mc: MerginClient):
             conflicted_file = project_file
     # There is no conflicted qgs file
     assert conflicted_file is None
+    delete_test_user_and_workspace(mc2)
 
 
 def test_error_push_already_named_project(mc: MerginClient):
-    test_project = "test_push_already_existing"
+    test_project = f"test_push_already_existing{create_random_suffix()}"
     project_dir = os.path.join(TMP_DIR, test_project)
     project_name = create_project_path(test_project, mc)
 
@@ -2826,7 +2864,7 @@ def test_error_projects_limit_hit(mc: MerginClient):
     project_dir = os.path.join(TMP_DIR, test_project, mc.username())
     cleanup(mc, test_project, [project_dir])
 
-    client_workspace = mc.workspaces_list()[0]  # ask for alternative
+    client_workspace = mc.workspaces_list()[0]
 
     client_workspace_id = client_workspace["id"]
     client_workspace_storage = client_workspace["storage"]
@@ -2847,24 +2885,26 @@ def test_error_projects_limit_hit(mc: MerginClient):
     assert e.value.http_method == "POST"
     assert e.value.url == f"{mc.url}v1/project/{mc.username()}"
 
+    teardown(mc, client_workspace_id)
+
 
 def test_workspace_requests(mc: MerginClient):
-    test_project = "test_permissions"
+    test_project = f"test_permissions{create_random_suffix()}"
     test_project_fullname = create_project_path(test_project, mc)
     mc.create_project(test_project_fullname)
     project_info = mc.project_info(test_project_fullname)
     ws_id = project_info.get("workspace_id")
 
-    mc2 = create_user_in_workspace(ws_id, mc, WorkspaceRole.OWNER)
+    user_in_workspace: MerginClient = create_user_in_workspace(ws_id, mc, WorkspaceRole.OWNER)
 
-    usage = mc2.workspace_usage(ws_id)
+    usage = user_in_workspace.workspace_usage(ws_id)
     # Check type and common value
     assert type(usage) == dict
     assert usage["api"]["allowed"] == True
     assert usage["history"]["quota"] > 0
     assert usage["history"]["usage"] == 0
 
-    service = mc2.workspace_service(ws_id)
+    service = user_in_workspace.workspace_service(ws_id)
     # Check type and common value
     assert type(service) == dict
     assert service["action_required"] == False
@@ -2873,6 +2913,13 @@ def test_workspace_requests(mc: MerginClient):
     assert service["plan"]["product_id"] == None
     assert service["plan"]["type"] == "trial"
     assert service["subscription"] == None
+
+    info = user_in_workspace.user_info()
+    user_id = info["id"]
+
+    # need to change role != OWNER because endpoint deletes workspaces where user is OWNER causing mc workspace to be disabled
+    user_in_workspace.update_workspace_member(ws_id, user_id, workspace_role=WorkspaceRole.READER)
+    delete_test_user_and_workspace(user_in_workspace)
 
 
 def test_access_management(mc: MerginClient, mc2: MerginClient):
