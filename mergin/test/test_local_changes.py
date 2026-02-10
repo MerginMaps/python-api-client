@@ -28,6 +28,7 @@ def test_local_changes_from_dict():
                 "path": "base.gpkg",
                 "size": 98304,
                 "version": "v1",
+                "diffs": ["diff"],
             }
         ],
     }
