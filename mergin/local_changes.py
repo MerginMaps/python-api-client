@@ -45,6 +45,8 @@ class FileChange:
     history: Optional[dict] = None
     # some functions (MerginProject.compare_file_sets) are adding location dict to the change from project info
     location: Optional[str] = None
+    # list of diff filenames associated with this change
+    diffs: Optional[List[str]] = None
 
     def get_diff(self) -> Optional[FileDiffChange]:
         if self.diff:
