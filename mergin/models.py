@@ -15,12 +15,12 @@ class ProjectDeltaItemDiff:
 
 
 @dataclass
-class ProjectDeltaItem:
+class ProjectDeltaChange:
     """
     Single file change presented in project delta items.
     """
 
-    change: DeltaChangeType
+    type: DeltaChangeType
     path: str
     version: str
     size: int
@@ -28,7 +28,7 @@ class ProjectDeltaItem:
     diffs: List[ProjectDeltaItemDiff] = field(default_factory=list)
 
     def __post_init__(self):
-        self.change = DeltaChangeType(self.change)
+        self.type = DeltaChangeType(self.type)
 
 
 @dataclass
@@ -38,7 +38,7 @@ class ProjectDelta:
     """
 
     to_version: str
-    items: List[ProjectDeltaItem] = field(default_factory=list)
+    items: List[ProjectDeltaChange] = field(default_factory=list)
 
 
 @dataclass
@@ -48,8 +48,8 @@ class PullAction:
     """
 
     type: PullActionType
-    pull_delta_item: ProjectDeltaItem
-    local_delta_item: Optional[ProjectDeltaItem] = None
+    pull_delta_item: ProjectDeltaChange
+    local_delta_item: Optional[ProjectDeltaChange] = None
 
     def __post_init__(self):
         self.type = PullActionType(self.type)
@@ -78,7 +78,7 @@ class ProjectWorkspace:
 
 
 @dataclass
-class ProjectResponse:
+class ProjectInfo:
     """
     Project info response.
     """

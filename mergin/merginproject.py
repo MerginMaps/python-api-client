@@ -14,7 +14,7 @@ from dataclasses import asdict
 from .editor import prevent_conflicted_copy
 
 from .common import UPLOAD_CHUNK_SIZE, DeltaChangeType, InvalidProject, ClientError, PullActionType
-from .models import ProjectDelta, ProjectDeltaItem, ProjectDeltaItemDiff, PullAction
+from .models import ProjectDelta, ProjectDeltaChange, ProjectDeltaItemDiff, PullAction
 from .utils import (
     generate_checksum,
     is_versioned_file,
@@ -371,6 +371,8 @@ class MerginProject:
 
         .. seealso:: self.compare_file_sets
 
+        ::deprecated
+
         :param server_files: list of server files' metadata with mandatory 'history' field (see also self.inspect_files(),
         self.project_info(project_path, since=v1))
         :type server_files: list[dict]
@@ -421,6 +423,8 @@ class MerginProject:
         """
         Calculate delta needed to be pulled from server.
 
+        This is to support legacy servers without /delta endpoint (server feature v2_pull_enabled=True).
+
         Calculate diffs between local files metadata and server's ones. Because simple metadata like file size or
         checksum are not enough to determine geodiff files changes, evaluate also their history (provided by server).
 
@@ -448,8 +452,8 @@ class MerginProject:
         updated = changes.get("updated", [])
         for change in added:
             result.append(
-                ProjectDeltaItem(
-                    change=DeltaChangeType.CREATE,
+                ProjectDeltaChange(
+                    type=DeltaChangeType.CREATE,
                     path=change["path"],
                     size=change["size"],
                     checksum=change["checksum"],
@@ -458,8 +462,8 @@ class MerginProject:
             )
         for change in removed:
             result.append(
-                ProjectDeltaItem(
-                    change=DeltaChangeType.DELETE,
+                ProjectDeltaChange(
+                    type=DeltaChangeType.DELETE,
                     path=change["path"],
                     size=change["size"],
                     checksum=change["checksum"],
@@ -472,8 +476,8 @@ class MerginProject:
             path = change.get("path")
             if not self.is_versioned_file(path):
                 result.append(
-                    ProjectDeltaItem(
-                        change=DeltaChangeType.UPDATE,
+                    ProjectDeltaChange(
+                        type=DeltaChangeType.UPDATE,
                         path=path,
                         size=change["size"],
                         checksum=change["checksum"],
@@ -506,8 +510,8 @@ class MerginProject:
 
             if is_updated:
                 result.append(
-                    ProjectDeltaItem(
-                        change=DeltaChangeType.UPDATE_DIFF if diffs else DeltaChangeType.UPDATE,
+                    ProjectDeltaChange(
+                        type=DeltaChangeType.UPDATE_DIFF if diffs else DeltaChangeType.UPDATE,
                         path=path,
                         size=change["size"],
                         checksum=change["checksum"],
@@ -554,7 +558,7 @@ class MerginProject:
 
         return pull_action_map.get((server_change, local_change))
 
-    def get_local_delta(self, diff_directory: str) -> List[ProjectDeltaItem]:
+    def get_local_delta(self, diff_directory: str) -> List[ProjectDeltaChange]:
         """
         Calculate local delta needed to be pushed to server.
 
@@ -576,8 +580,8 @@ class MerginProject:
 
         for change in added:
             result.append(
-                ProjectDeltaItem(
-                    change=DeltaChangeType.CREATE,
+                ProjectDeltaChange(
+                    type=DeltaChangeType.CREATE,
                     path=change.get("path"),
                     size=change.get("size"),
                     checksum=change.get("checksum"),
@@ -586,8 +590,8 @@ class MerginProject:
             )
         for change in removed:
             result.append(
-                ProjectDeltaItem(
-                    change=DeltaChangeType.DELETE,
+                ProjectDeltaChange(
+                    type=DeltaChangeType.DELETE,
                     path=change.get("path"),
                     size=change.get("size"),
                     checksum=change.get("checksum"),
@@ -599,8 +603,8 @@ class MerginProject:
             path = change.get("path")
             if not self.is_versioned_file(path):
                 result.append(
-                    ProjectDeltaItem(
-                        change=DeltaChangeType.UPDATE,
+                    ProjectDeltaChange(
+                        type=DeltaChangeType.UPDATE,
                         path=change.get("path"),
                         size=change.get("size"),
                         checksum=change.get("checksum"),
@@ -614,8 +618,8 @@ class MerginProject:
             diff_id = str(uuid.uuid4())
             diff_name = path + "-diff-" + diff_id
             diff_file = os.path.join(diff_name)
-            delta_item = ProjectDeltaItem(
-                change=DeltaChangeType.UPDATE,
+            delta_item = ProjectDeltaChange(
+                type=DeltaChangeType.UPDATE,
                 path=path,
                 size=change["size"],
                 checksum=change["checksum"],
@@ -634,7 +638,7 @@ class MerginProject:
                     continue
 
                 delta_item.checksum = change.get("origin_checksum")
-                delta_item.change = DeltaChangeType.UPDATE_DIFF
+                delta_item.type = DeltaChangeType.UPDATE_DIFF
                 os.remove(diff_location)
             except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as e:
                 self.log.warning("failed to create changeset for " + path)
@@ -765,8 +769,8 @@ class MerginProject:
             live_file = self.fpath(path)
             basefile = self.fpath_meta(path)
             action_type = action.type
-            pull_change = action.pull_delta_item.change
-            local_change = action.local_delta_item.change if action.local_delta_item else None
+            pull_change = action.pull_delta_item.type
+            local_change = action.local_delta_item.type if action.local_delta_item else None
             if action_type == PullActionType.COPY:
                 # simply copy the file from server
                 if is_versioned_file(path):
@@ -787,9 +791,10 @@ class MerginProject:
                     # no rebase needed, just apply the diff
                     self.update_without_rebase(path, server_file, live_file, basefile, download_dir)
 
-            elif action_type == PullActionType.COPY_CONFLICT and not prevent_conflicted_copy(
-                path, mc, server_project.get("role")
-            ):
+            elif action_type == PullActionType.COPY_CONFLICT:
+                if not prevent_conflicted_copy(path, mc, server_project.get("role")):
+                    continue
+
                 conflict = self.create_conflicted_copy(path, mc.username())
                 conflicts.append(conflict)
                 if self.is_versioned_file(path):
@@ -808,7 +813,7 @@ class MerginProject:
                 # remove local file
                 if os.path.exists(live_file):
                     os.remove(live_file)
-                    if self.is_versioned_file(path):
+                    if self.is_versioned_file(path) and os.path.exists(basefile):
                         os.remove(basefile)
 
         return conflicts

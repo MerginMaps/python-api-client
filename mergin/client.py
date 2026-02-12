@@ -23,8 +23,8 @@ from typing import Optional, Type, Union
 from .models import (
     ProjectDelta,
     ProjectDeltaItemDiff,
-    ProjectDeltaItem,
-    ProjectResponse,
+    ProjectDeltaChange,
+    ProjectInfo,
     ProjectFile,
     ProjectWorkspace,
 )
@@ -741,7 +741,7 @@ class MerginClient:
             resp = self.get("/v1/project/{}".format(project_path_or_id), params)
         return json.load(resp)
 
-    def project_info_v2(self, project_id: str, files_at_version=None) -> ProjectResponse:
+    def project_info_v2(self, project_id: str, files_at_version=None) -> ProjectInfo:
         """
         Fetch info about project.
 
@@ -758,7 +758,7 @@ class MerginClient:
         resp = self.get(f"/v2/projects/{project_id}", params)
         resp_json = json.load(resp)
         project_workspace = resp_json.get("workspace")
-        return ProjectResponse(
+        return ProjectInfo(
             id=resp_json.get("id"),
             name=resp_json.get("name"),
             created_at=resp_json.get("created_at"),
@@ -806,12 +806,12 @@ class MerginClient:
         return ProjectDelta(
             to_version=resp_parsed.get("to_version"),
             items=[
-                ProjectDeltaItem(
+                ProjectDeltaChange(
                     path=item["path"],
                     size=item.get("size"),
                     checksum=item.get("checksum"),
                     version=item.get("version"),
-                    change=item.get("change"),
+                    type=item.get("change"),
                     diffs=(
                         [
                             ProjectDeltaItemDiff(
