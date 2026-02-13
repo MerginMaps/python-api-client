@@ -99,7 +99,7 @@ To download a specific version of a project:
 $ mergin --username john download --version v42 john/project1 ~/mergin/project1
 ```
 
-To download a sepecific version of a single file:
+To download a specific version of a single file:
 
 1. First you need to download the project:
 ```
