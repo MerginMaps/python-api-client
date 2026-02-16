@@ -16,7 +16,7 @@ setup(
     platforms="any",
     install_requires=[
         "python-dateutil==2.8.2",
-        "pygeodiff==2.1.2",
+        "pygeodiff==2.2.0",
         "pytz==2022.1",
         "click==8.1.3",
     ],
