@@ -86,7 +86,7 @@ def create_project_path(name, mc):
 def mc():
     assert SERVER_URL and SERVER_URL.rstrip("/") != "https://app.merginmaps.com"
 
-    if API_USER != "" and USER_PWD != "":  # if API_USER and USER_PWD is provided we log in user and use him for tests
+    if API_USER and USER_PWD:  # if API_USER and USER_PWD is provided we log in user and use him for tests
         user = API_USER
         password = USER_PWD
 
@@ -121,7 +121,7 @@ def mc():
 def mc2():
     assert SERVER_URL and SERVER_URL.rstrip("/") != "https://app.merginmaps.com"
 
-    if API_USER2 != "" and USER_PWD2 != "":
+    if API_USER2 and USER_PWD2:  # if API_USER2 and USER_PWD2 is provided we log in user and use him for tests
         user = API_USER2
         password = USER_PWD2
 
