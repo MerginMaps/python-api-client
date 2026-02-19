@@ -10,10 +10,8 @@ from datetime import datetime, timedelta, date, timezone
 import pytest
 import pytz
 import sqlite3
-import glob
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 
-from unittest.mock import patch, Mock
 
 from .. import InvalidProject
 from ..client import (
@@ -1382,16 +1380,6 @@ def _create_spatial_table(db_file):
     cursor.execute("COMMIT;")
 
 
-def _delete_spatial_table(db_file):
-    """Drops spatial table called 'test' in sqlite database. Useful to simulate change of database schema."""
-    con = sqlite3.connect(db_file)
-    cursor = con.cursor()
-    cursor.execute("DROP TABLE poi;")
-    cursor.execute("DELETE FROM gpkg_geometry_columns WHERE table_name='poi';")
-    cursor.execute("DELETE FROM gpkg_contents WHERE table_name='poi';")
-    cursor.execute("COMMIT;")
-
-
 def _check_test_table(db_file):
     """Checks whether the 'test' table exists and has one row - otherwise fails with an exception."""
     assert _get_table_row_count(db_file, "test") == 1
@@ -1401,7 +1389,7 @@ def _get_table_row_count(db_file, table):
     try:
         con_verify = sqlite3.connect(db_file)
         cursor_verify = con_verify.cursor()
-        cursor_verify.execute("select count(*) from {};".format(table))
+        cursor_verify.execute("select count(*) from {};".format(table))  # nosec B608
         return cursor_verify.fetchone()[0]
     finally:
         cursor_verify.close()
@@ -3097,7 +3085,7 @@ def test_uploaded_chunks_cache(mc):
 
     with open(file, "rb") as file_handle:
         data = file_handle.read()
-        checksum = hashlib.sha1()
+        checksum = hashlib.sha1()  # nosec B324  # usedforsecurity=False flag is compatible with python 3.9+
         checksum.update(data)
         checksum_str = checksum.hexdigest()
         resp = mc.post(f"/v2/projects/{mp.project_id()}/chunks", data, {"Content-Type": "application/octet-stream"})
