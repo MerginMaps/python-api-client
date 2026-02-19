@@ -1389,7 +1389,9 @@ def _get_table_row_count(db_file, table):
     try:
         con_verify = sqlite3.connect(db_file)
         cursor_verify = con_verify.cursor()
-        cursor_verify.execute("select count(*) from {};".format(table))  # nosec B608 - internal test helper, not using user input
+        cursor_verify.execute(
+            "select count(*) from {};".format(table)
+        )  # nosec B608 - internal test helper, not using user input
         return cursor_verify.fetchone()[0]
     finally:
         cursor_verify.close()
