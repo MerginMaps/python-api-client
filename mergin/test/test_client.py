@@ -1389,7 +1389,7 @@ def _get_table_row_count(db_file, table):
     try:
         con_verify = sqlite3.connect(db_file)
         cursor_verify = con_verify.cursor()
-        cursor_verify.execute("select count(*) from {};".format(table))  # nosec B608
+        cursor_verify.execute("select count(*) from {};".format(table))  # nosec B608 - internal test helper, not using user input
         return cursor_verify.fetchone()[0]
     finally:
         cursor_verify.close()
@@ -3085,7 +3085,7 @@ def test_uploaded_chunks_cache(mc):
 
     with open(file, "rb") as file_handle:
         data = file_handle.read()
-        checksum = hashlib.sha1()  # nosec B324  # usedforsecurity=False flag is compatible with python 3.9+
+        checksum = hashlib.sha1()  # nosec B324 - usedforsecurity=False flag is compatible with python 3.9+
         checksum.update(data)
         checksum_str = checksum.hexdigest()
         resp = mc.post(f"/v2/projects/{mp.project_id()}/chunks", data, {"Content-Type": "application/octet-stream"})

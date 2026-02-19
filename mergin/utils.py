@@ -20,7 +20,7 @@ def generate_checksum(file, chunk_size=4096):
     :param chunk_size: size of chunk
     :return: sha1 checksum
     """
-    checksum = hashlib.sha1()  # nosec B324  # usedforsecurity=False flag is compatible with python 3.9+
+    checksum = hashlib.sha1()  # nosec B324 - usedforsecurity=False flag is compatible with python 3.9+
     with open(file, "rb") as f:
         while True:
             chunk = f.read(chunk_size)
@@ -306,7 +306,7 @@ def get_data_checksum(data: ByteString) -> str:
     :param data: data to calculate checksum
     :return: sha1 checksum
     """
-    checksum = hashlib.sha1()  # nosec B324  # usedforsecurity=False flag is compatible with python 3.9+
+    checksum = hashlib.sha1()  # nosec B324 - usedforsecurity=False flag is compatible with python 3.9+
     checksum.update(data)
     return checksum.hexdigest()
 
