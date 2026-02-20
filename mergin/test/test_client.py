@@ -88,7 +88,7 @@ def create_project_path(name, mc):
 
 
 def create_mc_client_and_workspace(api_user, user_pwd, test_tag=""):
-    if api_user != "" and user_pwd != "":  # if API_USER and USER_PWD is provided we log in user and use him for tests
+    if api_user and user_pwd :  # if API_USER and USER_PWD is provided we log in user and use him for tests
         user = api_user
         password = user_pwd
 
@@ -120,11 +120,12 @@ def create_mc_client_and_workspace(api_user, user_pwd, test_tag=""):
 def mc():
     assert SERVER_URL and SERVER_URL.rstrip("/") != "https://app.merginmaps.com"
 
+
     client = create_mc_client_and_workspace(API_USER, USER_PWD)
 
     yield client
 
-    if API_USER == "" or USER_PWD == "":
+    if not (API_USER and USER_PWD):
         delete_test_user_and_workspace(client)
 
 
@@ -136,7 +137,7 @@ def mc2():
 
     yield client
 
-    if API_USER2 == "" or USER_PWD2 == "":
+    if not (API_USER2 and USER_PWD2):
         delete_test_user_and_workspace(client)
 
 
