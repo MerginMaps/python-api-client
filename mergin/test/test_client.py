@@ -56,7 +56,7 @@ API_USER = os.environ.get("TEST_API_USERNAME")
 USER_PWD = os.environ.get("TEST_API_PASSWORD")
 API_USER2 = os.environ.get("TEST_API_USERNAME2")
 USER_PWD2 = os.environ.get("TEST_API_PASSWORD2")
-PASSWORD_DEFAULT = PASSWORD_DEFAULT = secrets.token_urlsafe(20)
+PASSWORD_DEFAULT = secrets.token_urlsafe(20)
 DEFAULT_OVERRIDES = {"projects": 100, "api_allowed": True}
 TMP_DIR = tempfile.gettempdir()
 TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "test_data")
