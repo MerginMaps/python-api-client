@@ -11,6 +11,7 @@ import pytest
 import pytz
 import sqlite3
 import glob
+import secrets
 from unittest.mock import patch, Mock
 
 from unittest.mock import patch, Mock
@@ -55,6 +56,8 @@ API_USER = os.environ.get("TEST_API_USERNAME")
 USER_PWD = os.environ.get("TEST_API_PASSWORD")
 API_USER2 = os.environ.get("TEST_API_USERNAME2")
 USER_PWD2 = os.environ.get("TEST_API_PASSWORD2")
+PASSWORD_DEFAULT = PASSWORD_DEFAULT = secrets.token_urlsafe(10)
+DEFAULT_OVERRIDES = {"projects": 100, "api_allowed": True}
 TMP_DIR = tempfile.gettempdir()
 TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "test_data")
 CHANGED_SCHEMA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "modified_schema")
@@ -62,18 +65,20 @@ CHANGED_SCHEMA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "
 json_headers = {"Content-Type": "application/json"}
 
 
-def get_default_overrides():
-    return {"projects": 100, "api_allowed": True}
-
-
 def get_limit_overrides(storage: int):
     return {"storage": storage, "projects": 2, "api_allowed": True}
 
 
-def teardown(mc: MerginClient, client_workspace_id):
+def reset_workspace_limits(mc: MerginClient, client_workspace_id):
+    """
+    Resets workspace storage and project limits to default values after testing.
+
+    This reset applies specifically to the pre-created test user's workspace.
+    It is not intended for use with dynamically generated test users.
+    """
     mc.patch(
         f"/v1/tests/workspaces/{client_workspace_id}",
-        {"limits_override": get_default_overrides()},
+        {"limits_override": DEFAULT_OVERRIDES},
         {"Content-Type": "application/json"},
     )
 
@@ -82,21 +87,18 @@ def create_project_path(name, mc):
     return mc.username() + "/" + name
 
 
-@pytest.fixture(scope="function")
-def mc():
-    assert SERVER_URL and SERVER_URL.rstrip("/") != "https://app.merginmaps.com"
-
-    if API_USER != "" and USER_PWD != "":  # if API_USER and USER_PWD is provided we log in user and use him for tests
-        user = API_USER
-        password = USER_PWD
+def create_mc_client_and_workspace(api_user, user_pwd, test_tag=""):
+    if api_user != "" and user_pwd != "":  # if API_USER and USER_PWD is provided we log in user and use him for tests
+        user = api_user
+        password = user_pwd
 
         client = create_client(user, password)
-        yield client
+        return client
 
     else:  # if user is not provided we create one
         # user emial is generated with random
-        user = f"apitest_{create_random_suffix()}@example.com"
-        password = "testpass123"
+        user = f"apitest{test_tag}_{create_random_suffix()}@example.com"
+        password = PASSWORD_DEFAULT
 
         anon_client = MerginClient(SERVER_URL)
         anon_client.post(
@@ -111,9 +113,18 @@ def mc():
         create_workspace_for_client(client)
 
         # we yield client
-        yield client
+        return client
 
-        # afterwards we disable client and workspace
+
+@pytest.fixture(scope="function")
+def mc():
+    assert SERVER_URL and SERVER_URL.rstrip("/") != "https://app.merginmaps.com"
+
+    client = create_mc_client_and_workspace(API_USER, USER_PWD)
+
+    yield client
+
+    if API_USER == "" or USER_PWD == "":
         delete_test_user_and_workspace(client)
 
 
@@ -121,29 +132,11 @@ def mc():
 def mc2():
     assert SERVER_URL and SERVER_URL.rstrip("/") != "https://app.merginmaps.com"
 
-    if API_USER2 != "" and USER_PWD2 != "":
-        user = API_USER2
-        password = USER_PWD2
+    client = create_mc_client_and_workspace(API_USER2, USER_PWD2, test_tag="2")
 
-        client = create_client(user, password)
-        yield client
-    else:
-        user = f"apitest2_{create_random_suffix()}@example.com"
-        password = "testpass123"
+    yield client
 
-        anon_client = MerginClient(SERVER_URL)
-        anon_client.post(
-            "/v1/tests/users",
-            {"email": user, "password": password},
-            json_headers,
-            validate_auth=False,
-        )
-
-        client = create_client(user, password)
-        create_workspace_for_client(client)
-
-        yield client
-
+    if API_USER2 == "" or USER_PWD2 == "":
         delete_test_user_and_workspace(client)
 
 
@@ -161,12 +154,12 @@ def create_user_in_workspace(workspace_id: int, mc: MerginClient, role: Workspac
 
     client = mc.create_user(
         email=f"apitest_userInWorkspace{create_random_suffix()}@example.com",
-        password="Testpass123",
+        password=PASSWORD_DEFAULT,
         workspace_id=workspace_id,
         workspace_role=role,
     )
 
-    return MerginClient(url=SERVER_URL, login=client["email"], password="Testpass123")
+    return MerginClient(url=SERVER_URL, login=client["email"], password=PASSWORD_DEFAULT)
 
 
 def create_random_suffix():
@@ -987,7 +980,7 @@ def test_available_workspace_storage(mc: MerginClient):
         # remove dummy big file from a disk
         remove_folders([project_dir])
 
-    teardown(mc, client_workspace_id)
+    reset_workspace_limits(mc, client_workspace_id)
 
 
 def test_available_storage_validation2(mc, mc2):
@@ -1575,7 +1568,7 @@ def test_push_gpkg_schema_change(mc):
     # at this point we still have an open sqlite connection to the GPKG, so checkpointing will not work correctly)
     mc.push_project(project_dir)
 
-    subprocess.run(["sleep", "15"])
+    subprocess.run(["sleep", "5"])
 
     # WITH TWO SQLITE copies: fails here  (sqlite3.OperationalError: disk I/O error)  + in geodiff log: SQLITE3: (283)recovered N frames from WAL file
     _check_test_table(test_gpkg)
@@ -2885,7 +2878,7 @@ def test_error_projects_limit_hit(mc: MerginClient):
     assert e.value.http_method == "POST"
     assert e.value.url == f"{mc.url}v1/project/{mc.username()}"
 
-    teardown(mc, client_workspace_id)
+    reset_workspace_limits(mc, client_workspace_id)
 
 
 def test_workspace_requests(mc: MerginClient):
@@ -3131,7 +3124,7 @@ def test_validate_auth(mc: MerginClient):
     # ----- Client with token and username/password -----
     # create a client with valid auth token based on other MerginClient instance with username/password that allows relogin if the token is expired
     mc_auth_token_login = MerginClient(
-        SERVER_URL, auth_token=mc._auth_session["token"], login=mc.username(), password="testpass123"
+        SERVER_URL, auth_token=mc._auth_session["token"], login=mc.username(), password=PASSWORD_DEFAULT
     )
 
     # this should pass and not raise an error
