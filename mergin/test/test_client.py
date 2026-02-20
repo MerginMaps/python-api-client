@@ -96,7 +96,7 @@ def create_mc_client_and_workspace(api_user, user_pwd, test_tag=""):
         return client
 
     else:  # if user is not provided we create one
-        # user emial is generated with random
+        # user email is generated with random
         user = f"apitest{test_tag}_{create_random_suffix()}@example.com"
         password = PASSWORD_DEFAULT
 
