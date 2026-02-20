@@ -183,6 +183,7 @@ For running test do:
 
 ```bash
     cd mergin
+    # TEST_ related vairables are optional
     export TEST_MERGIN_URL=<url> # testing server
     export TEST_API_USERNAME=<username>
     export TEST_API_PASSWORD=<pwd>
