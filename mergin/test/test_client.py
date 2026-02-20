@@ -56,7 +56,7 @@ API_USER = os.environ.get("TEST_API_USERNAME")
 USER_PWD = os.environ.get("TEST_API_PASSWORD")
 API_USER2 = os.environ.get("TEST_API_USERNAME2")
 USER_PWD2 = os.environ.get("TEST_API_PASSWORD2")
-PASSWORD_DEFAULT = PASSWORD_DEFAULT = secrets.token_urlsafe(10)
+PASSWORD_DEFAULT = PASSWORD_DEFAULT = secrets.token_urlsafe(20)
 DEFAULT_OVERRIDES = {"projects": 100, "api_allowed": True}
 TMP_DIR = tempfile.gettempdir()
 TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "test_data")
@@ -88,7 +88,7 @@ def create_project_path(name, mc):
 
 
 def create_mc_client_and_workspace(api_user, user_pwd, test_tag=""):
-    if api_user and user_pwd :  # if API_USER and USER_PWD is provided we log in user and use him for tests
+    if api_user and user_pwd:  # if API_USER and USER_PWD is provided we log in user and use him for tests
         user = api_user
         password = user_pwd
 
@@ -119,7 +119,6 @@ def create_mc_client_and_workspace(api_user, user_pwd, test_tag=""):
 @pytest.fixture(scope="function")
 def mc():
     assert SERVER_URL and SERVER_URL.rstrip("/") != "https://app.merginmaps.com"
-
 
     client = create_mc_client_and_workspace(API_USER, USER_PWD)
 
