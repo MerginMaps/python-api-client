@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, date, timezone
 import pytest
 import pytz
 import sqlite3
+import secrets
 from unittest.mock import patch
 
 
@@ -53,10 +54,11 @@ API_USER = os.environ.get("TEST_API_USERNAME")
 USER_PWD = os.environ.get("TEST_API_PASSWORD")
 API_USER2 = os.environ.get("TEST_API_USERNAME2")
 USER_PWD2 = os.environ.get("TEST_API_PASSWORD2")
+PASSWORD_DEFAULT = secrets.token_urlsafe(20)
+DEFAULT_OVERRIDES = {"projects": 100, "api_allowed": True}
 TMP_DIR = tempfile.gettempdir()
 TEST_DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "test_data")
 CHANGED_SCHEMA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "modified_schema")
-STORAGE_WORKSPACE = os.environ.get("TEST_STORAGE_WORKSPACE", "testpluginstorage")
 
 json_headers = {"Content-Type": "application/json"}
 
@@ -65,42 +67,101 @@ def get_limit_overrides(storage: int):
     return {"storage": storage, "projects": 2, "api_allowed": True}
 
 
+def reset_workspace_limits(mc: MerginClient, client_workspace_id):
+    """
+    Resets workspace storage and project limits to default values after testing.
+
+    This reset applies specifically to the pre-created test user's workspace.
+    It is not intended for use with dynamically generated test users.
+    """
+    mc.patch(
+        f"/v1/tests/workspaces/{client_workspace_id}",
+        {"limits_override": DEFAULT_OVERRIDES},
+        {"Content-Type": "application/json"},
+    )
+
+
+def create_project_path(name, mc):
+    return mc.username() + "/" + name
+
+
+def create_mc_client_and_workspace(api_user, user_pwd, test_tag=""):
+    if api_user and user_pwd:  # if API_USER and USER_PWD is provided we log in user and use him for tests
+        user = api_user
+        password = user_pwd
+
+        client = create_client(user, password)
+        return client
+
+    else:  # if user is not provided we create one
+        # user email is generated with random
+        user = f"apitest{test_tag}_{create_random_suffix()}@example.com"
+        password = PASSWORD_DEFAULT
+
+        anon_client = MerginClient(SERVER_URL)
+        anon_client.post(
+            "/v1/tests/users",
+            {"email": user, "password": password},
+            json_headers,
+            validate_auth=False,
+        )
+
+        # create MerginClient object and workspace for him
+        client = create_client(user, password)
+        create_workspace_for_client(client)
+
+        # we yield client
+        return client
+
+
 @pytest.fixture(scope="function")
 def mc():
-    client = create_client(API_USER, USER_PWD)
-    create_workspace_for_client(client)
-    return client
+    assert SERVER_URL and SERVER_URL.rstrip("/") != "https://app.merginmaps.com"
+
+    client = create_mc_client_and_workspace(API_USER, USER_PWD)
+
+    yield client
+
+    if not (API_USER and USER_PWD):
+        delete_test_user_and_workspace(client)
 
 
 @pytest.fixture(scope="function")
 def mc2():
-    client = create_client(API_USER2, USER_PWD2)
-    create_workspace_for_client(client)
-    return client
+    assert SERVER_URL and SERVER_URL.rstrip("/") != "https://app.merginmaps.com"
+
+    client = create_mc_client_and_workspace(API_USER2, USER_PWD2, test_tag="2")
+
+    yield client
+
+    if not (API_USER2 and USER_PWD2):
+        delete_test_user_and_workspace(client)
 
 
-@pytest.fixture(scope="function")
-def mcStorage(request):
-    client = create_client(API_USER, USER_PWD)
-    workspace_name = create_workspace_for_client(client, STORAGE_WORKSPACE)
-    client_workspace = None
-    for workspace in client.workspaces_list():
-        if workspace["name"] == workspace_name:
-            client_workspace = workspace
-            break
-    client_workspace_id = client_workspace["id"]
-    client_workspace_storage = client_workspace["storage"]
+def delete_test_user_and_workspace(client: MerginClient):
+    """Takes MC object and call delete /v1/tests/users/{user_id} which sets inactive_sice and set active to false."""
+    info = client.user_info()
+    user_id = info["id"]
 
-    def teardown():
-        # back to original values... (1 project, api allowed ...)
-        client.patch(
-            f"/v1/tests/workspaces/{client_workspace_id}",
-            {"limits_override": get_limit_overrides(client_workspace_storage)},
-            {"Content-Type": "application/json"},
-        )
+    anon_client = MerginClient(SERVER_URL)
+    anon_client.delete(f"/v1/tests/users/{user_id}", validate_auth=False)
 
-    request.addfinalizer(teardown)
-    return client
+
+def create_user_in_workspace(workspace_id: int, mc: MerginClient, role: WorkspaceRole):
+    """Creates user inside of workspace"""
+
+    client = mc.create_user(
+        email=f"apitest_userInWorkspace{create_random_suffix()}@example.com",
+        password=PASSWORD_DEFAULT,
+        workspace_id=workspace_id,
+        workspace_role=role,
+    )
+
+    return MerginClient(url=SERVER_URL, login=client["email"], password=PASSWORD_DEFAULT)
+
+
+def create_random_suffix():
+    return int(datetime.now(timezone.utc).timestamp() * random.randrange(1, 13))
 
 
 def create_client(user, pwd):
@@ -192,7 +253,7 @@ def test_login(mc):
 
 def test_create_delete_project(mc: MerginClient):
     test_project = "test_create_delete"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     download_dir = os.path.join(TMP_DIR, "download", test_project)
 
@@ -200,52 +261,52 @@ def test_create_delete_project(mc: MerginClient):
     # create new (empty) project on server
     mc.create_project(test_project)
     projects = mc.projects_list(flag="created")
-    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
+    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == mc.username())
 
     # try again
     with pytest.raises(ClientError, match=f"already exists"):
         mc.create_project(test_project)
 
     # remove project
-    mc.delete_project_now(API_USER + "/" + test_project)
+    mc.delete_project_now(project)
     projects = mc.projects_list(flag="created")
-    assert not any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
+    assert not any(p for p in projects if p["name"] == test_project and p["namespace"] == mc.username())
 
     # try again, nothing to delete
     with pytest.raises(ClientError):
-        mc.delete_project_now(API_USER + "/" + test_project)
+        mc.delete_project_now(project)
 
     # test that using namespace triggers deprecate warning, but creates project correctly
     with pytest.deprecated_call(match=r"The usage of `namespace` parameter in `create_project\(\)` is deprecated."):
-        mc.create_project(test_project, namespace=API_USER)
+        mc.create_project(test_project, namespace=mc.username())
     projects = mc.projects_list(flag="created")
-    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
+    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == mc.username())
     mc.delete_project_now(project)
 
     # test that using only project name triggers deprecate warning, but creates project correctly
     with pytest.deprecated_call(match=r"The use of only project name in `create_project\(\)` is deprecated"):
         mc.create_project(test_project)
     projects = mc.projects_list(flag="created")
-    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
+    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == mc.username())
     mc.delete_project_now(project)
 
     # test that even if project is specified with full name and namespace is specified a warning is raised, but still create project correctly
     with pytest.warns(UserWarning, match="Parameter `namespace` specified with full project name"):
-        mc.create_project(project, namespace=API_USER)
+        mc.create_project(project, namespace=mc.username())
     projects = mc.projects_list(flag="created")
-    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
+    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == mc.username())
     mc.delete_project_now(project)
 
     # test that create project with full name works
     mc.create_project(project)
     projects = mc.projects_list(flag="created")
-    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
+    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == mc.username())
     mc.delete_project_now(project)
 
 
 def test_create_remote_project_from_local(mc):
     test_project = "test_project"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     download_dir = os.path.join(TMP_DIR, "download", test_project)
 
@@ -258,23 +319,23 @@ def test_create_remote_project_from_local(mc):
 
     # verify we have correct metadata
     source_mp = MerginProject(project_dir)
-    assert source_mp.project_full_name() == f"{API_USER}/{test_project}"
+    assert source_mp.project_full_name() == f"{mc.username()}/{test_project}"
     assert source_mp.project_name() == test_project
-    assert source_mp.workspace_name() == API_USER
+    assert source_mp.workspace_name() == mc.username()
     assert source_mp.version() == "v1"
 
     # check basic metadata about created project
     project_info = mc.project_info(project)
     assert project_info["version"] == "v1"
     assert project_info["name"] == test_project
-    assert project_info["namespace"] == API_USER
+    assert project_info["namespace"] == mc.username()
     assert project_info["id"] == source_mp.project_id()
 
     # check project metadata retrieval by id
     project_info = mc.project_info(source_mp.project_id())
     assert project_info["version"] == "v1"
     assert project_info["name"] == test_project
-    assert project_info["namespace"] == API_USER
+    assert project_info["namespace"] == mc.username()
     assert project_info["id"] == source_mp.project_id()
 
     version = mc.project_version_info(project_info.get("id"), "v1")
@@ -303,7 +364,7 @@ def test_new_project_sync_v1_api(mc):
     server_features = mc.server_features()
     mc._server_features = {"v2_push_enabled": False}
     test_project = "test_new_project_sync_v1"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
 
     cleanup(mc, project, [project_dir])
@@ -333,7 +394,7 @@ def test_new_project_sync_v2_api(mc):
     This is using v2 endpoint.
     """
     test_project = "test_new_project_sync_v2"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
 
     cleanup(mc, project, [project_dir])
@@ -358,7 +419,7 @@ def test_new_project_sync_v2_api(mc):
 
 def test_push_pull_changes(mc):
     test_project = "test_push"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_2")  # concurrent project dir
 
@@ -371,9 +432,9 @@ def test_push_pull_changes(mc):
     mc.download_project(project, project_dir_2)
 
     mp2 = MerginProject(project_dir_2)
-    assert mp2.project_full_name() == f"{API_USER}/{test_project}"
+    assert mp2.project_full_name() == f"{mc.username()}/{test_project}"
     assert mp2.project_name() == test_project
-    assert mp2.workspace_name() == API_USER
+    assert mp2.workspace_name() == mc.username()
     assert mp2.version() == "v1"
 
     # test push changes (add, remove, rename, update)
@@ -405,7 +466,7 @@ def test_push_pull_changes(mc):
     mc.push_project(project_dir)
 
     mp = MerginProject(project_dir)
-    assert mp.project_full_name() == f"{API_USER}/{test_project}"
+    assert mp.project_full_name() == f"{mc.username()}/{test_project}"
     assert mp.version() == "v2"
 
     project_info = mc.project_info(project)
@@ -444,9 +505,9 @@ def test_push_pull_changes(mc):
     assert not os.path.exists(os.path.join(project_dir_2, f_removed))
     assert not os.path.exists(os.path.join(project_dir_2, f_renamed))
     assert os.path.exists(os.path.join(project_dir_2, "renamed.txt"))
-    assert os.path.exists(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 1)))
+    assert os.path.exists(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, mc.username(), 1)))
     assert (
-        generate_checksum(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, API_USER, 1)))
+        generate_checksum(os.path.join(project_dir_2, conflicted_copy_file_name(f_updated, mc.username(), 1)))
         == f_conflict_checksum
     )
     assert generate_checksum(os.path.join(project_dir_2, f_updated)) == f_remote_checksum
@@ -458,7 +519,7 @@ def test_sync_remove(mc):
     In that case, there is not chunks creation (UploadQueueItems) and process is going directly to finalize.
     """
     test_project = "test_sync_remove"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
     project_dir_removed = os.path.join(TMP_DIR, f"{test_project}_removed")  # primary project dir for updates
     cleanup(mc, project, [project_dir, project_dir_removed])
@@ -480,7 +541,7 @@ def test_cancel_push(mc):
     finished.
     """
     test_project = "test_cancel_push"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project + "_3")  # primary project dir for updates
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_4")
     cleanup(mc, project, [project_dir, project_dir_2])
@@ -521,7 +582,7 @@ def test_cancel_push(mc):
 
 def test_ignore_files(mc):
     test_project = "test_blacklist"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
 
     cleanup(mc, project, [project_dir])
@@ -540,7 +601,7 @@ def test_ignore_files(mc):
 
 def test_sync_diff(mc):
     test_project = f"test_sync_diff"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_2")  # concurrent project dir with no changes
     project_dir_3 = os.path.join(TMP_DIR, test_project + "_3")  # concurrent project dir with local changes
@@ -610,7 +671,7 @@ def test_list_of_push_changes(mc):
     }
 
     test_project = "test_list_of_push_changes"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
 
     cleanup(mc, project, [project_dir])
@@ -629,7 +690,7 @@ def test_list_of_push_changes(mc):
 def test_token_renewal(mc):
     """Test token regeneration in case it has expired."""
     test_project = "test_token_renewal"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
 
     cleanup(mc, project, [project_dir])
@@ -644,7 +705,7 @@ def test_token_renewal(mc):
 
 def test_force_gpkg_update(mc):
     test_project = "test_force_update"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
 
     cleanup(mc, project, [project_dir])
@@ -684,7 +745,7 @@ def test_missing_basefile_pull(mc):
     """
 
     test_project = "test_missing_basefile_pull"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_2")  # concurrent project dir
     test_data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), test_project)
@@ -721,7 +782,7 @@ def test_empty_file_in_subdir(mc):
     """Test pull of a project where there is an empty file in a sub-directory"""
 
     test_project = "test_empty_file_in_subdir"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_2")  # concurrent project dir
     test_data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), test_project)
@@ -750,7 +811,7 @@ def test_empty_file_in_subdir(mc):
 
 def test_clone_project(mc: MerginClient):
     test_project = "test_clone_project"
-    test_project_fullname = API_USER + "/" + test_project
+    test_project_fullname = create_project_path(test_project, mc)
 
     # cleanups
     project_dir = os.path.join(TMP_DIR, test_project)
@@ -759,140 +820,136 @@ def test_clone_project(mc: MerginClient):
     # create new (empty) project on server
     mc.create_project(test_project)
     projects = mc.projects_list(flag="created")
-    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == API_USER)
+    assert any(p for p in projects if p["name"] == test_project and p["namespace"] == mc.username())
 
     cloned_project_name = test_project + "_cloned"
-    test_cloned_project_fullname = API_USER + "/" + cloned_project_name
+    test_cloned_project_fullname = create_project_path(cloned_project_name, mc)
 
     # cleanup cloned project
     cloned_project_dir = os.path.join(TMP_DIR, cloned_project_name)
-    cleanup(mc, API_USER + "/" + cloned_project_name, [cloned_project_dir])
+    cleanup(mc, test_cloned_project_fullname, [cloned_project_dir])
 
     # clone specifying cloned_project_namespace, does clone but raises deprecation warning
     with pytest.deprecated_call(match=r"The usage of `cloned_project_namespace` parameter in `clone_project\(\)`"):
-        mc.clone_project(test_project_fullname, cloned_project_name, API_USER)
+        mc.clone_project(test_project_fullname, cloned_project_name, mc.username())
     projects = mc.projects_list(flag="created")
-    assert any(p for p in projects if p["name"] == cloned_project_name and p["namespace"] == API_USER)
-    cleanup(mc, API_USER + "/" + cloned_project_name, [cloned_project_dir])
+    assert any(p for p in projects if p["name"] == cloned_project_name and p["namespace"] == mc.username())
+    cleanup(mc, test_cloned_project_fullname, [cloned_project_dir])
 
     # clone without specifying cloned_project_namespace relies on workspace with user name, does clone but raises deprecation warning
     with pytest.deprecated_call(match=r"The use of only project name as `cloned_project_name` in `clone_project\(\)`"):
         mc.clone_project(test_project_fullname, cloned_project_name)
     projects = mc.projects_list(flag="created")
-    assert any(p for p in projects if p["name"] == cloned_project_name and p["namespace"] == API_USER)
-    cleanup(mc, API_USER + "/" + cloned_project_name, [cloned_project_dir])
+    assert any(p for p in projects if p["name"] == cloned_project_name and p["namespace"] == mc.username())
+    cleanup(mc, test_cloned_project_fullname, [cloned_project_dir])
 
     # clone project with full cloned project name with specification of `cloned_project_namespace` raises warning
     with pytest.warns(match=r"Parameter `cloned_project_namespace` specified with full cloned project name"):
-        mc.clone_project(test_project_fullname, test_cloned_project_fullname, API_USER)
+        mc.clone_project(test_project_fullname, test_cloned_project_fullname, mc.username())
     projects = mc.projects_list(flag="created")
-    assert any(p for p in projects if p["name"] == cloned_project_name and p["namespace"] == API_USER)
-    cleanup(mc, API_USER + "/" + cloned_project_name, [cloned_project_dir])
+    assert any(p for p in projects if p["name"] == cloned_project_name and p["namespace"] == mc.username())
+    cleanup(mc, test_cloned_project_fullname, [cloned_project_dir])
 
     # clone project using project full name
     mc.clone_project(test_project_fullname, test_cloned_project_fullname)
     projects = mc.projects_list(flag="created")
-    assert any(p for p in projects if p["name"] == cloned_project_name and p["namespace"] == API_USER)
-    cleanup(mc, API_USER + "/" + cloned_project_name, [cloned_project_dir])
+    assert any(p for p in projects if p["name"] == cloned_project_name and p["namespace"] == mc.username())
+    cleanup(mc, test_cloned_project_fullname, [cloned_project_dir])
 
 
-def test_set_read_write_access(mc):
+def test_set_read_write_access(mc, mc2):
     test_project = "test_set_read_write_access"
-    test_project_fullname = API_USER + "/" + test_project
+    test_project_fullname = create_project_path(test_project, mc)
 
     # cleanups
-    project_dir = os.path.join(TMP_DIR, test_project, API_USER)
+    project_dir = os.path.join(TMP_DIR, test_project, mc.username())
     cleanup(mc, test_project_fullname, [project_dir])
 
     # create new (empty) project on server
     mc.create_project(test_project)
 
     # Add writer access to another client
-    project_info = get_project_info(mc, API_USER, test_project)
+    project_info = get_project_info(mc, mc.username(), test_project)
     access = project_info["access"]
-    access["writersnames"].append(API_USER2)
-    access["readersnames"].append(API_USER2)
+    access["writersnames"].append(mc2.username())
+    access["readersnames"].append(mc2.username())
     editor_support = server_has_editor_support(mc, access)
     if editor_support:
-        access["editorsnames"].append(API_USER2)
+        access["editorsnames"].append(mc2.username())
     mc.set_project_access(test_project_fullname, access)
 
-    project_info = get_project_info(mc, API_USER, test_project)
+    project_info = get_project_info(mc, mc.username(), test_project)
     access = project_info["access"]
-    assert API_USER2 in access["writersnames"]
-    assert API_USER2 in access["readersnames"]
+    assert mc2.username() in access["writersnames"]
+    assert mc2.username() in access["readersnames"]
     if editor_support:
-        assert API_USER2 in access["editorsnames"]
+        assert mc2.username() in access["editorsnames"]
 
 
-def test_set_editor_access(mc):
+def test_set_editor_access(mc, mc2):
     test_project = "test_set_editor_access"
-    test_project_fullname = API_USER + "/" + test_project
+    test_project_fullname = create_project_path(test_project, mc)
 
     # cleanups
-    project_dir = os.path.join(TMP_DIR, test_project, API_USER)
+    project_dir = os.path.join(TMP_DIR, test_project, mc.username())
     cleanup(mc, test_project_fullname, [project_dir])
 
     # create new (empty) project on server
     mc.create_project(test_project)
 
-    project_info = get_project_info(mc, API_USER, test_project)
+    project_info = get_project_info(mc, mc.username(), test_project)
     access = project_info["access"]
     # Stop test if server does not support editor access
     if not server_has_editor_support(mc, access):
         return
 
-    access["readersnames"].append(API_USER2)
-    access["editorsnames"].append(API_USER2)
+    access["readersnames"].append(mc2.username())
+    access["editorsnames"].append(mc2.username())
     mc.set_project_access(test_project_fullname, access)
     # check access
-    project_info = get_project_info(mc, API_USER, test_project)
+    project_info = get_project_info(mc, mc.username(), test_project)
     access = project_info["access"]
-    assert API_USER2 in access["editorsnames"]
-    assert API_USER2 in access["readersnames"]
-    assert API_USER2 not in access["writersnames"]
+    assert mc2.username() in access["editorsnames"]
+    assert mc2.username() in access["readersnames"]
+    assert mc2.username() not in access["writersnames"]
 
 
-def test_available_workspace_storage(mcStorage):
+def test_available_workspace_storage(mc: MerginClient):
     """
     Testing of storage limit - applies to user pushing changes into own project (namespace matching username).
     This test also tests giving read and write access to another user. Additionally tests also uploading of big file.
     """
     test_project = "test_available_workspace_storage"
-    test_project_fullname = STORAGE_WORKSPACE + "/" + test_project
+    test_project_fullname = create_project_path(test_project, mc)
 
     # cleanups
-    project_dir = os.path.join(TMP_DIR, test_project, API_USER)
-    cleanup(mcStorage, test_project_fullname, [project_dir])
+    project_dir = os.path.join(TMP_DIR, test_project, mc.username())
+    cleanup(mc, test_project_fullname, [project_dir])
 
     # create new (empty) project on server
     # if namespace is not provided, function is creating project with username
-    mcStorage.create_project(test_project_fullname)
+    mc.create_project(test_project_fullname)
 
     # download project
-    mcStorage.download_project(test_project_fullname, project_dir)
+    mc.download_project(test_project_fullname, project_dir)
 
     # get info about storage capacity
     storage_remaining = 0
-    client_workspace = None
-    for workspace in mcStorage.workspaces_list():
-        if workspace["name"] == STORAGE_WORKSPACE:
-            client_workspace = workspace
-            break
-    assert client_workspace is not None
+    client_workspace = mc.workspaces_list()[0]
+
     current_storage = client_workspace["storage"]
     client_workspace_id = client_workspace["id"]
     # 5 MB
     testing_storage = 5242880
     # add  storage limit, to prevent creating too big files
-    mcStorage.patch(
+    mc.patch(
         f"/v1/tests/workspaces/{client_workspace_id}",
         {"limits_override": {"storage": testing_storage, "projects": 1, "api_allowed": True}},
         {"Content-Type": "application/json"},
     )
 
-    if mcStorage.server_type() == ServerType.OLD:
-        user_info = mcStorage.user_info()
+    if mc.server_type() == ServerType.OLD:
+        user_info = mc.user_info()
         storage_remaining = testing_storage - user_info["disk_usage"]
     else:
         storage_remaining = testing_storage - client_workspace["disk_usage"]
@@ -905,7 +962,7 @@ def test_available_workspace_storage(mcStorage):
     # try to upload
     got_right_err = False
     try:
-        mcStorage.push_project(project_dir)
+        mc.push_project(project_dir)
     except ClientError as e:
         # Expecting "You have reached a data limit" 400 server error msg.
         assert "You have reached a data limit" in str(e)
@@ -914,12 +971,14 @@ def test_available_workspace_storage(mcStorage):
         assert got_right_err
 
         # Expecting empty project
-        project_info = get_project_info(mcStorage, STORAGE_WORKSPACE, test_project)
+        project_info = get_project_info(mc, client_workspace["name"], test_project)
         assert project_info["version"] == "v0"
         assert project_info["disk_usage"] == 0
 
         # remove dummy big file from a disk
         remove_folders([project_dir])
+
+    reset_workspace_limits(mc, client_workspace_id)
 
 
 def test_available_storage_validation2(mc, mc2):
@@ -934,10 +993,10 @@ def test_available_storage_validation2(mc, mc2):
         - both accounts should ideally have a free plan
     """
     test_project = "test_available_storage_validation2"
-    test_project_fullname = API_USER2 + "/" + test_project
+    test_project_fullname = create_project_path(test_project, mc2)
 
     # cleanups
-    project_dir = os.path.join(TMP_DIR, test_project, API_USER)
+    project_dir = os.path.join(TMP_DIR, test_project, mc.username())
     cleanup(mc, test_project_fullname, [project_dir])
     cleanup(mc2, test_project_fullname, [project_dir])
 
@@ -945,10 +1004,10 @@ def test_available_storage_validation2(mc, mc2):
     mc2.create_project(test_project)
 
     # Add writer access to another client
-    project_info = get_project_info(mc2, API_USER2, test_project)
+    project_info = get_project_info(mc2, mc2.username(), test_project)
     access = project_info["access"]
-    access["writersnames"].append(API_USER)
-    access["readersnames"].append(API_USER)
+    access["writersnames"].append(mc.username())
+    access["readersnames"].append(mc.username())
     mc2.set_project_access(test_project_fullname, access)
 
     # download project
@@ -1007,8 +1066,8 @@ def _generate_big_file(filepath, size):
 def test_get_projects_by_name(mc):
     """Test server 'bulk' endpoint for projects' info"""
     test_projects = {
-        "projectA": f"{API_USER}/projectA",
-        "projectB": f"{API_USER}/projectB",
+        "projectA": f"{mc.username()}/projectA",
+        "projectB": f"{mc.username()}/projectB",
     }
 
     for name, full_name in test_projects.items():
@@ -1025,7 +1084,7 @@ def test_get_projects_by_name(mc):
 
 def test_download_versions(mc):
     test_project = "test_download"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     # download dirs
     project_dir_v1 = os.path.join(TMP_DIR, test_project + "_v1")
@@ -1064,7 +1123,7 @@ def test_paginated_project_list(mc):
     test_projects = dict()
     for symb in "ABCDEF":
         name = f"test_paginated_{symb}"
-        test_projects[name] = f"{API_USER}/{name}"
+        test_projects[name] = f"{mc.username()}/{name}"
 
     for name, full_name in test_projects.items():
         cleanup(mc, full_name, [])
@@ -1104,7 +1163,7 @@ def test_missing_local_file_pull(mc):
 
     test_project = "test_dir"
     file_to_remove = "test2.txt"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project + "_5")  # primary project dir for updates
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_6")  # concurrent project dir
     test_data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "test_data", test_project)
@@ -1145,7 +1204,7 @@ def test_logging(mc):
 
 
 def create_versioned_project(mc, project_name, project_dir, updated_file, remove=True, overwrite=False):
-    project = API_USER + "/" + project_name
+    project = create_project_path(project_name, mc)
     cleanup(mc, project, [project_dir])
 
     # create remote project
@@ -1186,7 +1245,7 @@ def create_versioned_project(mc, project_name, project_dir, updated_file, remove
 def test_get_versions_with_file_changes(mc):
     """Test getting versions where the file was changed."""
     test_project = "test_file_modified_versions"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     f_updated = "base.gpkg"
 
@@ -1231,7 +1290,7 @@ def check_gpkg_same_content(mergin_project, gpkg_path_1, gpkg_path_2):
 def test_download_file(mc):
     """Test downloading single file at specified versions."""
     test_project = "test_download_file"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     f_updated = "base.gpkg"
 
@@ -1263,7 +1322,7 @@ def test_download_file(mc):
 def test_download_diffs(mc):
     """Test download diffs for a project file between specified project versions."""
     test_project = "test_download_diffs"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     download_dir = os.path.join(project_dir, "diffs")  # project for downloading files at various versions
     f_updated = "base.gpkg"
@@ -1307,9 +1366,9 @@ def test_download_diffs(mc):
     assert "Available versions: [1, 2, 3, 4]" in str(e.value)
 
 
-def test_modify_project_permissions(mc):
+def test_modify_project_permissions(mc, mc2):
     test_project = "test_project"
-    test_project_fullname = API_USER + "/" + test_project
+    test_project_fullname = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     download_dir = os.path.join(TMP_DIR, "download", test_project)
 
@@ -1320,33 +1379,33 @@ def test_modify_project_permissions(mc):
     # create remote project
     mc.create_project_and_push(test_project_fullname, directory=project_dir)
 
-    mc.add_user_permissions_to_project(test_project_fullname, [API_USER], "owner")
+    mc.add_user_permissions_to_project(test_project_fullname, [mc.username()], "owner")
     permissions = mc.project_user_permissions(test_project_fullname)
-    assert permissions["owners"] == [API_USER]
-    assert permissions["writers"] == [API_USER]
-    assert permissions["readers"] == [API_USER]
+    assert permissions["owners"] == [mc.username()]
+    assert permissions["writers"] == [mc.username()]
+    assert permissions["readers"] == [mc.username()]
     editor_support = server_has_editor_support(mc, permissions)
     if editor_support:
         assert permissions["editors"] == [API_USER]
 
-    mc.add_user_permissions_to_project(test_project_fullname, [API_USER2], "writer")
+    mc.add_user_permissions_to_project(test_project_fullname, [mc2.username()], "writer")
     permissions = mc.project_user_permissions(test_project_fullname)
-    assert set(permissions["owners"]) == {API_USER}
-    assert set(permissions["writers"]) == {API_USER, API_USER2}
-    assert set(permissions["readers"]) == {API_USER, API_USER2}
+    assert set(permissions["owners"]) == {mc.username()}
+    assert set(permissions["writers"]) == {mc.username(), mc2.username()}
+    assert set(permissions["readers"]) == {mc.username(), mc2.username()}
     editor_support = server_has_editor_support(mc, permissions)
     if editor_support:
-        assert set(permissions["editors"]) == {API_USER, API_USER2}
+        assert set(permissions["editors"]) == {mc.username(), mc2.username()}
 
-    mc.remove_user_permissions_from_project(test_project_fullname, [API_USER2])
+    mc.remove_user_permissions_from_project(test_project_fullname, [mc2.username()])
     permissions = mc.project_user_permissions(test_project_fullname)
-    assert permissions["owners"] == [API_USER]
-    assert permissions["writers"] == [API_USER]
-    assert permissions["readers"] == [API_USER]
+    assert permissions["owners"] == [mc.username()]
+    assert permissions["writers"] == [mc.username()]
+    assert permissions["readers"] == [mc.username()]
 
     editor_support = server_has_editor_support(mc, permissions)
     if editor_support:
-        assert permissions["editors"] == [API_USER]
+        assert permissions["editors"] == [mc.username()]
 
 
 def _use_wal(db_file):
@@ -1442,7 +1501,7 @@ def test_push_gpkg_schema_change(mc):
     """
 
     test_project = "test_push_gpkg_schema_change"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     test_gpkg = os.path.join(project_dir, "test.gpkg")
     test_gpkg_basefile = os.path.join(project_dir, ".mergin", "test.gpkg")
@@ -1497,6 +1556,8 @@ def test_push_gpkg_schema_change(mc):
     # at this point we still have an open sqlite connection to the GPKG, so checkpointing will not work correctly)
     mc.push_project(project_dir)
 
+    subprocess.run(["sleep", "5"])
+
     # WITH TWO SQLITE copies: fails here  (sqlite3.OperationalError: disk I/O error)  + in geodiff log: SQLITE3: (283)recovered N frames from WAL file
     _check_test_table(test_gpkg)
 
@@ -1522,12 +1583,12 @@ def test_rebase_local_schema_change(mc, extra_connection):
     test_project = "test_rebase_local_schema_change"
     if extra_connection:
         test_project += "_extra_conn"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_2")  # concurrent project dir
     test_gpkg = os.path.join(project_dir, "test.gpkg")
     test_gpkg_basefile = os.path.join(project_dir, ".mergin", "test.gpkg")
-    test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, API_USER, 1)
+    test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, mc.username(), 1)
     cleanup(mc, project, [project_dir, project_dir_2])
 
     os.makedirs(project_dir)
@@ -1587,13 +1648,13 @@ def test_rebase_remote_schema_change(mc, extra_connection):
     test_project = "test_rebase_remote_schema_change"
     if extra_connection:
         test_project += "_extra_conn"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_2")  # concurrent project dir
     test_gpkg = os.path.join(project_dir, "test.gpkg")
     test_gpkg_2 = os.path.join(project_dir_2, "test.gpkg")
     test_gpkg_basefile = os.path.join(project_dir, ".mergin", "test.gpkg")
-    test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, API_USER, 1)
+    test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, mc.username(), 1)
     cleanup(mc, project, [project_dir, project_dir_2])
 
     os.makedirs(project_dir)
@@ -1652,7 +1713,7 @@ def test_rebase_success(mc, extra_connection):
     test_project = "test_rebase_success"
     if extra_connection:
         test_project += "_extra_conn"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_2")  # concurrent project dir
     test_gpkg = os.path.join(project_dir, "test.gpkg")
@@ -1874,7 +1935,7 @@ def test_unfinished_pull(mc):
     unfinished_pull directory is created with the content of the server changes.
     """
     test_project = "test_unfinished_pull"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_2")  # concurrent project dir
     unfinished_pull_dir = os.path.join(
@@ -1883,7 +1944,7 @@ def test_unfinished_pull(mc):
     test_gpkg = os.path.join(project_dir, "test.gpkg")
     test_gpkg_2 = os.path.join(project_dir_2, "test.gpkg")
     test_gpkg_basefile = os.path.join(project_dir, ".mergin", "test.gpkg")
-    test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, API_USER, 2)
+    test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, mc.username(), 2)
     test_gpkg_unfinished_pull = os.path.join(project_dir, ".mergin", "unfinished_pull", "test.gpkg")
     cleanup(mc, project, [project_dir, project_dir_2])
 
@@ -1962,7 +2023,7 @@ def test_unfinished_pull_push(mc):
     in the unfinished pull state.
     """
     test_project = "test_unfinished_pull_push"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_2")  # concurrent project dir
     unfinished_pull_dir = os.path.join(
@@ -1971,7 +2032,7 @@ def test_unfinished_pull_push(mc):
     test_gpkg = os.path.join(project_dir, "test.gpkg")
     test_gpkg_2 = os.path.join(project_dir_2, "test.gpkg")
     test_gpkg_basefile = os.path.join(project_dir, ".mergin", "test.gpkg")
-    test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, API_USER, 2)
+    test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, mc.username(), 2)
     test_gpkg_unfinished_pull = os.path.join(project_dir, ".mergin", "unfinished_pull", "test.gpkg")
     cleanup(mc, project, [project_dir, project_dir_2])
 
@@ -2058,7 +2119,7 @@ def test_unfinished_pull_push(mc):
 def test_project_versions_list(mc):
     """Test getting project versions in various ranges"""
     test_project = "test_project_versions"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     create_versioned_project(mc, test_project, project_dir, "base.gpkg")
     project_info = mc.project_info(project)
@@ -2097,7 +2158,7 @@ def test_project_versions_list(mc):
 
 def test_report(mc):
     test_project = "test_report"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     f_updated = "base.gpkg"
     mp = create_versioned_project(mc, test_project, project_dir, f_updated, remove=False, overwrite=True)
@@ -2131,7 +2192,7 @@ def test_report(mc):
             ]
         )
         assert headers in content
-        assert f"base.gpkg,simple,{API_USER}" in content
+        assert f"base.gpkg,simple,{mc.username()}" in content
         assert "v3,update,,,2" in content
         # files not edited are not in reports
         assert "inserted_1_A.gpkg" not in content
@@ -2155,10 +2216,10 @@ def test_user_permissions(mc, mc2):
     Test retrieving user permissions
     """
     test_project = "test_permissions"
-    test_project_fullname = API_USER2 + "/" + test_project
+    test_project_fullname = create_project_path(test_project, mc2)
 
     # cleanups
-    project_dir = os.path.join(TMP_DIR, test_project, API_USER)
+    project_dir = os.path.join(TMP_DIR, test_project, mc.username())
     cleanup(mc, test_project_fullname, [project_dir])
     cleanup(mc2, test_project_fullname, [project_dir])
 
@@ -2166,18 +2227,18 @@ def test_user_permissions(mc, mc2):
     mc2.create_project(test_project)
 
     # Add reader access to another client
-    project_info = get_project_info(mc2, API_USER2, test_project)
+    project_info = get_project_info(mc2, mc2.username(), test_project)
     access = project_info["access"]
-    access["readersnames"].append(API_USER)
+    access["readersnames"].append(mc.username())
     mc2.set_project_access(test_project_fullname, access)
 
     # reader should not have write access
     assert not mc.has_writing_permissions(test_project_fullname)
 
     # Add writer access to another client
-    project_info = get_project_info(mc2, API_USER2, test_project)
+    project_info = get_project_info(mc2, mc2.username(), test_project)
     access = project_info["access"]
-    access["writersnames"].append(API_USER)
+    access["writersnames"].append(mc.username())
     mc2.set_project_access(test_project_fullname, access)
 
     # now user shold have write access
@@ -2192,7 +2253,7 @@ def test_report_failure(mc):
     and then deleted.
     """
     test_project = "test_report_failure"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
     test_gpkg = os.path.join(project_dir, "test.gpkg")
     report_file = os.path.join(TMP_DIR, "report.csv")
@@ -2228,7 +2289,7 @@ def test_changesets_download(mc):
     changesets are cached.
     """
     test_project = "test_changesets_download"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
     test_gpkg = "test.gpkg"
     file_path = os.path.join(project_dir, "test.gpkg")
@@ -2273,7 +2334,7 @@ def test_changesets_download(mc):
 def test_version_info(mc):
     """Check retrieving detailed information about single project version."""
     test_project = "test_version_info"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
     test_gpkg = "test.gpkg"
     file_path = os.path.join(project_dir, test_gpkg)
@@ -2291,10 +2352,10 @@ def test_version_info(mc):
     mc.push_project(project_dir)
     project_info = mc.project_info(project)
     info = mc.project_version_info(project_info.get("id"), "v2")
-    assert info["namespace"] == API_USER
+    assert info["namespace"] == mc.username()
     assert info["project_name"] == test_project
     assert info["name"] == "v2"
-    assert info["author"] == API_USER
+    assert info["author"] == mc.username()
     created = datetime.strptime(info["created"], "%Y-%m-%dT%H:%M:%SZ")
     assert created.date() == date.today()
     assert info["changes"]["updated"][0]["size"] == 98304
@@ -2302,7 +2363,7 @@ def test_version_info(mc):
 
 def test_clean_diff_files(mc):
     test_project = "test_clean"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_2")  # concurrent project dir
 
@@ -2329,7 +2390,7 @@ def test_clean_diff_files(mc):
 
 def test_reset_local_changes(mc: MerginClient):
     test_project = f"test_reset_local_changes"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_v2")  # primary project dir for updates
 
@@ -2450,7 +2511,7 @@ def test_reset_local_changes(mc: MerginClient):
 
 def test_project_metadata(mc):
     test_project = "test_project_metadata"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
 
     cleanup(mc, project, [project_dir])
@@ -2464,16 +2525,16 @@ def test_project_metadata(mc):
     # rewrite metadata nemespace to prevent failing tests with other user than test_plugin
     with open(metadata_file, "r") as f:
         metadata = json.load(f)
-    metadata["name"] = f"{API_USER}/{test_project}"
+    metadata["name"] = f"{mc.username()}/{test_project}"
     project_metadata_file = os.path.join(project_dir, ".mergin", "mergin.json")
     with open(project_metadata_file, "w") as f:
         json.dump(metadata, f, indent=2)
 
     # verify we have correct metadata
     mp = MerginProject(project_dir)
-    assert mp.project_full_name() == f"{API_USER}/{test_project}"
+    assert mp.project_full_name() == f"{mc.username()}/{test_project}"
     assert mp.project_name() == test_project
-    assert mp.workspace_name() == API_USER
+    assert mp.workspace_name() == mc.username()
     assert mp.version() == "v0"
 
     # copy metadata in new format
@@ -2481,15 +2542,15 @@ def test_project_metadata(mc):
     # rewrite metadata nemespace to prevent failing tests with other user than test_plugin
     with open(metadata_file, "r") as f:
         metadata = json.load(f)
-    metadata["namespace"] = API_USER
+    metadata["namespace"] = mc.username()
     with open(project_metadata_file, "w") as f:
         json.dump(metadata, f, indent=2)
 
     # verify we have correct metadata
     mp = MerginProject(project_dir)
-    assert mp.project_full_name() == f"{API_USER}/{test_project}"
+    assert mp.project_full_name() == f"{mc.username()}/{test_project}"
     assert mp.project_name() == test_project
-    assert mp.workspace_name() == API_USER
+    assert mp.workspace_name() == mc.username()
     assert mp.version() == "v0"
 
 
@@ -2498,8 +2559,8 @@ def test_project_rename(mc: MerginClient):
 
     test_project = "test_project_rename"
     test_project_renamed = "test_project_renamed"
-    project = API_USER + "/" + test_project
-    project_renamed = API_USER + "/" + test_project_renamed
+    project = create_project_path(test_project, mc)
+    project_renamed = create_project_path(test_project_renamed, mc)
 
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
 
@@ -2520,7 +2581,7 @@ def test_project_rename(mc: MerginClient):
     project_info = mc.project_info(project_renamed)
     assert project_info["version"] == "v1"
     assert project_info["name"] == test_project_renamed
-    assert project_info["namespace"] == API_USER
+    assert project_info["namespace"] == mc.username()
     with pytest.raises(ClientError, match="The requested URL was not found on the server"):
         mc.project_info(project)
 
@@ -2536,7 +2597,7 @@ def test_project_rename(mc: MerginClient):
 
     # cannot rename project that does not exist
     with pytest.raises(ClientError, match="The requested URL was not found on the server."):
-        mc.rename_project(API_USER + "/" + "non_existing_project", "new_project")
+        mc.rename_project(mc.username() + "/" + "non_existing_project", "new_project")
 
     # cannot rename with full project name
     with pytest.raises(
@@ -2549,7 +2610,7 @@ def test_project_rename(mc: MerginClient):
 def test_download_files(mc: MerginClient):
     """Test downloading files at specified versions."""
     test_project = "test_download_files"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     f_updated = "base.gpkg"
     download_dir = os.path.join(TMP_DIR, "test-download-files-tmp")
@@ -2612,7 +2673,7 @@ def test_download_files(mc: MerginClient):
 
 def test_download_failure(mc):
     test_project = "test_download_failure"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     download_dir = os.path.join(TMP_DIR, "download", test_project)
 
@@ -2672,20 +2733,26 @@ def test_editor(mc: MerginClient):
     assert sum(len(v) for v in qgs_changeset.values()) == 2
 
 
-def test_editor_push(mc: MerginClient, mc2: MerginClient):
+def test_editor_push(mc: MerginClient):
     """Test push with editor"""
-    if not mc.has_editor_support():
-        return
-    test_project_name = "test_editor_push"
-    test_project_fullname = API_USER + "/" + test_project_name
+
+    test_project_name = f"test_editor_push{create_random_suffix()}"
+    test_project_fullname = create_project_path(test_project_name, mc)
+
+    mc.create_project(test_project_fullname)
+    project_info = mc.project_info(test_project_fullname)
+    mc_workspace_id = project_info.get("workspace_id")
+
+    mc2 = create_user_in_workspace(mc_workspace_id, mc, WorkspaceRole.READER)
+
     project_dir = os.path.join(TMP_DIR, test_project_name)
     project_dir2 = os.path.join(TMP_DIR, test_project_name + "_2")
     cleanup(mc, test_project_fullname, [project_dir, project_dir2])
 
     # create new (empty) project on server
     # TODO: return project_info from create project, don't use project_full name for project info, instead returned id of project
-    mc.create_project(test_project_name)
-    project_info = get_project_info(mc, API_USER, test_project_name)
+    mc.create_project(test_project_fullname)
+    project_info = mc.project_info(test_project_fullname)
     mc.add_project_collaborator(project_info["id"], mc2.username(), ProjectRole.EDITOR)
     # download empty project
     mc2.download_project(test_project_fullname, project_dir)
@@ -2752,41 +2819,44 @@ def test_editor_push(mc: MerginClient, mc2: MerginClient):
             conflicted_file = project_file
     # There is no conflicted qgs file
     assert conflicted_file is None
+    delete_test_user_and_workspace(mc2)
 
 
 def test_error_push_already_named_project(mc: MerginClient):
-    test_project = "test_push_already_existing"
+    test_project = f"test_push_already_existing{create_random_suffix()}"
     project_dir = os.path.join(TMP_DIR, test_project)
+    project_name = create_project_path(test_project, mc)
+
+    remove_folders([project_dir])
+    mc.create_project_and_push(project_name, project_dir)
+    shutil.rmtree(os.path.join(TMP_DIR, test_project, ".mergin"), ignore_errors=True)
 
     with pytest.raises(ClientError) as e:
         mc.create_project_and_push(test_project, project_dir)
     assert e.value.detail == "Project with the same name already exists"
     assert e.value.http_error == 409
     assert e.value.http_method == "POST"
-    assert e.value.url == f"{mc.url}v1/project/{API_USER}"
+    assert e.value.url == f"{mc.url}v1/project/{mc.username()}"
 
 
-def test_error_projects_limit_hit(mcStorage: MerginClient):
+def test_error_projects_limit_hit(mc: MerginClient):
     test_project = "project_above_projects_limit"
-    test_project_fullname = STORAGE_WORKSPACE + "/" + test_project
-    project_dir = os.path.join(TMP_DIR, test_project, API_USER)
-    cleanup(mcStorage, test_project, [project_dir])
+    test_project_fullname = create_project_path(test_project, mc)
+    project_dir = os.path.join(TMP_DIR, test_project, mc.username())
+    cleanup(mc, test_project, [project_dir])
 
-    client_workspace = None
-    for workspace in mcStorage.workspaces_list():
-        if workspace["name"] == STORAGE_WORKSPACE:
-            client_workspace = workspace
-            break
+    client_workspace = mc.workspaces_list()[0]
+
     client_workspace_id = client_workspace["id"]
     client_workspace_storage = client_workspace["storage"]
-    mcStorage.patch(
+    mc.patch(
         f"/v1/tests/workspaces/{client_workspace_id}",
         {"limits_override": {**get_limit_overrides(client_workspace_storage), "projects": 0}},
         {"Content-Type": "application/json"},
     )
 
     with pytest.raises(ClientError) as e:
-        mcStorage.create_project_and_push(test_project_fullname, project_dir)
+        mc.create_project_and_push(test_project_fullname, project_dir)
     assert e.value.server_code == ErrorCode.ProjectsLimitHit.value
     assert (
         e.value.detail
@@ -2794,32 +2864,43 @@ def test_error_projects_limit_hit(mcStorage: MerginClient):
     )
     assert e.value.http_error == 422
     assert e.value.http_method == "POST"
-    assert e.value.url == f"{mcStorage.url}v1/project/testpluginstorage"
+    assert e.value.url == f"{mc.url}v1/project/{mc.username()}"
+
+    reset_workspace_limits(mc, client_workspace_id)
 
 
-def test_workspace_requests(mc2: MerginClient):
-    test_project = "test_permissions"
-    test_project_fullname = API_USER2 + "/" + test_project
-
-    project_info = mc2.project_info(test_project_fullname)
+def test_workspace_requests(mc: MerginClient):
+    test_project = f"test_permissions{create_random_suffix()}"
+    test_project_fullname = create_project_path(test_project, mc)
+    mc.create_project(test_project_fullname)
+    project_info = mc.project_info(test_project_fullname)
     ws_id = project_info.get("workspace_id")
 
-    usage = mc2.workspace_usage(ws_id)
+    user_in_workspace: MerginClient = create_user_in_workspace(ws_id, mc, WorkspaceRole.OWNER)
+
+    usage = user_in_workspace.workspace_usage(ws_id)
     # Check type and common value
     assert type(usage) == dict
     assert usage["api"]["allowed"] == True
-    assert usage["history"]["quota"] == 214748364800
+    assert usage["history"]["quota"] > 0
     assert usage["history"]["usage"] == 0
 
-    service = mc2.workspace_service(ws_id)
+    service = user_in_workspace.workspace_service(ws_id)
     # Check type and common value
     assert type(service) == dict
     assert service["action_required"] == False
     assert service["plan"]
     assert service["plan"]["is_paid_plan"] == False
     assert service["plan"]["product_id"] == None
-    assert service["plan"]["type"] == "custom"
+    assert service["plan"]["type"] == "trial"
     assert service["subscription"] == None
+
+    info = user_in_workspace.user_info()
+    user_id = info["id"]
+
+    # need to change role != OWNER because endpoint deletes workspaces where user is OWNER causing mc workspace to be disabled
+    user_in_workspace.update_workspace_member(ws_id, user_id, workspace_role=WorkspaceRole.READER)
+    delete_test_user_and_workspace(user_in_workspace)
 
 
 def test_access_management(mc: MerginClient, mc2: MerginClient):
@@ -2855,11 +2936,11 @@ def test_access_management(mc: MerginClient, mc2: MerginClient):
         mc2.update_workspace_member(workspace_id, new_user["id"], ws_role)
     # add project
     test_project_name = "test_collaborators"
-    test_project_fullname = API_USER + "/" + test_project_name
-    project_dir = os.path.join(TMP_DIR, test_project_name, API_USER)
+    test_project_fullname = mc.username() + "/" + test_project_name
+    project_dir = os.path.join(TMP_DIR, test_project_name, mc.username())
     cleanup(mc, test_project_fullname, [project_dir])
     mc.create_project(test_project_name)
-    project_info = get_project_info(mc, API_USER, test_project_name)
+    project_info = get_project_info(mc, mc.username(), test_project_name)
     test_project_id = project_info["id"]
     project_role = ProjectRole.READER
     # user must be added to project collaborators before updating project role
@@ -2926,7 +3007,7 @@ def test_server_config(mc: MerginClient):
 def test_send_logs(mc: MerginClient, monkeypatch):
     """Test that logs can be send to the server."""
     test_project = "test_logs_send"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
 
     cleanup(mc, project, [project_dir])
@@ -3031,7 +3112,7 @@ def test_validate_auth(mc: MerginClient):
     # ----- Client with token and username/password -----
     # create a client with valid auth token based on other MerginClient instance with username/password that allows relogin if the token is expired
     mc_auth_token_login = MerginClient(
-        SERVER_URL, auth_token=mc._auth_session["token"], login=API_USER, password=USER_PWD
+        SERVER_URL, auth_token=mc._auth_session["token"], login=mc.username(), password=PASSWORD_DEFAULT
     )
 
     # this should pass and not raise an error
@@ -3047,7 +3128,7 @@ def test_validate_auth(mc: MerginClient):
     # create a client with valid auth token based on other MerginClient instance with username and WRONG password
     # that does NOT allow relogin if the token is expired
     mc_auth_token_login_wrong_password = MerginClient(
-        SERVER_URL, auth_token=mc._auth_session["token"], login=API_USER, password="WRONG_PASSWORD"
+        SERVER_URL, auth_token=mc._auth_session["token"], login=mc.username(), password="WRONG_PASSWORD"
     )
 
     # this should pass and not raise an error
@@ -3067,7 +3148,7 @@ def test_uploaded_chunks_cache(mc):
     if not mc.server_features().get("v2_push_enabled"):
         pytest.skip("Server does not support v2 push")
     test_project = "test_uploaded_chunks_cache"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
 
     cleanup(mc, project, [project_dir])
@@ -3105,7 +3186,7 @@ def test_client_push_project_async(mc):
     Integration tests for low level client_push functions
     """
     test_project = "test_client_push"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
     cleanup(mc, project, [project_dir])
     # create remote project
@@ -3133,7 +3214,7 @@ def test_client_pull_project_async(mc):
     Integration tests for low level client_pull functions
     """
     test_project = "test_client_pull"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir for updates
     project_dir_pull = os.path.join(TMP_DIR, f"{test_project}_pull")  # primary project dir for updates
     cleanup(mc, project, [project_dir, project_dir_pull])
@@ -3157,7 +3238,7 @@ def test_client_pull_project_async(mc):
 
 def test_client_project_sync(mc):
     test_project = "test_client_project_sync"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     project_dir_2 = os.path.join(TMP_DIR, f"{test_project}_2")
     cleanup(mc, project, [project_dir, project_dir_2])
@@ -3178,7 +3259,7 @@ def test_client_project_sync(mc):
 
 def test_client_project_sync_retry(mc):
     test_project = "test_client_project_sync_retry"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     cleanup(mc, project, [project_dir])
     mc.create_project(test_project)
@@ -3212,7 +3293,7 @@ def test_client_project_sync_retry(mc):
 
 def test_push_file_limits(mc):
     test_project = "test_push_file_limits"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     cleanup(mc, project, [project_dir])
     mc.create_project(test_project)
