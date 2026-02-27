@@ -10,11 +10,9 @@ from datetime import datetime, timedelta, date, timezone
 import pytest
 import pytz
 import sqlite3
-import glob
 import secrets
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 
-from unittest.mock import patch, Mock
 
 from .. import InvalidProject
 from ..client import (
@@ -1438,16 +1436,6 @@ def _create_spatial_table(db_file):
         "INSERT INTO gpkg_contents VALUES ('geo_test', 'features','description','geo_test','2019-06-18T14:52:50.928Z',-1.08892,0.0424077,-0.363885,0.562244,4326);"
     )
     cursor.execute("INSERT INTO gpkg_geometry_columns VALUES ('geo_test','geometry','POINT',4326, 0, 0 )")
-    cursor.execute("COMMIT;")
-
-
-def _delete_spatial_table(db_file):
-    """Drops spatial table called 'test' in sqlite database. Useful to simulate change of database schema."""
-    con = sqlite3.connect(db_file)
-    cursor = con.cursor()
-    cursor.execute("DROP TABLE poi;")
-    cursor.execute("DELETE FROM gpkg_geometry_columns WHERE table_name='poi';")
-    cursor.execute("DELETE FROM gpkg_contents WHERE table_name='poi';")
     cursor.execute("COMMIT;")
 
 
