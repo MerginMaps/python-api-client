@@ -25,8 +25,8 @@ import concurrent.futures
 from .common import CHUNK_SIZE, ClientError, DeltaChangeType, PullActionType
 from .models import ProjectDelta, ProjectDeltaChange, PullAction
 from .merginproject import MerginProject
-from .utils import cleanup_tmp_dir, int_version, save_to_file
-from typing import List, Optional, Tuple
+from .utils import cleanup_tmp_dir, save_to_file
+from typing import List, Optional
 
 # status = download_project_async(...)
 #

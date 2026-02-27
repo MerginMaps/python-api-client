@@ -613,7 +613,7 @@ def test_sync_diff(mc):
     project_info = mc.project_info_v2(mp.project_id(), mp.version())
     assert project_info.version == "v3"
     assert project_info.id == mp.project_id()
-    f_remote = next((f for f in project_info.files if f.path == f_updated), None)
+
     assert next((f for f in project_info.files if f.path == "renamed.gpkg"), None)
     assert not next((f for f in project_info.files if f.path == f_removed), None)
     assert not os.path.exists(mp.fpath_meta(f_removed))

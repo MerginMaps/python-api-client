@@ -32,11 +32,11 @@ def test_get_diff_download_files():
         assert f2.downloaded_items[0].version == "v2"
 
 
-@pytest.fixture
 def test_get_download_items():
     with tempfile.TemporaryDirectory() as tmp_dir:
         # Case 1: Small file (one chunk)
         items = get_download_items("small.txt", 100, "v1", tmp_dir)
+        assert len(items) == 1
         assert len(items) == 1
         assert items[0].file_path == "small.txt"
         assert items[0].size == 100

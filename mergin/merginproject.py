@@ -9,7 +9,7 @@ import uuid
 import tempfile
 from datetime import datetime
 from dateutil.tz import tzlocal
-from dataclasses import asdict
+
 
 from .editor import prevent_conflicted_copy
 
@@ -644,7 +644,7 @@ class MerginProject:
                 self.log.warning("failed to create changeset for " + path)
                 # probably the database schema has been modified if geodiff cannot create changeset.
                 # we will need to do full upload of the file
-                pass
+
             result.append(delta_item)
 
         return result
