@@ -409,7 +409,7 @@ def test_push_pull_changes(mc):
     # renamed file will result in removed + added file
     assert next((f for f in push_changes["removed"] if f["path"] == f_renamed), None)
     assert next((f for f in push_changes["added"] if f["path"] == "renamed.txt"), None)
-    assert not pull_changes["renamed"]  # not supported
+    assert not pull_changes.get("renamed")  # not supported
 
     mc.push_project(project_dir)
 
