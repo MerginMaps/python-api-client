@@ -3,7 +3,7 @@ import tempfile
 import pytest
 from mergin.common import DeltaChangeType, CHUNK_SIZE
 from mergin.models import ProjectDeltaChange, ProjectDeltaItemDiff
-from mergin.client_pull import get_download_diff_files, get_download_diff_files, get_download_items
+from mergin.client_pull import get_download_diff_files, get_download_items
 
 
 def test_get_diff_download_files():
