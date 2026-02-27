@@ -3297,7 +3297,7 @@ def test_pull_project(mc: MerginClient, mc2: MerginClient):
     assert mp_to_pull.project_id() == mp.project_id()
     assert len(project_info.get("files")) == len(mp.files())
     delta = mp.get_pull_delta(mp_to_pull.files(), mp_to_pull.version())
-    for item in [item for item in delta.items if item.type == DeltaChangeType.CREATE]:
+    for item in [item for item in delta.changes if item.type == DeltaChangeType.CREATE]:
         assert os.path.exists(mp_to_pull.fpath(item.path))
     assert os.path.exists(mp_to_pull.fpath_meta("base.gpkg"))
 
