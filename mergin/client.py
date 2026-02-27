@@ -1162,7 +1162,7 @@ class MerginClient:
         mp = MerginProject(directory)
         server_info = self.project_info(mp.project_full_name(), since=mp.version())
 
-        pull_changes = mp.get_pull_changes(server_info["files"])
+        pull_changes = mp.get_pull_changes(server_info.get("files", []), server_info.get("version"))
 
         push_changes = mp.get_push_changes()
         push_changes_summary = mp.get_list_of_push_changes(push_changes)
