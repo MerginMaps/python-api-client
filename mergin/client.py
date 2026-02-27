@@ -789,10 +789,9 @@ class MerginClient:
         :param project_id: Project's id
         :type project_id: String
         :param since: Version to track history of files from
-        :type since: String
+        :type since: String (e.g. v1)
         :param to: Optional version to track history of files to, if not given latest version is used
-        :type since: String
-        :rtype: Dict
+        :type to: String (e.g. v2)
         """
         # If it is not enabled on the server, raise error
         if not self.server_features().get("v2_pull_enabled", False):
@@ -805,7 +804,7 @@ class MerginClient:
         resp_parsed = json.load(resp)
         return ProjectDelta(
             to_version=resp_parsed.get("to_version"),
-            items=[
+            changes=[
                 ProjectDeltaChange(
                     path=item["path"],
                     size=item.get("size"),

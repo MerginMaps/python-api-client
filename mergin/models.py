@@ -38,7 +38,7 @@ class ProjectDelta:
     """
 
     to_version: str
-    items: List[ProjectDeltaChange] = field(default_factory=list)
+    changes: List[ProjectDeltaChange] = field(default_factory=list)
 
 
 @dataclass
@@ -48,8 +48,7 @@ class PullAction:
     """
 
     type: PullActionType
-    pull_delta_item: ProjectDeltaChange
-    local_delta_item: Optional[ProjectDeltaChange] = None
+    path: str
 
     def __post_init__(self):
         self.type = PullActionType(self.type)

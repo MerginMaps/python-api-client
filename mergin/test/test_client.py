@@ -3265,10 +3265,10 @@ def test_pull_project(mc: MerginClient, mc2: MerginClient):
 
     if mc.server_features() and mc.server_features().get("v2_pull_enabled"):
         delta = mc.get_project_delta(mp_to_pull.project_id(), since=mp_to_pull.version())
-        assert delta.items
+        assert delta.changes
         assert delta.to_version == mp.version()
         job = pull_project_async(mc, project_dir_to_pull)
-        assert len(job.download_queue_items) == len(delta.items) - 1  # excluding .qgs zero size file
+        assert len(job.download_queue_items) == len(delta.changes) - 1  # excluding .qgs zero size file
         assert os.path.exists(job.tmp_dir.name)
         pull_project_wait(job)
         # check project info after pull
@@ -3279,7 +3279,7 @@ def test_pull_project(mc: MerginClient, mc2: MerginClient):
         assert mp_to_pull.version() == mp.version()
         assert mp_to_pull.project_id() == mp.project_id()
         assert len(project_info.files) == len(mp.files())
-        for item in delta.items:
+        for item in delta.changes:
             assert os.path.exists(mp_to_pull.fpath(item.path))
         assert os.path.exists(mp_to_pull.fpath_meta("base.gpkg"))
 

@@ -152,22 +152,21 @@ def test_get_pull_delta():
     mp.version = lambda: "v1"
     mp.is_versioned_file = lambda path: path.endswith(".gpkg")
 
-    server_info = {"files": [], "version": "v3"}
-    delta = mp.get_pull_delta(server_info)
+    delta = mp.get_pull_delta([], "v3")
 
-    assert len(delta.items) == 4
+    assert len(delta.changes) == 4
 
     # Verify items
-    create_item = next(i for i in delta.items if i.path == "new.txt")
+    create_item = next(i for i in delta.changes if i.path == "new.txt")
     assert create_item.type == DeltaChangeType.CREATE
 
-    delete_item = next(i for i in delta.items if i.path == "deleted.txt")
+    delete_item = next(i for i in delta.changes if i.path == "deleted.txt")
     assert delete_item.type == DeltaChangeType.DELETE
 
-    update_item = next(i for i in delta.items if i.path == "updated.txt")
+    update_item = next(i for i in delta.changes if i.path == "updated.txt")
     assert update_item.type == DeltaChangeType.UPDATE
 
-    diff_item = next(i for i in delta.items if i.path == "data.gpkg")
+    diff_item = next(i for i in delta.changes if i.path == "data.gpkg")
     assert diff_item.type == DeltaChangeType.UPDATE_DIFF
     assert len(diff_item.diffs) == 2
 
@@ -251,15 +250,8 @@ def test_apply_pull_actions_apply_diff():
         mp.geodiff.create_changeset(live, os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"), server_diff)
         mp.geodiff.make_copy_sqlite(os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"), server_gpkg)
         pull_action = PullAction(
-            type=PullActionType.APPLY_DIFF,
-            pull_delta_item=ProjectDeltaChange(
-                type=DeltaChangeType.UPDATE_DIFF,
-                path="base.gpkg",
-                version="v1",
-                size=40,
-                checksum="c4",
-                diffs=[ProjectDeltaItemDiff(id="server_diff_mock.diff")],
-            ),
+            type=PullActionType.APPLY_DIFF_NO_REBASE,
+            path="base.gpkg",
         )
         mp.apply_pull_actions([pull_action], tmp_dir, {}, None)
         # verify that live and base has been updated
@@ -287,18 +279,8 @@ def test_apply_pull_actions_apply_diff():
         mp.geodiff.make_copy_sqlite(os.path.join(TEST_DATA_DIR, "inserted_1_A.gpkg"), server_gpkg)
         mp.geodiff.make_copy_sqlite(os.path.join(TEST_DATA_DIR, "inserted_1_B.gpkg"), live)  # local change
         pull_action = PullAction(
-            type=PullActionType.APPLY_DIFF,
-            pull_delta_item=ProjectDeltaChange(
-                type=DeltaChangeType.UPDATE_DIFF,
-                path="base.gpkg",
-                version="v1",
-                size=0,
-                checksum="",
-                diffs=[ProjectDeltaItemDiff(id="server_diff_mock.diff")],
-            ),
-            local_delta_item=ProjectDeltaChange(
-                type=DeltaChangeType.UPDATE_DIFF, path="base.gpkg", version="v1", size=40, checksum="c4"
-            ),
+            type=PullActionType.APPLY_DIFF_REBASE,
+            path="base.gpkg",
         )
 
         class MockMC:
@@ -333,23 +315,11 @@ def test_apply_pull_actions_copy():
         pull_actions = [
             PullAction(
                 type=PullActionType.COPY,
-                pull_delta_item=ProjectDeltaChange(
-                    type=DeltaChangeType.CREATE,
-                    path="test.txt",
-                    version="v1",
-                    size=10,
-                    checksum="c1",
-                ),
+                path="test.txt",
             ),
             PullAction(
                 type=PullActionType.COPY,
-                pull_delta_item=ProjectDeltaChange(
-                    type=DeltaChangeType.CREATE,
-                    path="base.gpkg",
-                    version="v1",
-                    size=20,
-                    checksum="c2",
-                ),
+                path="base.gpkg",
             ),
         ]
         mp.apply_pull_actions(pull_actions, tmp_dir, {}, None)
@@ -374,23 +344,11 @@ def test_apply_pull_actions_delete():
         pull_actions = [
             PullAction(
                 type=PullActionType.DELETE,
-                pull_delta_item=ProjectDeltaChange(
-                    type=DeltaChangeType.DELETE,
-                    path="test.txt",
-                    version="v1",
-                    size=10,
-                    checksum="c1",
-                ),
+                path="test.txt",
             ),
             PullAction(
                 type=PullActionType.DELETE,
-                pull_delta_item=ProjectDeltaChange(
-                    type=DeltaChangeType.DELETE,
-                    path="base.gpkg",
-                    version="v1",
-                    size=20,
-                    checksum="c2",
-                ),
+                path="base.gpkg",
             ),
         ]
         mp.apply_pull_actions(pull_actions, tmp_dir, {}, None)
@@ -423,23 +381,11 @@ def test_apply_pull_actions_copy_conflict():
         pull_actions = [
             PullAction(
                 type=PullActionType.COPY_CONFLICT,
-                pull_delta_item=ProjectDeltaChange(
-                    type=DeltaChangeType.UPDATE,
-                    path="test.txt",
-                    version="v1",
-                    size=10,
-                    checksum="c1",
-                ),
+                path="test.txt",
             ),
             PullAction(
                 type=PullActionType.COPY_CONFLICT,
-                pull_delta_item=ProjectDeltaChange(
-                    type=DeltaChangeType.UPDATE,
-                    path="base.gpkg",
-                    version="v1",
-                    size=20,
-                    checksum="c2",
-                ),
+                path="base.gpkg",
             ),
         ]
 

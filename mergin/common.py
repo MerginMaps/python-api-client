@@ -164,5 +164,6 @@ class DeltaChangeType(Enum):
 class PullActionType(Enum):
     COPY = "copy"
     COPY_CONFLICT = "copy_conflict"
-    APPLY_DIFF = "apply_diff"
+    APPLY_DIFF_REBASE = "apply_diff_rebase"
+    APPLY_DIFF_NO_REBASE = "apply_diff_no_rebase"
     DELETE = "delete"

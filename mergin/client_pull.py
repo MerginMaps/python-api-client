@@ -68,6 +68,7 @@ class DownloadJob:
         self.is_cancelled = False
         self.project_info = project_info  # parsed JSON with project info returned from the server
         self.failure_log_file = None  # log file, copied from the project directory if download fails
+        self.futures = []  # list of concurrent.futures.Future instances
 
     def dump(self):
         print("--- JOB ---", self.total_size, "bytes")
@@ -137,9 +138,7 @@ class DownloadDiffQueueItem:
         """Starts download and only returns once the file has been fully downloaded and saved"""
 
         mp.log.debug(f"Downloading diff {self.diff_id}")
-        resp = mc.get(
-            f"/v2/projects/{mp.project_id()}/raw/diff/{self.diff_id}",
-        )
+        resp = mc.get(f"/v2/projects/{mp.project_id()}/raw/diff", {"file": self.diff_id})
         if resp.status in [200, 206]:
             mp.log.debug(f"Download finished: {self.diff_id}")
             save_to_file(resp, self.download_file_path)
@@ -431,8 +430,8 @@ class PullJob:
         total_size,
         version,
         download_files: List[DownloadFile],
-        download_queue_items,
-        tmp_dir,
+        download_queue_items: List[typing.Union[DownloadQueueItem, DownloadDiffQueueItem]],
+        tmp_dir: tempfile.TemporaryDirectory,
         mp,
         project_info,
         basefiles_to_patch,
@@ -446,7 +445,7 @@ class PullJob:
         self.version = version
         self.download_files = download_files  # list of DownloadFile instances
         self.download_queue_items = download_queue_items
-        self.tmp_dir = tmp_dir  # TemporaryDirectory instance where we store downloaded files
+        self.tmp_dir: tempfile.TemporaryDirectory = tmp_dir
         self.mp: MerginProject = mp
         self.is_cancelled = False
         self.project_info = project_info  # parsed JSON with project info returned from the server
@@ -466,7 +465,10 @@ class PullJob:
             print("patch basefile {}  with {} diffs".format(basefile, len(diffs)))
         print("--")
         for item in self.download_queue_items:
-            print("- {} {} {} {}".format(item.file_path, item.version, item.part_index, item.size))
+            if isinstance(item, DownloadDiffQueueItem):
+                print("- diff {} size {} dest {}".format(item.diff_id, item.size, item.download_file_path))
+            else:
+                print("- {} {} {} {}".format(item.file_path, item.version, item.part_index, item.size))
         print("--- END ---")
 
 
@@ -517,7 +519,7 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
         else:
             server_info = mc.project_info(project_path, since=local_version)
             server_version = server_info.get("version")
-            delta = mp.get_pull_delta(server_info)
+            delta = mp.get_pull_delta(server_info.get("files", []), server_version)
     except ClientError as err:
         mp.log.error("Error getting project info: " + str(err))
         mp.log.info("--- pull aborted")
@@ -537,28 +539,28 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
     pull_actions = []
     local_delta = mp.get_local_delta(tmp_dir.name)
     # Converting local to PullActions
-    for item in delta.items:
+    for change in delta.changes:
         # find corresponding local delta item
-        local_item = next((i for i in local_delta if i.path == item.path), None)
+        local_item = next((i for i in local_delta if i.path == change.path), None)
         local_item_change = local_item.type if local_item else None
 
         # compare server and local changes to decide what to do in pull
-        pull_action_type = mp.get_pull_action(item.type, local_item_change)
+        pull_action_type = mp.get_pull_action(change.type, local_item_change)
         if not pull_action_type:
             continue  # no action needed
 
-        pull_action = PullAction(pull_action_type, item, local_item)
-        if pull_action_type == PullActionType.APPLY_DIFF or (
-            pull_action_type == PullActionType.COPY_CONFLICT and item.type == DeltaChangeType.UPDATE_DIFF
+        pull_action = PullAction(pull_action_type, change.path)
+        if pull_action_type in (PullActionType.APPLY_DIFF_REBASE, PullActionType.APPLY_DIFF_NO_REBASE) or (
+            pull_action_type == PullActionType.COPY_CONFLICT and change.type == DeltaChangeType.UPDATE_DIFF
         ):
-            basefile = mp.fpath_meta(item.path)
+            basefile = mp.fpath_meta(change.path)
             if not os.path.exists(basefile):
                 # The basefile does not exist for some reason. This should not happen normally (maybe user removed the file
                 # or we removed it within previous pull because we failed to apply patch the older version for some reason).
                 # But it's not a problem - we will download the newest version and we're sorted.
-                mp.log.info(f"missing base file for {item.path} -> going to download it (version {server_version})")
-                items = get_download_items(item.path, item.size, server_version, tmp_dir.name)
-                dest_file_path = mp.fpath(item.path, tmp_dir.name)
+                mp.log.info(f"missing base file for {change.path} -> going to download it (version {server_version})")
+                items = get_download_items(change.path, change.size, server_version, tmp_dir.name)
+                dest_file_path = mp.fpath(change.path, tmp_dir.name)
                 download_files.append(DownloadFile(dest_file_path, items))
 
                 # Force use COPY_CONFLICT action to apply the new version instead of trying to apply diffs
@@ -574,22 +576,22 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
                 diff_files.extend(
                     [
                         DownloadDiffQueueItem(diff_item.id, os.path.join(tmp_dir.name, diff_item.id))
-                        for diff_item in item.diffs
+                        for diff_item in change.diffs
                     ]
                 )
-                basefiles_to_patch.append((item.path, [diff.id for diff in item.diffs]))
+                basefiles_to_patch.append((change.path, [diff.id for diff in change.diffs]))
 
             else:
                 # fallback for diff files using v1 endpoint /raw
                 # download chunks and create DownloadFile instances for each diff file
-                diff_download_files = get_download_diff_files(item, tmp_dir.name)
+                diff_download_files = get_download_diff_files(change, tmp_dir.name)
                 download_files.extend(diff_download_files)
-                basefiles_to_patch.append((item.path, [diff.id for diff in item.diffs]))
+                basefiles_to_patch.append((change.path, [diff.id for diff in change.diffs]))
 
         elif pull_action_type == PullActionType.COPY or pull_action_type == PullActionType.COPY_CONFLICT:
             # simply download the server version of the files
-            dest_file_path = os.path.normpath(os.path.join(tmp_dir.name, item.path))
-            download_items = get_download_items(item.path, item.size, server_version, tmp_dir.name)
+            dest_file_path = os.path.normpath(os.path.join(tmp_dir.name, change.path))
+            download_items = get_download_items(change.path, change.size, server_version, tmp_dir.name)
             download_files.append(DownloadFile(dest_file_path, download_items))
 
         pull_actions.append(pull_action)
@@ -604,8 +606,8 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
         total_size += diff_file.size
     for download_file in download_files:
         download_queue_items.extend(download_file.downloaded_items)
-        for item in download_file.downloaded_items:
-            total_size += item.size
+        for change in download_file.downloaded_items:
+            total_size += change.size
 
     mp.log.info(f"will download {len(download_queue_items)} chunks, total size {total_size}")
 
@@ -626,8 +628,8 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
 
     # start download
     job.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
-    for item in download_queue_items:
-        future = job.executor.submit(_do_download, item, mc, mp, project_path, job)
+    for change in download_queue_items:
+        future = job.executor.submit(_do_download, change, mc, mp, project_path, job)
         job.futures.append(future)
 
     return job
@@ -912,7 +914,7 @@ def download_files_async(
     mp.log.info(f"Got project info. version {project_info['version']}")
 
     # set temporary directory for download
-    tmp_dir = tempfile.mkdtemp(prefix="python-api-client-")
+    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
 
     if output_paths is None:
         output_paths = []
@@ -922,7 +924,7 @@ def download_files_async(
     if len(output_paths) != len(file_paths):
         warn = "Output file paths are not of the same length as file paths. Cannot store required files."
         mp.log.warning(warn)
-        shutil.rmtree(tmp_dir)
+        cleanup_tmp_dir(mp, tmp_dir)
         raise ClientError(warn)
 
     download_list = []
@@ -956,7 +958,7 @@ def download_files_async(
     if not download_list or missing_files:
         warn = f"No [{', '.join(missing_files)}] exists at version {version}"
         mp.log.warning(warn)
-        shutil.rmtree(tmp_dir)
+        cleanup_tmp_dir(mp, tmp_dir)
         raise ClientError(warn)
 
     mp.log.info(
@@ -972,7 +974,7 @@ def download_files_async(
     return job
 
 
-def download_files_finalize(job):
+def download_files_finalize(job: DownloadJob):
     """
     To be called when download_file_async is finished
     """
@@ -989,5 +991,5 @@ def download_files_finalize(job):
         task.apply(job.tmp_dir, job.mp)
 
     # Remove temporary download directory
-    if job.tmp_dir is not None and os.path.exists(job.tmp_dir):
-        shutil.rmtree(job.tmp_dir)
+    if job.tmp_dir is not None and os.path.exists(job.tmp_dir.name):
+        cleanup_tmp_dir(job.mp, job.tmp_dir)

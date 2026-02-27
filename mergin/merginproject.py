@@ -4,7 +4,8 @@ import math
 import os
 import re
 import shutil
-from typing import List, Optional
+from typing import List, Optional, Dict
+import typing
 import uuid
 import tempfile
 from datetime import datetime
@@ -327,7 +328,7 @@ class MerginProject:
                 )
         return files_meta
 
-    def compare_file_sets(self, origin, current):
+    def compare_file_sets(self, origin: List[Dict], current: List[Dict]):
         """
         Helper function to calculate difference between two sets of files metadata using file names and checksums.
 
@@ -362,7 +363,7 @@ class MerginProject:
 
         return {"renamed": [], "added": added, "removed": removed, "updated": updated}
 
-    def get_pull_changes(self, server_files: List[dict]) -> dict:
+    def get_pull_changes(self, server_files: List[dict], version: str) -> Dict:
         """
         Calculate changes needed to be pulled from server.
 
@@ -380,46 +381,29 @@ class MerginProject:
         :rtype: dict
         """
 
-        # first let's have a look at the added/updated/removed files
-        changes = self.compare_file_sets(self.files(), server_files)
+        delta = self.get_pull_delta(server_files, version)
 
-        # then let's inspect our versioned files (geopackages) if there are any relevant changes
-        not_updated = []
-        for file in changes["updated"]:
-            if not self.is_versioned_file(file["path"]):
-                continue
+        changes = {"added": [], "removed": [], "updated": []}
+        for item in delta.changes:
+            change_dict = {
+                "path": item.path,
+                "size": item.size,
+                "checksum": item.checksum,
+                "version": item.version,
+            }
+            if item.diffs:
+                change_dict["diffs"] = [diff.id for diff in item.diffs]
 
-            diffs = []
-            diffs_size = 0
-            is_updated = False
+            if item.type == DeltaChangeType.CREATE:
+                changes["added"].append(change_dict)
+            elif item.type == DeltaChangeType.DELETE:
+                changes["removed"].append(change_dict)
+            elif item.type in [DeltaChangeType.UPDATE, DeltaChangeType.UPDATE_DIFF]:
+                changes["updated"].append(change_dict)
 
-            # get sorted list of the history (they may not be sorted or using lexical sorting - "v10", "v11", "v5", "v6", ...)
-            history_list = []
-            for version_str, version_info in file["history"].items():
-                history_list.append((int_version(version_str), version_info))
-            history_list = sorted(history_list, key=lambda item: item[0])  # sort tuples based on version numbers
-
-            # need to track geodiff file history to see if there were any changes
-            for version, version_info in history_list:
-                if version <= int_version(self.version()):
-                    continue  # ignore history of no interest
-                is_updated = True
-                if "diff" in version_info:
-                    diffs.append(version_info["diff"]["path"])
-                    diffs_size += version_info["diff"]["size"]
-                else:
-                    diffs = []
-                    break  # we found force update in history, does not make sense to download diffs
-
-            if is_updated:
-                file["diffs"] = diffs
-            else:
-                not_updated.append(file)
-
-        changes["updated"] = [f for f in changes["updated"] if f not in not_updated]
         return changes
 
-    def get_pull_delta(self, server_info: dict) -> ProjectDelta:
+    def get_pull_delta(self, server_files: List[Dict], server_version: str) -> ProjectDelta:
         """
         Calculate delta needed to be pulled from server.
 
@@ -434,17 +418,15 @@ class MerginProject:
         .. seealso:: ProjectDelta
         .. seealso:: self.get_pull_changes
 
-        :param server_info: project metadata,
+        :param server_files: list of server files' metadata with mandatory 'history' field (see also self.inspect_files(),
         self.project_info(project_path, since=v1))
-        :type server_info: dict
-        :returns: changes metadata for files to be pulled from server
-        :rtype: ProjectDelta
+        :type server_files: list[dict]
+        :param server_version: version of the server
+        :type server_version: str
         """
 
         # first let's have a look at the added/updated/removed files
         result = []
-        server_files = server_info.get("files", [])
-        server_version = server_info.get("version", "")
         changes = self.compare_file_sets(self.files(), server_files)
 
         added = changes.get("added", [])
@@ -519,7 +501,7 @@ class MerginProject:
                         diffs=diffs,
                     )
                 )
-        return ProjectDelta(to_version=server_version, items=result)
+        return ProjectDelta(to_version=server_version, changes=result)
 
     def get_pull_action(
         self, server_change: DeltaChangeType, local_change: Optional[DeltaChangeType] = None
@@ -546,11 +528,12 @@ class MerginProject:
             (DeltaChangeType.UPDATE, DeltaChangeType.UPDATE): PullActionType.COPY_CONFLICT,
             (DeltaChangeType.UPDATE, DeltaChangeType.DELETE): PullActionType.COPY,
             (DeltaChangeType.UPDATE, DeltaChangeType.UPDATE_DIFF): PullActionType.COPY_CONFLICT,
-            (DeltaChangeType.UPDATE_DIFF, None): PullActionType.APPLY_DIFF,  # without rebase
+            (DeltaChangeType.UPDATE_DIFF, None): PullActionType.APPLY_DIFF_NO_REBASE,  # without rebase
             (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.UPDATE): PullActionType.COPY_CONFLICT,
             (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.DELETE): PullActionType.COPY,
-            (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.UPDATE_DIFF): PullActionType.APPLY_DIFF,  # rebase
+            (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.UPDATE_DIFF): PullActionType.APPLY_DIFF_REBASE,  # rebase
             (DeltaChangeType.DELETE, None): PullActionType.DELETE,
+            # TODO: Need to discuss If we want files to have reloaded if they are updated but removed
             (DeltaChangeType.DELETE, DeltaChangeType.UPDATE): None,
             (DeltaChangeType.DELETE, DeltaChangeType.DELETE): None,
             (DeltaChangeType.DELETE, DeltaChangeType.UPDATE_DIFF): None,
@@ -764,13 +747,11 @@ class MerginProject:
         conflicts = []
 
         for action in actions:
-            path = action.pull_delta_item.path
+            path = action.path
             server_file = self.fpath(path, download_dir)
             live_file = self.fpath(path)
             basefile = self.fpath_meta(path)
             action_type = action.type
-            pull_change = action.pull_delta_item.type
-            local_change = action.local_delta_item.type if action.local_delta_item else None
             if action_type == PullActionType.COPY:
                 # simply copy the file from server
                 if is_versioned_file(path):
@@ -778,21 +759,17 @@ class MerginProject:
                     self.geodiff.make_copy_sqlite(server_file, basefile)
                 else:
                     shutil.copy(server_file, live_file)
-
-            elif action_type == PullActionType.APPLY_DIFF:
+            elif action_type == PullActionType.APPLY_DIFF_NO_REBASE:
+                # simply apply the diff without rebase (no local changes or non-conflicting local changes)
+                self.update_without_rebase(path, server_file, live_file, basefile, download_dir)
+            elif action_type == PullActionType.APPLY_DIFF_REBASE:
                 # rebase needed only if both server and local changes are diffs
-                if pull_change == DeltaChangeType.UPDATE_DIFF and local_change == DeltaChangeType.UPDATE_DIFF:
-                    conflict = self.update_with_rebase(
-                        path, server_file, live_file, basefile, download_dir, mc.username()
-                    )
-                    if conflict:
-                        conflicts.append(conflict)
-                else:
-                    # no rebase needed, just apply the diff
-                    self.update_without_rebase(path, server_file, live_file, basefile, download_dir)
+                conflict = self.update_with_rebase(path, server_file, live_file, basefile, download_dir, mc.username())
+                if conflict:
+                    conflicts.append(conflict)
 
             elif action_type == PullActionType.COPY_CONFLICT:
-                if not prevent_conflicted_copy(path, mc, server_project.get("role")):
+                if prevent_conflicted_copy(path, mc, server_project.get("role")):
                     continue
 
                 conflict = self.create_conflicted_copy(path, mc.username())
