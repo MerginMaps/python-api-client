@@ -4,8 +4,9 @@ import math
 import os
 import re
 import shutil
-import uuid
 import tempfile
+import uuid
+import weakref
 from datetime import datetime
 from dateutil.tz import tzlocal
 
@@ -41,7 +42,31 @@ class MerginProject:
     Linked to existing local directory, with project metadata (mergin.json) and backups located in .mergin directory.
     """
 
+    # To make sure we don't have multiple instances for a single project that
+    # then have out-of-date information, we keep this map of absolute project
+    # directory paths to instances.
+    # The dictionary is a WeakValueDictionary so we don't cause memory leaks
+    # (when the instance is GC'd, the entry is deleted).
+    project_cache: weakref.WeakValueDictionary[str, "MerginProject"] = weakref.WeakValueDictionary()
+
+    def __new__(cls, directory):
+        directory = os.path.abspath(directory)
+        instance = cls.project_cache.get(directory)
+        if instance:
+            return instance
+        else:
+            instance = super().__new__(cls)
+            cls.project_cache[directory] = instance
+            return instance
+
     def __init__(self, directory):
+        # __init__ still gets called after __new__, even if it returns a
+        # pre-existing object. Work around this by checking whether we've been
+        # initialised.
+        if hasattr(self, "_initialised"):
+            return
+        self._initialised = True
+
         self.dir = os.path.abspath(directory)
         if not os.path.exists(self.dir):
             raise InvalidProject("Project directory does not exist")
