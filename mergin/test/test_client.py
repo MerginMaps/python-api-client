@@ -342,7 +342,7 @@ def test_create_remote_project_from_local(mc):
     project_info = mc.project_info_v2(project_info.get("id"))
     assert project_info.version == source_mp.version()
     assert project_info.name == test_project
-    assert project_info.workspace.name == API_USER
+    assert project_info.workspace.name == mc.username()
     assert project_info.id == source_mp.project_id()
 
     version = mc.project_version_info(project_info.id, "v1")
@@ -1754,7 +1754,7 @@ def test_rebase_success(mc, extra_connection):
     test_gpkg = os.path.join(project_dir, "test.gpkg")
     test_gpkg_2 = os.path.join(project_dir_2, "test.gpkg")
     test_gpkg_basefile = os.path.join(project_dir, ".mergin", "test.gpkg")
-    test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, API_USER, 1)
+    test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, mc.username(), 1)
     cleanup(mc, project, [project_dir, project_dir_2])
 
     os.makedirs(project_dir)
