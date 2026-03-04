@@ -99,7 +99,7 @@ To download a specific version of a project:
 $ mergin --username john download --version v42 john/project1 ~/mergin/project1
 ```
 
-To download a sepecific version of a single file:
+To download a specific version of a single file:
 
 1. First you need to download the project:
 ```
@@ -183,13 +183,12 @@ For running test do:
 
 ```bash
     cd mergin
+    # TEST_ related vairables are optional
     export TEST_MERGIN_URL=<url> # testing server
     export TEST_API_USERNAME=<username>
     export TEST_API_PASSWORD=<pwd>
     export TEST_API_USERNAME2=<username2>
     export TEST_API_PASSWORD2=<pwd2>
-    # workspace name with controlled available storage space (e.g. 20MB), default value: testpluginstorage
-    export TEST_STORAGE_WORKSPACE=<workspacename>
     pip install pytest pytest-cov coveralls
     pytest --cov-report html --cov=mergin mergin/test/
 ```
