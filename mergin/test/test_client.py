@@ -3320,7 +3320,7 @@ def test_pull_project(mc: MerginClient, mc2: MerginClient):
     """Test pull_project method"""
     test_project = "test_pull_project_created"
     test_project_to_pull = "test_pull_project_created_2"
-    project = API_USER + "/" + test_project
+    project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)
     project_dir_to_pull = os.path.join(TMP_DIR, test_project_to_pull)
     project_dir_to_pull_v1 = os.path.join(TMP_DIR, test_project_to_pull + "_v1")
