@@ -514,7 +514,6 @@ class MerginProject:
             (DeltaChangeType.CREATE, DeltaChangeType.UPDATE),
             (DeltaChangeType.CREATE, DeltaChangeType.DELETE),
             (DeltaChangeType.CREATE, DeltaChangeType.UPDATE_DIFF),
-            (DeltaChangeType.UPDATE, DeltaChangeType.CREATE),
             (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.CREATE),
             (DeltaChangeType.DELETE, DeltaChangeType.CREATE),
         ]:
@@ -528,6 +527,7 @@ class MerginProject:
             (DeltaChangeType.UPDATE, DeltaChangeType.UPDATE): PullActionType.COPY_CONFLICT,
             (DeltaChangeType.UPDATE, DeltaChangeType.DELETE): PullActionType.COPY,
             (DeltaChangeType.UPDATE, DeltaChangeType.UPDATE_DIFF): PullActionType.COPY_CONFLICT,
+            (DeltaChangeType.UPDATE, DeltaChangeType.CREATE): PullActionType.COPY_CONFLICT,
             (DeltaChangeType.UPDATE_DIFF, None): PullActionType.APPLY_DIFF_NO_REBASE,  # without rebase
             (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.UPDATE): PullActionType.COPY_CONFLICT,
             (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.DELETE): PullActionType.COPY,
