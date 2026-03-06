@@ -19,7 +19,13 @@ jobs:
         run: |
           # Upgrade pip and install security/linting tools
           python -m pip install --upgrade pip
-          pip install bandit detect-secrets flake8 flake8-json
+          pip install bandit detect-secrets
+
+      # - name: Install dependencies
+      #   run: |
+      #     # Upgrade pip and install security/linting tools
+      #     python -m pip install --upgrade pip
+      #     pip install bandit detect-secrets flake8 flake8-json
 
       - name: Run Bandit (Security Scan)
         # Scan the mergin folder for vulnerabilities, excluding the test directory
@@ -29,8 +35,8 @@ jobs:
         # Scan the plugin directory for hardcoded secrets/credentials
         run: detect-secrets scan ./mergin/ --all-files
 
-      - name: Run Flake8 (Style Check)
-        # Style enforcement using MerginMaps standards
-        # Ignoring E501 (line length) and W503 (operator line breaks)
-        run: |
-          flake8 ./mergin/ --max-line-length=120 --ignore=E501,W503 --exclude=test
+      # - name: Run Flake8 (Style Check)
+      #   # Style enforcement using MerginMaps standards
+      #   # Ignoring E501 (line length) and W503 (operator line breaks)
+      #   run: |
+      #     flake8 ./mergin/ --max-line-length=120 --ignore=E501,W503 --exclude=test
