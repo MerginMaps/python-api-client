@@ -82,27 +82,29 @@ def test_get_pull_action_valid():
     with tempfile.TemporaryDirectory() as tmp_dir:
         mp = MerginProject(tmp_dir)
 
-    # Test cases: (server_change, local_change, expected_action)
+    # Test cases: (server_change, local_change, server_checksum, local_checksum, expected_action)
     test_cases = [
-        (DeltaChangeType.CREATE, None, PullActionType.COPY),
-        (DeltaChangeType.CREATE, DeltaChangeType.CREATE, PullActionType.COPY_CONFLICT),
-        (DeltaChangeType.UPDATE, None, PullActionType.COPY),
-        (DeltaChangeType.UPDATE, DeltaChangeType.UPDATE, PullActionType.COPY_CONFLICT),
-        (DeltaChangeType.UPDATE, DeltaChangeType.DELETE, PullActionType.COPY),
-        (DeltaChangeType.UPDATE, DeltaChangeType.UPDATE_DIFF, PullActionType.COPY_CONFLICT),
-        (DeltaChangeType.UPDATE, DeltaChangeType.CREATE, PullActionType.COPY_CONFLICT),
-        (DeltaChangeType.UPDATE_DIFF, None, PullActionType.APPLY_DIFF_NO_REBASE),
-        (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.UPDATE, PullActionType.COPY_CONFLICT),
-        (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.DELETE, PullActionType.COPY),
-        (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.UPDATE_DIFF, PullActionType.APPLY_DIFF_REBASE),
-        (DeltaChangeType.DELETE, None, PullActionType.DELETE),
-        (DeltaChangeType.DELETE, DeltaChangeType.UPDATE, None),
-        (DeltaChangeType.DELETE, DeltaChangeType.DELETE, None),
-        (DeltaChangeType.DELETE, DeltaChangeType.UPDATE_DIFF, None),
+        (DeltaChangeType.CREATE, None, None, None, PullActionType.COPY),
+        (DeltaChangeType.CREATE, DeltaChangeType.CREATE, "c1", "c2", PullActionType.COPY_CONFLICT),
+        (DeltaChangeType.CREATE, DeltaChangeType.CREATE, "c1", "c1", None),
+        (DeltaChangeType.UPDATE, None, None, None, PullActionType.COPY),
+        (DeltaChangeType.UPDATE, DeltaChangeType.UPDATE, "c1", "c2", PullActionType.COPY_CONFLICT),
+        (DeltaChangeType.UPDATE, DeltaChangeType.UPDATE, "c1", "c1", None),
+        (DeltaChangeType.UPDATE, DeltaChangeType.DELETE, "c1", "c2", PullActionType.COPY),
+        (DeltaChangeType.UPDATE, DeltaChangeType.UPDATE_DIFF, "c1", "c2", PullActionType.COPY_CONFLICT),
+        (DeltaChangeType.UPDATE, DeltaChangeType.CREATE, "c1", "c2", PullActionType.COPY_CONFLICT),
+        (DeltaChangeType.UPDATE_DIFF, None, "c1", "c2", PullActionType.APPLY_DIFF_NO_REBASE),
+        (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.UPDATE, "c1", "c2", PullActionType.COPY_CONFLICT),
+        (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.DELETE, "c1", "c2", PullActionType.COPY),
+        (DeltaChangeType.UPDATE_DIFF, DeltaChangeType.UPDATE_DIFF, "c1", "c2", PullActionType.APPLY_DIFF_REBASE),
+        (DeltaChangeType.DELETE, None, "c1", "c2", PullActionType.DELETE),
+        (DeltaChangeType.DELETE, DeltaChangeType.UPDATE, None, None, None),
+        (DeltaChangeType.DELETE, DeltaChangeType.DELETE, None, None, None),
+        (DeltaChangeType.DELETE, DeltaChangeType.UPDATE_DIFF, None, None, None),
     ]
 
-    for server_change, local_change, expected_action in test_cases:
-        action = mp.get_pull_action(server_change, local_change)
+    for server_change, local_change, server_checksum, local_checksum, expected_action in test_cases:
+        action = mp.get_pull_action(server_change, local_change, server_checksum, local_checksum)
         assert (
             action == expected_action
         ), f"Failed for {server_change}, {local_change}. Expected {expected_action}, got {action}"
@@ -123,7 +125,7 @@ def test_get_pull_action_fatal():
 
     for server_change, local_change in fatal_cases:
         with pytest.raises(ClientError, match="Invalid combination of changes"):
-            mp.get_pull_action(server_change, local_change)
+            mp.get_pull_action(server_change, local_change, None, None)
 
 
 def test_get_pull_delta():
