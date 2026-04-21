@@ -507,8 +507,8 @@ class MerginProject:
         self,
         server_change: DeltaChangeType,
         local_change: Optional[DeltaChangeType] = None,
-        server_checksum=None,
-        local_checksum=None,
+        server_checksum: Optional[str] = None,
+        local_checksum: Optional[str] = None,
     ) -> Optional[PullActionType]:
         """
         Determine pull actions for files by comparing server_change and local_change.
