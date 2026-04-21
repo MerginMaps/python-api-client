@@ -504,7 +504,11 @@ class MerginProject:
         return ProjectDelta(to_version=server_version, changes=result)
 
     def get_pull_action(
-        self, server_change: DeltaChangeType, local_change: Optional[DeltaChangeType] = None
+        self,
+        server_change: DeltaChangeType,
+        local_change: Optional[DeltaChangeType] = None,
+        server_checksum: Optional[str] = None,
+        local_checksum: Optional[str] = None,
     ) -> Optional[PullActionType]:
         """
         Determine pull actions for files by comparing server_change and local_change.
@@ -520,11 +524,17 @@ class MerginProject:
             self.log.critical(f"Invalid combination of changes: server {server_change}, local {local_change}")
             raise ClientError(f"Invalid combination of changes: server {server_change}, local {local_change}")
 
+        checksum_conflict = server_checksum != local_checksum if server_checksum and local_checksum else False
+
         pull_action_map = {
             (DeltaChangeType.CREATE, None): PullActionType.COPY,
-            (DeltaChangeType.CREATE, DeltaChangeType.CREATE): PullActionType.COPY_CONFLICT,
+            (DeltaChangeType.CREATE, DeltaChangeType.CREATE): (
+                PullActionType.COPY_CONFLICT if checksum_conflict else None
+            ),
             (DeltaChangeType.UPDATE, None): PullActionType.COPY,
-            (DeltaChangeType.UPDATE, DeltaChangeType.UPDATE): PullActionType.COPY_CONFLICT,
+            (DeltaChangeType.UPDATE, DeltaChangeType.UPDATE): (
+                PullActionType.COPY_CONFLICT if checksum_conflict else None
+            ),
             (DeltaChangeType.UPDATE, DeltaChangeType.DELETE): PullActionType.COPY,
             (DeltaChangeType.UPDATE, DeltaChangeType.UPDATE_DIFF): PullActionType.COPY_CONFLICT,
             (DeltaChangeType.UPDATE, DeltaChangeType.CREATE): PullActionType.COPY_CONFLICT,

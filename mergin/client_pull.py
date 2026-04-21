@@ -543,9 +543,10 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
         # find corresponding local delta item
         local_item = next((i for i in local_delta if i.path == change.path), None)
         local_item_change = local_item.type if local_item else None
+        local_item_checksum = local_item.checksum if local_item else None
 
         # compare server and local changes to decide what to do in pull
-        pull_action_type = mp.get_pull_action(change.type, local_item_change)
+        pull_action_type = mp.get_pull_action(change.type, local_item_change, change.checksum, local_item_checksum)
         if not pull_action_type:
             continue  # no action needed
 
