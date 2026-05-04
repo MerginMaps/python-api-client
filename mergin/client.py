@@ -758,12 +758,16 @@ class MerginClient:
         resp = self.get(f"/v2/projects/{project_id}", params)
         resp_json = json.load(resp)
         project_workspace = resp_json.get("workspace")
+
+        # make sure we are making project info 1:1 with files_at_version parameter.
+        # we have files prepared to next sync with proper version pulled from server
+        version = resp_json.get("version") if files_at_version is None else files_at_version
         return ProjectInfo(
             id=resp_json.get("id"),
             name=resp_json.get("name"),
             created_at=resp_json.get("created_at"),
             updated_at=resp_json.get("updated_at"),
-            version=resp_json.get("version"),
+            version=version,
             public=resp_json.get("public"),
             role=resp_json.get("role"),
             size=resp_json.get("size"),
