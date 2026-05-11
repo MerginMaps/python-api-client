@@ -152,3 +152,18 @@ class ProjectRole(Enum):
     EDITOR = "editor"
     WRITER = "writer"
     OWNER = "owner"
+
+
+class DeltaChangeType(Enum):
+    CREATE = "create"
+    UPDATE = "update"
+    DELETE = "delete"
+    UPDATE_DIFF = "update_diff"
+
+
+class PullActionType(Enum):
+    COPY = "copy"
+    COPY_CONFLICT = "copy_conflict"
+    APPLY_DIFF_REBASE = "apply_diff_rebase"
+    APPLY_DIFF_NO_REBASE = "apply_diff_no_rebase"
+    DELETE = "delete"

@@ -59,7 +59,7 @@ def filter_changes(mc, project_role: str, changes: Dict[str, List[dict]]) -> Dic
 def prevent_conflicted_copy(path: str, mc, project_role: str) -> bool:
     """
     Decides whether a file path should be blocked from creating a conflicted copy.
-    Note: This is used when the editor is active and attempting to modify files (e.g., .ggs) that are also updated on the server, preventing unnecessary conflict files creation.
+    Note: This is used when the editor is active and attempting to modify files (e.g., .qgs) that are also updated on the server, preventing unnecessary conflict files creation.
 
     Args:
         path (str): The file path to check.
