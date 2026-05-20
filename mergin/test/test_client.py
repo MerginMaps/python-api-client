@@ -1973,17 +1973,15 @@ def test_unfinished_pull(mc):
     project = create_project_path(test_project, mc)
     project_dir = os.path.join(TMP_DIR, test_project)  # primary project dir
     project_dir_2 = os.path.join(TMP_DIR, test_project + "_2")  # concurrent project dir
-    unfinished_pull_dir = os.path.join(
-        TMP_DIR, test_project, ".mergin", "unfinished_pull"
-    )  # unfinished_pull dir for the primary project
-    test_gpkg = os.path.join(project_dir, "test.gpkg")
-    test_gpkg_2 = os.path.join(project_dir_2, "test.gpkg")
-    test_gpkg_basefile = os.path.join(project_dir, ".mergin", "test.gpkg")
+    test_gpkg = os.path.join(project_dir, "subfolder", "test.gpkg")
+    test_gpkg_2 = os.path.join(project_dir_2, "subfolder", "test.gpkg")
+    test_gpkg_basefile = os.path.join(project_dir, ".mergin", "subfolder", "test.gpkg")
     test_gpkg_conflict = conflicted_copy_file_name(test_gpkg, mc.username(), 2)
-    test_gpkg_unfinished_pull = os.path.join(project_dir, ".mergin", "unfinished_pull", "test.gpkg")
+    test_gpkg_unfinished_pull = os.path.join(project_dir, ".mergin", "unfinished_pull", "subfolder", "test.gpkg")
     cleanup(mc, project, [project_dir, project_dir_2])
 
     os.makedirs(project_dir)
+    os.makedirs(os.path.join(project_dir, "subfolder"), exist_ok=True)
     shutil.copy(os.path.join(TEST_DATA_DIR, "base.gpkg"), test_gpkg)
     _use_wal(test_gpkg)  # make sure we use WAL, that's the more common and more difficult scenario
     mc.create_project_and_push(project, project_dir)
@@ -1998,8 +1996,8 @@ def test_unfinished_pull(mc):
     _use_wal(test_gpkg)  # make sure we use WAL
 
     pull_changes, push_changes, _ = mc.project_status(project_dir)
-    assert _is_file_updated("test.gpkg", pull_changes)
-    assert _is_file_updated("test.gpkg", push_changes)
+    assert _is_file_updated("subfolder/test.gpkg", pull_changes)
+    assert _is_file_updated("subfolder/test.gpkg", push_changes)
 
     assert not os.path.exists(test_gpkg_conflict)
     assert not mc.has_unfinished_pull(project_dir)
@@ -2049,6 +2047,9 @@ def test_unfinished_pull(mc):
     assert _get_table_row_count(test_gpkg, "simple") == 3
     assert _get_table_row_count(test_gpkg_basefile, "simple") == 3
     assert _get_table_row_count(test_gpkg_conflict, "simple") == 4
+
+    mc.push_project(project_dir)
+    mc.push_project(project_dir_2)
 
 
 @pytest.mark.skipif(sudo_works(), reason="needs working sudo")

@@ -1042,15 +1042,14 @@ class MerginProject:
 
         self.log.info("resolving unfinished pull")
 
-        temp_dir = tempfile.mkdtemp(prefix="python-api-client-")
-
         for root, dirs, files in os.walk(self.unfinished_pull_dir):
             for file_name in files:
                 src = os.path.join(root, file_name)
-                dest = self.fpath(file_name)
-                basefile = self.fpath_meta(file_name)
+                file_path = os.path.relpath(src, self.unfinished_pull_dir)
+                dest = self.fpath(file_path)
+                basefile = self.fpath_meta(file_path)
 
-                self.log.info("trying to resolve unfinished pull for: " + file_name)
+                self.log.info("trying to resolve unfinished pull for: " + file_path)
 
                 # 'src' here is a server version of the file from unfinished
                 # pull and 'dest' is a local version of the same file.
@@ -1058,7 +1057,7 @@ class MerginProject:
                 # replace local file with the changes from the server.
                 try:
                     # conflicted copy
-                    conflict = self.create_conflicted_copy(dest, user_name)
+                    conflict = self.create_conflicted_copy(file_path, user_name)
                     conflicts.append(conflict)
                     # original file synced with server
                     self.geodiff.make_copy_sqlite(src, basefile)
