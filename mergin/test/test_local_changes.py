@@ -151,7 +151,7 @@ def test_local_changes_post_init_validation_media():
     assert err.value.invalid_changes[0].size == LARGE_FILE_SIZE
 
 
-def test_local_changes_post_init_validation_gpgkg():
+def test_local_changes_post_init_validation_gpkg():
     """Test the get_gpgk_upload_file method of LocalProjectChanges."""
     # Define constants
     SIZE_LIMIT_MB = 10
@@ -184,6 +184,44 @@ def test_local_changes_post_init_validation_gpgkg():
     assert len(err.value.invalid_changes) == 1
     assert "file2.gpkg" == err.value.invalid_changes[0].path
     assert err.value.invalid_changes[0].size == LARGE_FILE_SIZE
+
+
+def test_local_changes_post_init_validation_both_limits():
+    """
+    Validate media and versioned size limits.
+    """
+    VERSIONED_LIMIT = 5 * 1024 * 1024  # 5 MB
+    MEDIA_LIMIT = 10 * 1024 * 1024  # 10 MB
+    BETWEEN_SIZE = 7 * 1024 * 1024
+    OVER_MEDIA_SIZE = 15 * 1024 * 1024
+    OVER_VERSIONED_SIZE = 8 * 1024 * 1024
+
+    added = [
+        # media file between the limits: valid, must NOT be flagged
+        FileChange(path="between.jpg", checksum="a1", size=BETWEEN_SIZE, mtime=datetime.now()),
+        # media file over the media limit: flagged
+        FileChange(path="big.jpg", checksum="a2", size=OVER_MEDIA_SIZE, mtime=datetime.now()),
+    ]
+    updated = [
+        # versioned full upload over the versioned limit: flagged
+        FileChange(path="big.gpkg", checksum="b1", size=OVER_VERSIONED_SIZE, mtime=datetime.now(), diff=None),
+        # versioned upload over the versioned limit but sent as a diff: valid
+        FileChange(
+            path="diffed.gpkg",
+            checksum="b2",
+            size=OVER_VERSIONED_SIZE,
+            mtime=datetime.now(),
+            diff={"path": "diffed-diff.gpkg", "checksum": "d1", "size": 1024, "mtime": datetime.now()},
+        ),
+    ]
+
+    with patch("mergin.local_changes.MAX_UPLOAD_MEDIA_SIZE", MEDIA_LIMIT):
+        with patch("mergin.local_changes.MAX_UPLOAD_VERSIONED_SIZE", VERSIONED_LIMIT):
+            with pytest.raises(ChangesValidationError) as err:
+                LocalProjectChanges(added=added, updated=updated)
+
+    flagged = {c.path for c in err.value.invalid_changes}
+    assert flagged == {"big.jpg", "big.gpkg"}
 
 
 def test_local_changes_post_init():

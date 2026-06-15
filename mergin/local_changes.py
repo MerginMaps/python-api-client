@@ -88,9 +88,10 @@ class LocalProjectChanges:
         total_changes = len(upload_changes)
         oversize_changes = []
         for change in upload_changes:
-            if not is_versioned_file(change.path) and change.size > MAX_UPLOAD_MEDIA_SIZE:
-                oversize_changes.append(change)
-            elif not change.diff and change.size > MAX_UPLOAD_VERSIONED_SIZE:
+            if is_versioned_file(change.path):
+                if not change.diff and change.size > MAX_UPLOAD_VERSIONED_SIZE:
+                    oversize_changes.append(change)
+            elif change.size > MAX_UPLOAD_MEDIA_SIZE:
                 oversize_changes.append(change)
         if oversize_changes:
             error = ChangesValidationError("Some files exceed the maximum upload size", oversize_changes)
