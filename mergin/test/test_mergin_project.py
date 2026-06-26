@@ -444,7 +444,6 @@ def test_set_tables_to_skip():
 
 def test_set_tables_to_include():
     """Only tables in set_tables_to_include appear in the changeset."""
-    # two_tables.gpkg -> two_tables_1_A.gpkg: only survey changes, simple is unchanged
     base = os.path.join(TEST_DATA_DIR, "two_tables.gpkg")
     modified = os.path.join(TEST_DATA_DIR, "two_tables_1_A.gpkg")
 
