@@ -1079,6 +1079,9 @@ class MerginProject:
 
         If empty list is passed, list will be reset.
 
+        This method is mutually exclusive with set_tables_to_include() and error
+        GeoDiffLibError will be raised if both are set.
+
         :param tables: list of table names to ignore
         :type tables: list[str]
         """
@@ -1092,6 +1095,9 @@ class MerginProject:
         between different drivers.
 
         If empty list is passed, list will be reset.
+
+        This method is mutually exclusive with set_tables_to_skip() and error
+        GeoDiffLibError will be raised if both are set.
 
         :param tables: list of table names to include
         :type tables: list[str]
