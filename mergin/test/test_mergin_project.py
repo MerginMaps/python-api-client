@@ -4,6 +4,7 @@ import json
 import tempfile
 import pytest
 from mergin.merginproject import MerginProject
+from pygeodiff import GeoDiffLibError
 from mergin.common import DeltaChangeType, PullActionType, ClientError
 from mergin.models import ProjectDeltaChange, ProjectDeltaItemDiff
 from mergin.client_pull import PullAction
@@ -418,3 +419,55 @@ def test_apply_pull_actions_copy_conflict():
         assert not mp.geodiff.has_changes(os.path.join(tmp_dir, "live-server.diff"))
         assert not mp.geodiff.has_changes(os.path.join(tmp_dir, "live-base.diff"))
         assert mp.geodiff.has_changes(os.path.join(tmp_dir, "live-conflict.diff"))
+
+
+def test_set_tables_to_skip():
+    """Tables in set_tables_to_skip are excluded from changeset creation."""
+    base = os.path.join(TEST_DATA_DIR, "two_tables.gpkg")
+    modified = os.path.join(TEST_DATA_DIR, "two_tables_1_A.gpkg")
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        mp = MerginProject(tmp_dir)
+        diff = os.path.join(tmp_dir, "diff.diff")
+
+        mp.geodiff.create_changeset(base, modified, diff)
+        assert mp.geodiff.has_changes(diff)
+
+        mp.set_tables_to_skip(["survey"])
+        mp.geodiff.create_changeset(base, modified, diff)
+        assert not mp.geodiff.has_changes(diff)
+
+        mp.set_tables_to_skip([])
+        mp.geodiff.create_changeset(base, modified, diff)
+        assert mp.geodiff.has_changes(diff)
+
+
+def test_set_tables_to_include():
+    """Only tables in set_tables_to_include appear in the changeset."""
+    base = os.path.join(TEST_DATA_DIR, "two_tables.gpkg")
+    modified = os.path.join(TEST_DATA_DIR, "two_tables_1_A.gpkg")
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        mp = MerginProject(tmp_dir)
+        diff = os.path.join(tmp_dir, "diff.diff")
+
+        mp.set_tables_to_include(["simple"])
+        mp.geodiff.create_changeset(base, modified, diff)
+        assert not mp.geodiff.has_changes(diff)
+
+        mp.set_tables_to_include(["survey"])
+        mp.geodiff.create_changeset(base, modified, diff)
+        assert mp.geodiff.has_changes(diff)
+
+        mp.set_tables_to_include([])
+        mp.geodiff.create_changeset(base, modified, diff)
+        assert mp.geodiff.has_changes(diff)
+
+
+def test_tables_to_skip_and_include_mutually_exclusive():
+    """Setting both skip and include lists should raise an error."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        mp = MerginProject(tmp_dir)
+        mp.set_tables_to_skip(["table_a"])
+        with pytest.raises(GeoDiffLibError):
+            mp.set_tables_to_include(["table_b"])
