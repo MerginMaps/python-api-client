@@ -14,11 +14,13 @@ setup(
     long_description="Mergin Maps utils and client",
     packages=find_packages(),
     platforms="any",
+    python_requires=">=3.10",
     install_requires=[
         "python-dateutil==2.8.2",
         "pygeodiff==2.3.0",
         "pytz==2022.1",
         "click==8.1.3",
+        "truststore==0.10.4",
     ],
     entry_points={
         "console_scripts": ["mergin=mergin.cli:cli"],
@@ -30,5 +32,4 @@ setup(
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
     ],
-    package_data={"mergin": ["cert.pem"]},
 )

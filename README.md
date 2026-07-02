@@ -160,11 +160,11 @@ it is possible to run other commands without specifying username/password.
 
 ### Installing deps
 
-Python 3.7+ required. Create `mergin/deps` folder where [geodiff](https://github.com/MerginMaps/geodiff) lib is supposed to be and install dependencies:
+Python 3.10+ required. Create `mergin/deps` folder where [geodiff](https://github.com/MerginMaps/geodiff) lib is supposed to be and install dependencies:
 ```bash
     rm -r mergin/deps
     mkdir mergin/deps
-    pip install python-dateutil pytz
+    pip install python-dateutil pytz truststore
     pip install pygeodiff --target=mergin/deps
 ```
 
