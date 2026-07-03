@@ -114,20 +114,18 @@ class InvalidProject(Exception):
     pass
 
 
-try:
-    import dateutil.parser
-    from dateutil.tz import tzlocal
-except ImportError:
-    # this is to import all dependencies shipped with package (e.g. to use in qgis-plugin)
-    deps_dir = os.path.join(this_dir, "deps")
-    if os.path.exists(deps_dir):
-        import sys
+# add dependencies shipped in deps/ on sys.path
+deps_dir = os.path.join(this_dir, "deps")
+if os.path.exists(deps_dir):
+    import sys
 
-        for f in os.listdir(os.path.join(deps_dir)):
-            sys.path.append(os.path.join(deps_dir, f))
+    for f in os.listdir(deps_dir):
+        dep_path = os.path.join(deps_dir, f)
+        if dep_path not in sys.path:
+            sys.path.append(dep_path)
 
-        import dateutil.parser
-        from dateutil.tz import tzlocal
+import dateutil.parser
+from dateutil.tz import tzlocal
 
 
 class WorkspaceRole(Enum):
