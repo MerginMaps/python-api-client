@@ -11,7 +11,7 @@ import urllib.error
 import platform
 from datetime import datetime, timezone
 import dateutil.parser
-import ssl
+import truststore
 from enum import Enum, auto
 import re
 import typing
@@ -71,7 +71,8 @@ from .utils import (
 )
 from .version import __version__
 
-this_dir = os.path.dirname(os.path.realpath(__file__))
+truststore.inject_into_ssl()
+
 json_headers = {"Content-Type": "application/json"}
 
 
@@ -180,21 +181,7 @@ class MerginClient:
             else:
                 handlers.append(urllib.request.ProxyHandler({"https": f"{proxy_url}:{proxy_config['port']}"}))
 
-        # fix for wrong macos installation of python certificates,
-        # see https://github.com/lutraconsulting/qgis-mergin-plugin/issues/70
-        # remove when https://github.com/qgis/QGIS-Mac-Packager/issues/32
-        # is fixed.
-        default_capath = ssl.get_default_verify_paths().openssl_capath
-        if os.path.exists(default_capath):
-            self.opener = urllib.request.build_opener(*handlers, urllib.request.HTTPSHandler())
-        else:
-            cafile = os.path.join(this_dir, "cert.pem")
-            if not os.path.exists(cafile):
-                raise Exception("missing " + cafile)
-            ctx = ssl.SSLContext()
-            ctx.load_verify_locations(cafile)
-            https_handler = urllib.request.HTTPSHandler(context=ctx)
-            self.opener = urllib.request.build_opener(*handlers, https_handler)
+        self.opener = urllib.request.build_opener(*handlers, urllib.request.HTTPSHandler())
         urllib.request.install_opener(self.opener)
 
         if login and not password:
