@@ -92,11 +92,11 @@ class ServerType(Enum):
 
 
 def decode_token_data(token):
-    token_prefix = "Bearer "
-    if not token.startswith(token_prefix):
+    bearer_prefix = "Bearer "
+    if not token.startswith(bearer_prefix):
         raise TokenError(f"Token doesn't start with 'Bearer ': {token}")
     try:
-        token_raw = token[len(token_prefix) :]
+        token_raw = token[len(bearer_prefix) :]
         is_compressed = False
 
         # compressed tokens start with dot,
