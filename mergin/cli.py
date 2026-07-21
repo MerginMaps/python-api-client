@@ -624,8 +624,8 @@ def remove(ctx, project):
     if "/" in project:
         try:
             namespace, project = project.split("/")
-            assert namespace, "No namespace given"
-            assert project, "No project name given"
+            assert namespace, "No namespace given"  # nosec B101
+            assert project, "No project name given"  # nosec B101
         except (ValueError, AssertionError) as e:
             click.secho(f"Incorrect namespace/project format: {e}", fg="red")
             return

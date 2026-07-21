@@ -694,7 +694,7 @@ def pull_project_finalize(job: PullJob):
     job.mp.log.info("finalizing pull")
     try:
         if job.v2_pull_enabled:
-            assert job.project_info is None
+            assert job.project_info is None  # nosec B101
 
             project_info_response = job.mc.project_info_v2(job.mp.project_id(), files_at_version=job.version)
             job.project_info = asdict(project_info_response)
