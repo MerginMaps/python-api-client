@@ -11,7 +11,6 @@ import urllib.error
 import platform
 from datetime import datetime, timezone
 import dateutil.parser
-import truststore
 from enum import Enum, auto
 import re
 import typing
@@ -71,7 +70,12 @@ from .utils import (
 )
 from .version import __version__
 
-truststore.inject_into_ssl()
+try:
+    import truststore
+
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
 
 json_headers = {"Content-Type": "application/json"}
 
