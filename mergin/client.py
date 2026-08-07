@@ -75,9 +75,7 @@ try:
 
     truststore.inject_into_ssl()
 except ImportError:
-    logging.getLogger("mergin.client").warning(
-        "truststore could not be imported, continuing without it"
-    )
+    logging.getLogger("mergin.client").warning("truststore could not be imported, continuing without it")
 
 json_headers = {"Content-Type": "application/json"}
 
