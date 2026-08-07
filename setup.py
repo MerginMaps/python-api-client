@@ -14,7 +14,7 @@ setup(
     long_description="Mergin Maps utils and client",
     packages=find_packages(),
     platforms="any",
-    python_requires=">=3.9",
+    python_requires=">=3.10",
     install_requires=[
         "python-dateutil==2.8.2",
         "pygeodiff==2.3.0",
