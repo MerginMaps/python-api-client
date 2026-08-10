@@ -701,7 +701,7 @@ def pull_project_finalize(job: PullJob):
     except NotImplementedError as e:
         job.mp.log.error("Failed to get project info v2 in this server version: " + str(e))
         job.mp.log.info("--- pull aborted")
-        raise ClientError("Failed to get project info v2 as server not support it: " + str(e))
+        raise ClientError("Failed to get project info v2 as server does not support it: " + str(e))
     except ClientError as e:
         job.mp.log.error("Failed to get project info v2: " + str(e))
         job.mp.log.info("--- pull aborted")
