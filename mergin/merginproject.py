@@ -19,6 +19,7 @@ from .models import ProjectDelta, ProjectDeltaChange, ProjectDeltaItemDiff, Pull
 from .utils import (
     generate_checksum,
     is_versioned_file,
+    is_path_too_long,
     int_version,
     do_sqlite_checkpoint,
     unique_path_name,
@@ -623,8 +624,14 @@ class MerginProject:
                 delta_item.size = checkpoint_size
                 delta_item.checksum = checkpoint_checksum
 
+            diff_location = self.fpath(diff_file, diff_directory)
+            if is_path_too_long(diff_location):
+                raise ClientError(
+                    f"Cannot create changeset for '{path}': diff file path is too long "
+                    f"({len(diff_location)} characters) for this OS: {diff_location}\n"
+                    "Move the project to a directory with a shorter path and try again."
+                )
             try:
-                diff_location = self.fpath(diff_file, diff_directory)
                 self.geodiff.create_changeset(origin_file, current_file, diff_location)
                 if not self.geodiff.has_changes(diff_location):
                     os.remove(diff_location)
@@ -677,6 +684,12 @@ class MerginProject:
             diff_id = str(uuid.uuid4())
             diff_name = path + "-diff-" + diff_id
             diff_file = self.fpath_meta(diff_name)
+            if is_path_too_long(diff_file):
+                raise ClientError(
+                    f"Cannot create changeset for '{path}': diff file path is too long "
+                    f"({len(diff_file)} characters) for this OS: {diff_file}\n"
+                    "Move the project to a directory with a shorter path and try again."
+                )
             try:
                 self.geodiff.create_changeset(origin_file, current_file, diff_file)
                 if self.geodiff.has_changes(diff_file):

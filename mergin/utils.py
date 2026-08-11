@@ -9,7 +9,7 @@ from pathlib import Path
 import tempfile
 from enum import Enum
 from typing import Optional, Type, Union, ByteString
-from .common import ClientError
+from .common import ClientError, WINDOWS_MAX_PATH
 
 
 def generate_checksum(file, chunk_size=4096):
@@ -264,6 +264,21 @@ def is_versioned_file(path: str) -> bool:
     diff_extensions = [".gpkg", ".sqlite"]
     f_extension = os.path.splitext(path)[1]
     return f_extension.lower() in diff_extensions
+
+
+def is_path_too_long(path: str) -> bool:
+    """
+    Check whether an absolute path is too long to be reliably created/opened on this OS.
+
+    Windows limits paths to WINDOWS_MAX_PATH (260) characters unless long paths have been
+    explicitly enabled (which we cannot rely on being the case), so we treat that as the limit.
+
+    :param path: absolute path to check
+    :type path: str
+    :returns: whether the path is likely to be rejected by the OS
+    :rtype: bool
+    """
+    return os.name == "nt" and len(path) >= WINDOWS_MAX_PATH
 
 
 def is_qgis_file(path: str) -> bool:
