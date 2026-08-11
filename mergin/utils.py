@@ -270,9 +270,6 @@ def is_path_too_long(path: str) -> bool:
     """
     Check whether an absolute path is too long to be reliably created/opened on this OS.
 
-    Windows limits paths to WINDOWS_MAX_PATH (260) characters unless long paths have been
-    explicitly enabled (which we cannot rely on being the case), so we treat that as the limit.
-
     :param path: absolute path to check
     :type path: str
     :returns: whether the path is likely to be rejected by the OS
