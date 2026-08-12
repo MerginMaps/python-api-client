@@ -9,7 +9,7 @@
 
 This repository contains a Python client module for access to [Mergin Maps](https://merginmaps.com/) service and a command-line tool for easy access to data stored in Mergin Maps.
 
-<div><a href="https://community.merginmaps.com">Join our community</a> and ask questions!</div>
+<a href="https://community.merginmaps.com">Join our community</a> and ask questions!
 
 To install the module:
 ```bash
