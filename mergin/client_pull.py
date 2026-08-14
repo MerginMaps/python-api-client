@@ -25,7 +25,7 @@ import concurrent.futures
 from .common import CHUNK_SIZE, ClientError, DeltaChangeType, PullActionType
 from .models import ProjectDelta, ProjectDeltaChange, PullAction
 from .merginproject import MerginProject
-from .utils import cleanup_tmp_dir, save_to_file
+from .utils import cleanup_tmp_dir, save_to_file, is_path_too_long
 from typing import List, Optional
 
 # status = download_project_async(...)
@@ -480,6 +480,12 @@ def get_download_diff_files(delta_item: ProjectDeltaChange, target_dir: str) -> 
 
     for diff in delta_item.diffs:
         dest_file_path = os.path.normpath(os.path.join(target_dir, diff.id))
+        if is_path_too_long(dest_file_path):
+            raise ClientError(
+                f"Cannot download diff for '{delta_item.path}': diff file path is too long "
+                f"({len(dest_file_path)} characters) for this OS: {dest_file_path}\n"
+                "Move the project to a directory with a shorter path and try again."
+            )
         download_items = get_download_items(delta_item.path, diff.size, diff.version, target_dir, diff.id, True)
         result.append(DownloadFile(dest_file_path, download_items))
     return result
@@ -574,12 +580,15 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
             # if we have conflict and diff update, download the diff files
             if v2_pull_enabled:
                 # using v2 endpoint to download diff files, without chunks. Then we are creating DownloadDiffQueueItem instances for each diff file.
-                diff_files.extend(
-                    [
-                        DownloadDiffQueueItem(diff_item.id, os.path.join(tmp_dir.name, diff_item.id))
-                        for diff_item in change.diffs
-                    ]
-                )
+                for diff_item in change.diffs:
+                    diff_path = os.path.join(tmp_dir.name, diff_item.id)
+                    if is_path_too_long(diff_path):
+                        raise ClientError(
+                            f"Cannot download diff for '{change.path}': diff file path is too long "
+                            f"({len(diff_path)} characters) for this OS: {diff_path}\n"
+                            "Move the project to a directory with a shorter path and try again."
+                        )
+                    diff_files.append(DownloadDiffQueueItem(diff_item.id, diff_path))
                 basefiles_to_patch.append((change.path, [diff.id for diff in change.diffs]))
 
             else:
@@ -830,6 +839,12 @@ def download_diffs_async(mc, project_directory, file_path, versions):
             diff_only=True,
         )
         dest_file_path = mp.fpath_cache(diff["path"], version=file["version"])
+        if is_path_too_long(dest_file_path):
+            raise ClientError(
+                f"Cannot download diff for '{file.get('path')}': diff file path is too long "
+                f"({len(dest_file_path)} characters) for this OS: {dest_file_path}\n"
+                "Move the project to a directory with a shorter path and try again."
+            )
         if os.path.exists(dest_file_path):
             continue
         download_files.append(DownloadFile(dest_file_path, items))
