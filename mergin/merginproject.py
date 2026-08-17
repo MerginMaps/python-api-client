@@ -839,7 +839,9 @@ class MerginProject:
         dest_lp = long_path(dest)
         basefile_lp = long_path(basefile)
 
-        server_diff = long_path(self.fpath(f"{path}-server_diff", temp_dir))  # diff between server file and local basefile
+        server_diff = long_path(
+            self.fpath(f"{path}-server_diff", temp_dir)
+        )  # diff between server file and local basefile
         local_diff = long_path(self.fpath(f"{path}-local_diff", temp_dir))
 
         # temporary backup of file pulled from server for recovery
