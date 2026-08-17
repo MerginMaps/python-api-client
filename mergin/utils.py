@@ -9,7 +9,7 @@ from pathlib import Path
 import tempfile
 from enum import Enum
 from typing import Optional, Type, Union, ByteString
-from .common import ClientError, WINDOWS_MAX_PATH
+from .common import ClientError
 
 
 def generate_checksum(file, chunk_size=4096):
@@ -267,23 +267,10 @@ def is_versioned_file(path: str) -> bool:
     return f_extension.lower() in diff_extensions
 
 
-def is_path_too_long(path: str) -> bool:
-    """
-    Check whether an absolute path is too long to be reliably created/opened on this OS.
-
-    :param path: absolute path to check
-    :type path: str
-    :returns: whether the path is likely to be rejected by the OS
-    :rtype: bool
-    """
-    return os.name == "nt" and len(path) >= WINDOWS_MAX_PATH
-
-
 def long_path(path: str) -> str:
     """
-    Prefix an absolute path with the Windows "\\?\" extended-length marker,
-    so file APIs used by geodiff/SQLite and Python's own open() can handle paths longer
-    than MAX_PATH (260 characters) without raising an error.
+    Prefix an absolute path with the Windows "\\?\" extended-length marker, so file APIs used by 
+    geodiff/SQLite and Python's own open() can handle long paths without raising an error.
 
     :param path: absolute or relative path, with either posix or windows separators
     :type path: str

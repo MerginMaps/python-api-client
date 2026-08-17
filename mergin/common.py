@@ -33,9 +33,6 @@ MAX_UPLOAD_VERSIONED_SIZE = 5 * (1024**3)
 # Maximum changes uploading to server
 MAX_UPLOAD_CHANGES = 100
 
-# maximum length of a path supported by Windows without long paths enabled (MAX_PATH)
-WINDOWS_MAX_PATH = 260
-
 # default URL for submitting logs
 MERGIN_DEFAULT_LOGS_URL = "https://g4pfq226j0.execute-api.eu-west-1.amazonaws.com/mergin_client_log_submit"
 
