@@ -67,6 +67,7 @@ from .utils import (
     int_version,
     is_version_acceptable,
     normalize_role,
+    long_path,
 )
 from .version import __version__
 
@@ -1237,7 +1238,7 @@ class MerginClient:
         # collect required versions from the cache
         diffs = []
         for v in versions_to_fetch[1:]:
-            diffs.append(mp.fpath_cache(file_history["history"][v]["diff"]["path"], v))
+            diffs.append(long_path(mp.fpath_cache(file_history["history"][v]["diff"]["path"], v)))
 
         # concatenate diffs, if needed
         output_dir = os.path.dirname(output_diff)
@@ -1377,13 +1378,15 @@ class MerginClient:
         # remove all added files
         for file in push_changes["added"]:
             if all_files or file["path"] in files_to_reset:
-                os.remove(mp.fpath(file["path"]))
+                os.remove(long_path(mp.fpath(file["path"])))
 
         # update files get override with previous version
         for file in push_changes["updated"]:
             if all_files or file["path"] in files_to_reset:
                 if mp.is_versioned_file(file["path"]):
-                    mp.geodiff.make_copy_sqlite(mp.fpath_meta(file["path"]), mp.fpath(file["path"]))
+                    mp.geodiff.make_copy_sqlite(
+                        long_path(mp.fpath_meta(file["path"])), long_path(mp.fpath(file["path"]))
+                    )
                 else:
                     files_download.append(file["path"])
 

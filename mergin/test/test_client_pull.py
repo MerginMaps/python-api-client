@@ -4,6 +4,7 @@ import pytest
 from mergin.common import DeltaChangeType, CHUNK_SIZE
 from mergin.models import ProjectDeltaChange, ProjectDeltaItemDiff
 from mergin.client_pull import get_download_diff_files, get_download_items
+from mergin.utils import long_path
 
 
 def test_get_diff_download_files():
@@ -25,7 +26,7 @@ def test_get_diff_download_files():
 
         # Check diff
         f2 = files[0]
-        assert f2.dest_file == os.path.join(tmp_dir, "diff2")
+        assert f2.dest_file == long_path(os.path.join(tmp_dir, "diff2"))
         assert len(f2.downloaded_items) == 1
         assert f2.downloaded_items[0].file_path == "data.gpkg"
         assert f2.downloaded_items[0].size == 20
@@ -41,7 +42,7 @@ def test_get_download_items():
         assert items[0].file_path == "small.txt"
         assert items[0].size == 100
         assert items[0].part_index == 0
-        assert items[0].download_file_path == os.path.join(tmp_dir, "small.txt.0")
+        assert items[0].download_file_path == long_path(os.path.join(tmp_dir, "small.txt.0"))
 
         # Case 2: Large file (multiple chunks)
         file_size = int(CHUNK_SIZE * 2.5)
@@ -51,17 +52,17 @@ def test_get_download_items():
         # Chunk 0
         assert items[0].size == CHUNK_SIZE
         assert items[0].part_index == 0
-        assert items[0].download_file_path == os.path.join(tmp_dir, "large.txt.0")
+        assert items[0].download_file_path == long_path(os.path.join(tmp_dir, "large.txt.0"))
 
         # Chunk 1
         assert items[1].size == CHUNK_SIZE
         assert items[1].part_index == 1
-        assert items[1].download_file_path == os.path.join(tmp_dir, "large.txt.1")
+        assert items[1].download_file_path == long_path(os.path.join(tmp_dir, "large.txt.1"))
 
         # Chunk 2
         assert items[2].size == int(CHUNK_SIZE * 0.5)
         assert items[2].part_index == 2
-        assert items[2].download_file_path == os.path.join(tmp_dir, "large.txt.2")
+        assert items[2].download_file_path == long_path(os.path.join(tmp_dir, "large.txt.2"))
 
         # Case 3: Empty file
         items = get_download_items("empty.txt", 0, "v1", tmp_dir)
@@ -73,4 +74,4 @@ def test_get_download_items():
         assert items[0].diff_only is True
         assert items[0].file_path == "base.gpkg"
         assert items[0].size == 50
-        assert items[0].download_file_path == os.path.join(tmp_dir, "diff_file.0")
+        assert items[0].download_file_path == long_path(os.path.join(tmp_dir, "diff_file.0"))

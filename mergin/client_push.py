@@ -34,7 +34,7 @@ from .common import (
 )
 from .merginproject import MerginProject, pygeodiff
 from .editor import filter_changes
-from .utils import get_data_checksum, cleanup_tmp_dir
+from .utils import get_data_checksum, cleanup_tmp_dir, long_path
 
 POST_JSON_HEADERS = {"Content-Type": "application/json"}
 
@@ -114,7 +114,7 @@ class UploadQueueItem:
         self.mc.upload_chunks_cache.add(checksum, self.server_chunk_id)
 
     def upload_blocking(self):
-        with open(self.file_path, "rb") as file_handle:
+        with open(long_path(self.file_path), "rb") as file_handle:
             file_handle.seek(self.chunk_index * UPLOAD_CHUNK_SIZE)
             data = file_handle.read(UPLOAD_CHUNK_SIZE)
             checksum_str = get_data_checksum(data)
@@ -507,7 +507,7 @@ def remove_diff_files(job: UploadJob) -> None:
     for change in job.changes.updated:
         diff = change.get_diff()
         if diff:
-            diff_file = job.mp.fpath_meta(diff.path)
+            diff_file = long_path(job.mp.fpath_meta(diff.path))
             if os.path.exists(diff_file):
                 os.remove(diff_file)
 

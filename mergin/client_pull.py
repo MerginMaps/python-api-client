@@ -25,7 +25,7 @@ import concurrent.futures
 from .common import CHUNK_SIZE, ClientError, DeltaChangeType, PullActionType
 from .models import ProjectDelta, ProjectDeltaChange, PullAction
 from .merginproject import MerginProject
-from .utils import cleanup_tmp_dir, save_to_file, is_path_too_long
+from .utils import cleanup_tmp_dir, save_to_file, long_path
 from typing import List, Optional
 
 # status = download_project_async(...)
@@ -93,7 +93,9 @@ class DownloadQueueItem:
         self.version = version  # version of the file ("v123")
         self.diff_only = diff_only  # whether downloading diff or full version
         self.part_index = part_index  # index of the chunk
-        self.download_file_path = download_file_path  # full path to a temporary file which will receive the content
+        self.download_file_path = long_path(
+            download_file_path
+        )  # full path to a temporary file which will receive the content
 
     def __repr__(self):
         return "<DownloadQueueItem path={} version={} diff_only={} part_index={} size={} dest={}>".format(
@@ -128,7 +130,9 @@ class DownloadDiffQueueItem:
 
     def __init__(self, diff_id, download_file_path):
         self.diff_id = diff_id  # relative path to the file within project
-        self.download_file_path = download_file_path  # full path to a temporary file which will receive the content
+        self.download_file_path = long_path(
+            download_file_path
+        )  # full path to a temporary file which will receive the content
         self.size = 0  # size of the item in bytes
 
     def __repr__(self):
@@ -157,7 +161,7 @@ class DownloadFile:
     """
 
     def __init__(self, dest_file, downloaded_items: typing.List[DownloadQueueItem], size_check=True):
-        self.dest_file = dest_file  # full path to the destination file to be created
+        self.dest_file = long_path(dest_file)  # full path to the destination file to be created
         self.downloaded_items = downloaded_items  # list of pieces of the destination file to be merged
         self.size_check = size_check  # whether we want to do merged file size check
 
@@ -196,7 +200,7 @@ def get_download_items(
 
     items = []
     for part_index in range(chunks):
-        download_file_path = os.path.join(file_dir, basename + ".{}".format(part_index))
+        download_file_path = long_path(os.path.join(file_dir, basename + ".{}".format(part_index)))
         size = min(CHUNK_SIZE, file_size - part_index * CHUNK_SIZE)
         items.append(DownloadQueueItem(file_path, size, file_version, diff_only, part_index, download_file_path))
 
@@ -419,7 +423,7 @@ class UpdateTask:
         # Make a copy of the file to meta dir only if there is no user-specified path for the file.
         # destination_file is None for full project download and takes a meaningful value for a single file download.
         if mp.is_versioned_file(self.file_path) and self.destination_file is None:
-            mp.geodiff.make_copy_sqlite(mp.fpath(self.file_path), mp.fpath_meta(self.file_path))
+            mp.geodiff.make_copy_sqlite(long_path(mp.fpath(self.file_path)), long_path(mp.fpath_meta(self.file_path)))
 
 
 class PullJob:
@@ -479,13 +483,7 @@ def get_download_diff_files(delta_item: ProjectDeltaChange, target_dir: str) -> 
     result = []
 
     for diff in delta_item.diffs:
-        dest_file_path = os.path.normpath(os.path.join(target_dir, diff.id))
-        if is_path_too_long(dest_file_path):
-            raise ClientError(
-                f"Cannot download diff for '{delta_item.path}': diff file path is too long "
-                f"({len(dest_file_path)} characters) for this OS: {dest_file_path}\n"
-                "Move the project to a directory with a shorter path and try again."
-            )
+        dest_file_path = long_path(os.path.normpath(os.path.join(target_dir, diff.id)))
         download_items = get_download_items(delta_item.path, diff.size, diff.version, target_dir, diff.id, True)
         result.append(DownloadFile(dest_file_path, download_items))
     return result
@@ -561,7 +559,7 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
             pull_action_type == PullActionType.COPY_CONFLICT and change.type == DeltaChangeType.UPDATE_DIFF
         ):
             basefile = mp.fpath_meta(change.path)
-            if not os.path.exists(basefile):
+            if not os.path.exists(long_path(basefile)):
                 # The basefile does not exist for some reason. This should not happen normally (maybe user removed the file
                 # or we removed it within previous pull because we failed to apply patch the older version for some reason).
                 # But it's not a problem - we will download the newest version and we're sorted.
@@ -580,15 +578,12 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
             # if we have conflict and diff update, download the diff files
             if v2_pull_enabled:
                 # using v2 endpoint to download diff files, without chunks. Then we are creating DownloadDiffQueueItem instances for each diff file.
-                for diff_item in change.diffs:
-                    diff_path = os.path.join(tmp_dir.name, diff_item.id)
-                    if is_path_too_long(diff_path):
-                        raise ClientError(
-                            f"Cannot download diff for '{change.path}': diff file path is too long "
-                            f"({len(diff_path)} characters) for this OS: {diff_path}\n"
-                            "Move the project to a directory with a shorter path and try again."
-                        )
-                    diff_files.append(DownloadDiffQueueItem(diff_item.id, diff_path))
+                diff_files.extend(
+                    [
+                        DownloadDiffQueueItem(diff_item.id, os.path.join(tmp_dir.name, diff_item.id))
+                        for diff_item in change.diffs
+                    ]
+                )
                 basefiles_to_patch.append((change.path, [diff.id for diff in change.diffs]))
 
             else:
@@ -731,7 +726,7 @@ def pull_project_finalize(job: PullJob):
         basefile = job.mp.fpath_meta(file_path)
         server_file = job.mp.fpath(file_path, job.tmp_dir.name)
 
-        shutil.copy(basefile, server_file)
+        shutil.copy(long_path(basefile), long_path(server_file))
         diffs = [job.mp.fpath(f, job.tmp_dir.name) for f in file_diffs]
         patch_error = job.mp.apply_diffs(server_file, diffs)
         if patch_error:
@@ -744,7 +739,7 @@ def pull_project_finalize(job: PullJob):
             job.mp.log.error("Diffs we were applying: " + str(diffs))
             job.mp.log.error("Removing basefile because it would be corrupted anyway...")
             job.mp.log.info("--- pull aborted")
-            os.remove(basefile)
+            os.remove(long_path(basefile))
             raise ClientError("Cannot patch basefile {}! Please try syncing again.".format(basefile))
     conflicts = []
     job.mp.log.info(f"--- applying pull actions {job.pull_actions}")
@@ -838,13 +833,7 @@ def download_diffs_async(mc, project_directory, file_path, versions):
             download_path=diff.get("path"),
             diff_only=True,
         )
-        dest_file_path = mp.fpath_cache(diff["path"], version=file["version"])
-        if is_path_too_long(dest_file_path):
-            raise ClientError(
-                f"Cannot download diff for '{file.get('path')}': diff file path is too long "
-                f"({len(dest_file_path)} characters) for this OS: {dest_file_path}\n"
-                "Move the project to a directory with a shorter path and try again."
-            )
+        dest_file_path = long_path(mp.fpath_cache(diff["path"], version=file["version"]))
         if os.path.exists(dest_file_path):
             continue
         download_files.append(DownloadFile(dest_file_path, items))

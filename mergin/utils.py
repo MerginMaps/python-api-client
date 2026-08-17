@@ -88,10 +88,11 @@ def do_sqlite_checkpoint(path, log=None):
     """
     new_size = None
     new_checksum = None
-    if ".gpkg" in path and os.path.exists(f"{path}-wal"):
+    path_lp = long_path(path)
+    if ".gpkg" in path and os.path.exists(f"{path_lp}-wal"):
         if log:
             log.info("checkpoint - going to add it in " + path)
-        conn = sqlite3.connect(path)
+        conn = sqlite3.connect(path_lp)
         cursor = conn.cursor()
         cursor.execute("PRAGMA wal_checkpoint=FULL")
         if log:
@@ -99,8 +100,8 @@ def do_sqlite_checkpoint(path, log=None):
         cursor.execute("VACUUM")
         conn.commit()
         conn.close()
-        new_size = os.path.getsize(path)
-        new_checksum = generate_checksum(path)
+        new_size = os.path.getsize(path_lp)
+        new_checksum = generate_checksum(path_lp)
         if log:
             log.info("checkpoint - new size {} checksum {}".format(new_size, new_checksum))
 
@@ -276,6 +277,26 @@ def is_path_too_long(path: str) -> bool:
     :rtype: bool
     """
     return os.name == "nt" and len(path) >= WINDOWS_MAX_PATH
+
+
+def long_path(path: str) -> str:
+    """
+    Prefix an absolute path with the Windows "\\?\" extended-length marker,
+    so file APIs used by geodiff/SQLite and Python's own open() can handle paths longer
+    than MAX_PATH (260 characters) without raising an error.
+
+    :param path: absolute or relative path, with either posix or windows separators
+    :type path: str
+    :returns: extended-length path on Windows, the unchanged path otherwise
+    :rtype: str
+    """
+    if os.name != "nt":
+        return path
+    backslash = chr(92)
+    prefix = backslash + backslash + "?" + backslash
+    if path.startswith(prefix):
+        return path
+    return prefix + os.path.abspath(path)
 
 
 def is_qgis_file(path: str) -> bool:

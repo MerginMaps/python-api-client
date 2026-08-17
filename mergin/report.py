@@ -7,7 +7,7 @@ from itertools import groupby
 
 from . import ClientError
 from .merginproject import MerginProject, pygeodiff
-from .utils import int_version
+from .utils import int_version, long_path
 
 try:
     from qgis.core import (
@@ -243,7 +243,7 @@ def create_report(mc, directory, since, to, out_file):
             mc.download_file_diffs(directory, f["path"], history_keys)
 
             # download full gpkg in "to" version to analyze its schema to determine which col is geometry
-            full_gpkg = mp.fpath_cache(f["path"], version=to)
+            full_gpkg = long_path(mp.fpath_cache(f["path"], version=to))
             if not os.path.exists(full_gpkg):
                 mc.download_file(directory, f["path"], full_gpkg, to)
 
@@ -263,7 +263,7 @@ def create_report(mc, directory, since, to, out_file):
                         warnings.append(f"Missing diff: {f['path']} was {f['history'][version]['change']} in {version}")
                     continue
 
-                v_diff_file = mp.fpath_cache(f["history"][version]["diff"]["path"], version=version)
+                v_diff_file = long_path(mp.fpath_cache(f["history"][version]["diff"]["path"], version=version))
                 version_data = versions_map[version]
                 cr = mp.geodiff.read_changeset(v_diff_file)
                 report = changeset_report(cr, schema, mp)
