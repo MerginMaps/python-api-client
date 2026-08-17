@@ -269,7 +269,7 @@ def is_versioned_file(path: str) -> bool:
 
 def long_path(path: str) -> str:
     """
-    Prefix an absolute path with the Windows "\\?\" extended-length marker, so file APIs used by 
+    Prefix an absolute path with the Windows "\\?\" extended-length marker, so file APIs used by
     geodiff/SQLite and Python's own open() can handle long paths without raising an error.
 
     :param path: absolute or relative path, with either posix or windows separators
