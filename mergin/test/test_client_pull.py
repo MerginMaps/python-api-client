@@ -56,7 +56,7 @@ def test_get_download_items():
         # Chunk 1
         assert items[1].size == CHUNK_SIZE
         assert items[1].part_index == 1
-        assert items[1].download_file_path == (os.path.join(tmp_dir, "large.txt.1")
+        assert items[1].download_file_path == os.path.join(tmp_dir, "large.txt.1")
 
         # Chunk 2
         assert items[2].size == int(CHUNK_SIZE * 0.5)
