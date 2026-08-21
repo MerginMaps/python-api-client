@@ -192,3 +192,15 @@ For running test do:
     pip install pytest pytest-cov coveralls
     pytest --cov-report html --cov=mergin mergin/test/
 ```
+
+### Code style
+
+Code is formatted with [black](https://github.com/psf/black) (line length 120), enforced in CI.
+To run the same check automatically before each commit, install the [pre-commit](https://pre-commit.com/) hooks once:
+
+```bash
+    pip install pre-commit
+    pre-commit install
+```
+
+The hook then runs on every `git commit`.
