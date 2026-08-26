@@ -359,7 +359,7 @@ class MerginProject:
         :rtype: list[dict]
         """
         files_meta = []
-        for root, dirs, files in fs.walk(self.dir):
+        for root, dirs, files in fs.walk(self.dir, topdown=True):
             dirs[:] = [d for d in dirs if d not in [".mergin"]]
             for file in files:
                 if self.ignore_file(file):

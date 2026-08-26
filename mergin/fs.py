@@ -35,8 +35,8 @@ def copy(src, dst):
     return shutil.copy(long_path(src), long_path(dst))
 
 
-def walk(path):
-    return os.walk(long_path(path))
+def walk(path, **kwargs):
+    return os.walk(long_path(path), **kwargs)
 
 
 def makedirs(path, exist_ok=False):
