@@ -263,7 +263,7 @@ def create_report(mc, directory, since, to, out_file):
                         warnings.append(f"Missing diff: {f['path']} was {f['history'][version]['change']} in {version}")
                     continue
 
-                v_diff_file = long_path(mp.fpath_cache(f["history"][version]["diff"]["path"], version=version))
+                v_diff_file = mp.fpath_cache(f["history"][version]["diff"]["path"], version=version)
                 version_data = versions_map[version]
                 cr = mp.geodiff.read_changeset(v_diff_file)
                 report = changeset_report(cr, schema, mp)

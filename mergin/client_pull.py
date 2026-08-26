@@ -423,7 +423,7 @@ class UpdateTask:
         # Make a copy of the file to meta dir only if there is no user-specified path for the file.
         # destination_file is None for full project download and takes a meaningful value for a single file download.
         if mp.is_versioned_file(self.file_path) and self.destination_file is None:
-            mp.geodiff.make_copy_sqlite(long_path(mp.fpath(self.file_path)), long_path(mp.fpath_meta(self.file_path)))
+            mp.geodiff.make_copy_sqlite(mp.fpath(self.file_path), mp.fpath_meta(self.file_path))
 
 
 class PullJob:

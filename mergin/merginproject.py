@@ -40,6 +40,54 @@ except (ImportError, ModuleNotFoundError):
     import pygeodiff
 
 
+class GeoDiffLongPath:
+    """
+    Wraps a pygeodiff.GeoDiff instance so that every filesystem path passed to it is prefixed
+    with the Windows extended-length ("\\?\") marker.
+
+    Only the geodiff methods that take path arguments are listed explicitly.
+    """
+
+    def __init__(self, geodiff):
+        self._geodiff = geodiff
+
+    def create_changeset(self, base, modified, changeset):
+        return self._geodiff.create_changeset(long_path(base), long_path(modified), long_path(changeset))
+
+    def apply_changeset(self, base, changeset):
+        return self._geodiff.apply_changeset(long_path(base), long_path(changeset))
+
+    def rebase(self, base, modified_their, modified, conflict):
+        return self._geodiff.rebase(
+            long_path(base), long_path(modified_their), long_path(modified), long_path(conflict)
+        )
+
+    def make_copy_sqlite(self, src, dst):
+        return self._geodiff.make_copy_sqlite(long_path(src), long_path(dst))
+
+    def has_changes(self, changeset):
+        return self._geodiff.has_changes(long_path(changeset))
+
+    def changes_count(self, changeset):
+        return self._geodiff.changes_count(long_path(changeset))
+
+    def read_changeset(self, changeset):
+        return self._geodiff.read_changeset(long_path(changeset))
+
+    def list_changes_summary(self, changeset, json):
+        return self._geodiff.list_changes_summary(long_path(changeset), long_path(json))
+
+    def concat_changes(self, list_changesets, output_changeset):
+        return self._geodiff.concat_changes([long_path(p) for p in list_changesets], long_path(output_changeset))
+
+    def schema(self, driver, driver_info, src, json):
+        return self._geodiff.schema(driver, driver_info, long_path(src), long_path(json))
+
+    def __getattr__(self, name):
+        # everything without path arguments (set_logger_callback, level/table setters, version(), ...)
+        return getattr(self._geodiff, name)
+
+
 class MerginProject:
     """Base class for Mergin Maps local projects.
 
@@ -70,7 +118,7 @@ class MerginProject:
 
         # make sure we can load correct pygeodiff
         try:
-            self.geodiff = pygeodiff.GeoDiff()
+            self.geodiff = GeoDiffLongPath(pygeodiff.GeoDiff())
         except pygeodiff.geodifflib.GeoDiffLibVersionError:
             # this is a fatal error, we can't live without geodiff
             self.log.error("Unable to load geodiff! (lib version error)")
@@ -627,8 +675,8 @@ class MerginProject:
             diff_location = self.fpath(diff_file, diff_directory)
             diff_location_lp = long_path(diff_location)
             try:
-                self.geodiff.create_changeset(long_path(origin_file), long_path(current_file), diff_location_lp)
-                if not self.geodiff.has_changes(diff_location_lp):
+                self.geodiff.create_changeset(origin_file, current_file, diff_location)
+                if not self.geodiff.has_changes(diff_location):
                     os.remove(diff_location_lp)
                     continue
 
@@ -681,8 +729,8 @@ class MerginProject:
             diff_file = self.fpath_meta(diff_name)
             diff_file_lp = long_path(diff_file)
             try:
-                self.geodiff.create_changeset(long_path(origin_file), long_path(current_file), diff_file_lp)
-                if self.geodiff.has_changes(diff_file_lp):
+                self.geodiff.create_changeset(origin_file, current_file, diff_file)
+                if self.geodiff.has_changes(diff_file):
                     diff_size = os.path.getsize(diff_file_lp)
                     file["checksum"] = file["origin_checksum"]  # need to match basefile on server
                     file["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(diff_size / UPLOAD_CHUNK_SIZE))]
@@ -716,7 +764,7 @@ class MerginProject:
         tmp_file = os.path.join(tmp_dir, path)
         os.makedirs(os.path.dirname(tmp_file), exist_ok=True)
         tmp_file_lp = long_path(tmp_file)
-        self.geodiff.make_copy_sqlite(long_path(self.fpath(path)), tmp_file_lp)
+        self.geodiff.make_copy_sqlite(self.fpath(path), tmp_file)
         f.size = os.path.getsize(tmp_file_lp)
         f.checksum = generate_checksum(tmp_file_lp)
         f.chunks = [str(uuid.uuid4()) for i in range(math.ceil(f.size / UPLOAD_CHUNK_SIZE))]
@@ -731,7 +779,7 @@ class MerginProject:
                 changeset = self.fpath_meta(changeset_path)
                 result_file = self.fpath("change_list" + str(idx), self.meta_dir)
                 try:
-                    self.geodiff.list_changes_summary(long_path(changeset), result_file)
+                    self.geodiff.list_changes_summary(changeset, result_file)
                     with open(result_file, "r") as f:
                         change = f.read()
                         changes[file["path"]] = json.loads(change)
@@ -772,8 +820,8 @@ class MerginProject:
             if action_type == PullActionType.COPY:
                 # simply copy the file from server
                 if is_versioned_file(path):
-                    self.geodiff.make_copy_sqlite(server_file_lp, live_file_lp)
-                    self.geodiff.make_copy_sqlite(server_file_lp, basefile_lp)
+                    self.geodiff.make_copy_sqlite(server_file, live_file)
+                    self.geodiff.make_copy_sqlite(server_file, basefile)
                 else:
                     shutil.copy(server_file_lp, live_file_lp)
             elif action_type == PullActionType.APPLY_DIFF_NO_REBASE:
@@ -793,13 +841,13 @@ class MerginProject:
                 conflicts.append(conflict)
                 if self.is_versioned_file(path):
                     try:
-                        self.geodiff.make_copy_sqlite(server_file_lp, live_file_lp)
-                        self.geodiff.make_copy_sqlite(server_file_lp, basefile_lp)
+                        self.geodiff.make_copy_sqlite(server_file, live_file)
+                        self.geodiff.make_copy_sqlite(server_file, basefile)
                     except pygeodiff.GeoDiffLibError:
                         self.log.info("failed to create SQLite copy for file: " + path)
                         # create unfinished pull copy instead
-                        f_server_unfinished = long_path(self.fpath_unfinished_pull(path))
-                        self.geodiff.make_copy_sqlite(server_file_lp, f_server_unfinished)
+                        f_server_unfinished = self.fpath_unfinished_pull(path)
+                        self.geodiff.make_copy_sqlite(server_file, f_server_unfinished)
                 else:
                     shutil.copy(server_file_lp, live_file_lp)
 
@@ -835,57 +883,51 @@ class MerginProject:
         """
         self.log.info("updating file with rebase: " + path)
 
-        src_lp = long_path(src)
-        dest_lp = long_path(dest)
-        basefile_lp = long_path(basefile)
-
-        server_diff = long_path(
-            self.fpath(f"{path}-server_diff", temp_dir)
-        )  # diff between server file and local basefile
-        local_diff = long_path(self.fpath(f"{path}-local_diff", temp_dir))
+        server_diff = self.fpath(f"{path}-server_diff", temp_dir)  # diff between server file and local basefile
+        local_diff = self.fpath(f"{path}-local_diff", temp_dir)
 
         # temporary backup of file pulled from server for recovery
-        f_server_backup = long_path(self.fpath(f"{path}-server_backup", temp_dir))
-        self.geodiff.make_copy_sqlite(src_lp, f_server_backup)
+        f_server_backup = self.fpath(f"{path}-server_backup", temp_dir)
+        self.geodiff.make_copy_sqlite(src, f_server_backup)
 
         # create temp backup (ideally with geodiff) of locally modified file if needed later
-        f_conflict_file = long_path(self.fpath(f"{path}-local_backup", temp_dir))
+        f_conflict_file = self.fpath(f"{path}-local_backup", temp_dir)
 
         try:
-            self.geodiff.create_changeset(basefile_lp, dest_lp, local_diff)
-            self.geodiff.make_copy_sqlite(basefile_lp, f_conflict_file)
+            self.geodiff.create_changeset(basefile, dest, local_diff)
+            self.geodiff.make_copy_sqlite(basefile, f_conflict_file)
             self.geodiff.apply_changeset(f_conflict_file, local_diff)
         except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
             self.log.info("backup of local file with geodiff failed - need to do hard copy")
-            self.geodiff.make_copy_sqlite(dest_lp, f_conflict_file)
+            self.geodiff.make_copy_sqlite(dest, f_conflict_file)
 
         # in case there will be any conflicting operations found during rebase,
         # they will be stored in a JSON file - if there are no conflicts, the file
         # won't even be created
-        rebase_conflicts = long_path(
-            unique_path_name(edit_conflict_file_name(self.fpath(path), user_name, int_version(self.version())))
+        rebase_conflicts = unique_path_name(
+            edit_conflict_file_name(self.fpath(path), user_name, int_version(self.version()))
         )
 
         # try to do rebase magic
         try:
-            self.geodiff.create_changeset(basefile_lp, src_lp, server_diff)
-            self.geodiff.rebase(basefile_lp, src_lp, dest_lp, rebase_conflicts)
+            self.geodiff.create_changeset(basefile, src, server_diff)
+            self.geodiff.rebase(basefile, src, dest, rebase_conflicts)
             # make sure basefile is in the same state as remote server file (for calc of push changes)
-            self.geodiff.apply_changeset(basefile_lp, server_diff)
+            self.geodiff.apply_changeset(basefile, server_diff)
             self.log.info("rebase successful!")
         except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as err:
             self.log.warning("rebase failed! going to create conflict file")
             try:
                 # it would not be possible to commit local changes, they need to end up in new conflict file
-                self.geodiff.make_copy_sqlite(f_conflict_file, dest_lp)
+                self.geodiff.make_copy_sqlite(f_conflict_file, dest)
                 conflict = self.create_conflicted_copy(path, user_name)
                 # original file synced with server
-                self.geodiff.make_copy_sqlite(f_server_backup, basefile_lp)
-                self.geodiff.make_copy_sqlite(f_server_backup, dest_lp)
+                self.geodiff.make_copy_sqlite(f_server_backup, basefile)
+                self.geodiff.make_copy_sqlite(f_server_backup, dest)
                 return conflict
             except pygeodiff.GeoDiffLibError as err:
                 self.log.warning("creation of conflicted copy failed! going to create an unfinished pull")
-                f_server_unfinished = long_path(self.fpath_unfinished_pull(path))
+                f_server_unfinished = self.fpath_unfinished_pull(path)
                 self.geodiff.make_copy_sqlite(f_server_backup, f_server_unfinished)
 
         return ""
@@ -911,27 +953,22 @@ class MerginProject:
         :type temp_dir: str
         """
         self.log.info("updating file without rebase: " + path)
-        src_lp = long_path(src)
-        dest_lp = long_path(dest)
-        basefile_lp = long_path(basefile)
         try:
-            server_diff = long_path(
-                self.fpath(f"{path}-server_diff", temp_dir)
-            )  # diff between server file and local basefile
+            server_diff = self.fpath(f"{path}-server_diff", temp_dir)  # diff between server file and local basefile
             # TODO: it could happen that basefile does not exist.
             # It was either never created (e.g. when pushing without geodiff)
             # or it was deleted by mistake(?) by the user. We should detect that
             # when starting pull and download it as well
-            self.geodiff.create_changeset(basefile_lp, src_lp, server_diff)
-            self.geodiff.apply_changeset(dest_lp, server_diff)
-            self.geodiff.apply_changeset(basefile_lp, server_diff)
+            self.geodiff.create_changeset(basefile, src, server_diff)
+            self.geodiff.apply_changeset(dest, server_diff)
+            self.geodiff.apply_changeset(basefile, server_diff)
             self.log.info("update successful")
         except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
             self.log.warning("update failed! going to copy file")
             # something bad happened and we have failed to patch our local files - this should not happen if there
             # wasn't a schema change or something similar that geodiff can't handle.
-            self.geodiff.make_copy_sqlite(src_lp, dest_lp)
-            self.geodiff.make_copy_sqlite(src_lp, basefile_lp)
+            self.geodiff.make_copy_sqlite(src, dest)
+            self.geodiff.make_copy_sqlite(src, basefile)
 
     def apply_push_changes(self, changes):
         """
@@ -951,13 +988,13 @@ class MerginProject:
                 if k == "removed":
                     os.remove(basefile_lp)
                 elif k == "added":
-                    self.geodiff.make_copy_sqlite(long_path(self.fpath(path)), basefile_lp)
+                    self.geodiff.make_copy_sqlite(self.fpath(path), basefile)
                 elif k == "updated":
                     # in case for geopackage cannot be created diff (e.g. forced update with committed changes from wal file)
                     diff = item.get("diff")
                     if not diff:
                         self.log.info("updating basefile (copy) for: " + path)
-                        self.geodiff.make_copy_sqlite(long_path(self.fpath(path)), basefile_lp)
+                        self.geodiff.make_copy_sqlite(self.fpath(path), basefile)
                     else:
                         self.log.info("updating basefile (diff) for: " + path)
                         # better to apply diff to previous basefile to avoid issues with geodiff tmp files
@@ -989,7 +1026,7 @@ class MerginProject:
         )
 
         if self.is_versioned_file(file):
-            self.geodiff.make_copy_sqlite(src_lp, long_path(backup_path))
+            self.geodiff.make_copy_sqlite(src, backup_path)
         else:
             shutil.copy(src_lp, long_path(backup_path))
         return backup_path
@@ -1010,10 +1047,9 @@ class MerginProject:
         if not self.is_versioned_file(basefile):
             return error
 
-        basefile_lp = long_path(basefile)
         for index, diff in enumerate(diffs):
             try:
-                self.geodiff.apply_changeset(basefile_lp, long_path(diff))
+                self.geodiff.apply_changeset(basefile, diff)
             except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as e:
                 self.log.warning("failed to apply changeset " + diff + " to " + basefile)
                 error = str(e)
@@ -1067,8 +1103,8 @@ class MerginProject:
             for file_name in files:
                 src = os.path.join(root, file_name)  # already long-path-prefixed, root came from os.walk above
                 file_path = os.path.relpath(src, long_path(self.unfinished_pull_dir))
-                dest = long_path(self.fpath(file_path))
-                basefile = long_path(self.fpath_meta(file_path))
+                dest = self.fpath(file_path)
+                basefile = self.fpath_meta(file_path)
 
                 self.log.info("trying to resolve unfinished pull for: " + file_path)
 
@@ -1131,9 +1167,9 @@ class MerginProject:
         Never raises – diagnostics/logging must not fail.
         """
 
-        diff_abs = long_path(self.fpath_meta(diff_rel_path))
+        diff_abs = self.fpath_meta(diff_rel_path)
         try:
-            return pygeodiff.GeoDiff().changes_count(diff_abs)
+            return GeoDiffLongPath(pygeodiff.GeoDiff()).changes_count(diff_abs)
         except (
             pygeodiff.GeoDiffLibError,
             pygeodiff.GeoDiffLibConflictError,

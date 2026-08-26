@@ -1384,9 +1384,7 @@ class MerginClient:
         for file in push_changes["updated"]:
             if all_files or file["path"] in files_to_reset:
                 if mp.is_versioned_file(file["path"]):
-                    mp.geodiff.make_copy_sqlite(
-                        long_path(mp.fpath_meta(file["path"])), long_path(mp.fpath(file["path"]))
-                    )
+                    mp.geodiff.make_copy_sqlite(mp.fpath_meta(file["path"]), mp.fpath(file["path"]))
                 else:
                     files_download.append(file["path"])
 
