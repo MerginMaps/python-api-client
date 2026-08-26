@@ -21,7 +21,7 @@ def generate_checksum(file, chunk_size=4096):
     :return: sha1 checksum
     """
     checksum = hashlib.sha1()  # nosec B324 - usedforsecurity=False flag is compatible with python 3.9+
-    with open(file, "rb") as f:
+    with open(long_path(file), "rb") as f:
         while True:
             chunk = f.read(chunk_size)
             if not chunk:
@@ -37,9 +37,9 @@ def save_to_file(stream, path):
     """
     directory = os.path.abspath(os.path.dirname(path))
 
-    os.makedirs(directory, exist_ok=True)
+    os.makedirs(long_path(directory), exist_ok=True)
 
-    with open(path, "wb") as output:
+    with open(long_path(path), "wb") as output:
         writer = io.BufferedWriter(output, buffer_size=32768)
         while True:
             part = stream.read(4096)
@@ -101,7 +101,7 @@ def do_sqlite_checkpoint(path, log=None):
         conn.commit()
         conn.close()
         new_size = os.path.getsize(path_lp)
-        new_checksum = generate_checksum(path_lp)
+        new_checksum = generate_checksum(path)
         if log:
             log.info("checkpoint - new size {} checksum {}".format(new_size, new_checksum))
 

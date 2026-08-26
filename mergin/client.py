@@ -2,7 +2,6 @@ import logging
 import math
 import os
 import json
-import shutil
 import zlib
 import base64
 import urllib.parse
@@ -67,8 +66,8 @@ from .utils import (
     int_version,
     is_version_acceptable,
     normalize_role,
-    long_path,
 )
+from . import fs
 from .version import __version__
 
 try:
@@ -1238,7 +1237,7 @@ class MerginClient:
         # collect required versions from the cache
         diffs = []
         for v in versions_to_fetch[1:]:
-            diffs.append(long_path(mp.fpath_cache(file_history["history"][v]["diff"]["path"], v)))
+            diffs.append(mp.fpath_cache(file_history["history"][v]["diff"]["path"], v))
 
         # concatenate diffs, if needed
         output_dir = os.path.dirname(output_diff)
@@ -1247,7 +1246,7 @@ class MerginClient:
             if len(diffs) > 1:
                 mp.geodiff.concat_changes(diffs, output_diff)
             elif len(diffs) == 1:
-                shutil.copy(diffs[0], output_diff)
+                fs.copy(diffs[0], output_diff)
 
     def download_file_diffs(self, project_dir, file_path, versions):
         """Download file diffs for specified versions if they are not present
@@ -1378,7 +1377,7 @@ class MerginClient:
         # remove all added files
         for file in push_changes["added"]:
             if all_files or file["path"] in files_to_reset:
-                os.remove(long_path(mp.fpath(file["path"])))
+                fs.remove(mp.fpath(file["path"]))
 
         # update files get override with previous version
         for file in push_changes["updated"]:

@@ -27,6 +27,7 @@ from .utils import (
     edit_conflict_file_name,
 )
 from .local_changes import FileChange
+from . import fs
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -328,7 +329,7 @@ class MerginProject:
         f_extension = os.path.splitext(path)[1]
         if f_extension != ".gpkg":
             return False
-        if os.path.exists(f"{long_path(path)}-wal"):
+        if fs.exists(f"{path}-wal"):
             return True
         return False
 
@@ -358,21 +359,20 @@ class MerginProject:
         :rtype: list[dict]
         """
         files_meta = []
-        for root, dirs, files in os.walk(self.dir, topdown=True):
+        for root, dirs, files in fs.walk(self.dir):
             dirs[:] = [d for d in dirs if d not in [".mergin"]]
             for file in files:
                 if self.ignore_file(file):
                     continue
-
-                abs_path = os.path.abspath(os.path.join(root, file))
-                rel_path = os.path.relpath(abs_path, start=self.dir)
+                abs_path = os.path.join(root, file)
+                rel_path = os.path.relpath(abs_path, start=long_path(self.dir))
                 proj_path = "/".join(rel_path.split(os.path.sep))  # we need posix path
                 files_meta.append(
                     {
                         "path": proj_path,
                         "checksum": generate_checksum(abs_path),
-                        "size": os.path.getsize(abs_path),
-                        "mtime": datetime.fromtimestamp(os.path.getmtime(abs_path), tzlocal()),
+                        "size": fs.getsize(abs_path),
+                        "mtime": datetime.fromtimestamp(fs.getmtime(abs_path), tzlocal()),
                     }
                 )
         return files_meta
@@ -673,16 +673,15 @@ class MerginProject:
                 delta_item.checksum = checkpoint_checksum
 
             diff_location = self.fpath(diff_file, diff_directory)
-            diff_location_lp = long_path(diff_location)
             try:
                 self.geodiff.create_changeset(origin_file, current_file, diff_location)
                 if not self.geodiff.has_changes(diff_location):
-                    os.remove(diff_location_lp)
+                    fs.remove(diff_location)
                     continue
 
                 delta_item.checksum = change.get("origin_checksum")
                 delta_item.type = DeltaChangeType.UPDATE_DIFF
-                os.remove(diff_location_lp)
+                fs.remove(diff_location)
             except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as e:
                 self.log.warning("failed to create changeset for " + path)
                 # probably the database schema has been modified if geodiff cannot create changeset.
@@ -727,23 +726,22 @@ class MerginProject:
             diff_id = str(uuid.uuid4())
             diff_name = path + "-diff-" + diff_id
             diff_file = self.fpath_meta(diff_name)
-            diff_file_lp = long_path(diff_file)
             try:
                 self.geodiff.create_changeset(origin_file, current_file, diff_file)
                 if self.geodiff.has_changes(diff_file):
-                    diff_size = os.path.getsize(diff_file_lp)
+                    diff_size = fs.getsize(diff_file)
                     file["checksum"] = file["origin_checksum"]  # need to match basefile on server
                     file["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(diff_size / UPLOAD_CHUNK_SIZE))]
-                    file["mtime"] = datetime.fromtimestamp(os.path.getmtime(long_path(current_file)), tzlocal())
+                    file["mtime"] = datetime.fromtimestamp(fs.getmtime(current_file), tzlocal())
                     file["diff"] = {
                         "path": diff_name,
-                        "checksum": generate_checksum(diff_file_lp),
+                        "checksum": generate_checksum(diff_file),
                         "size": diff_size,
-                        "mtime": datetime.fromtimestamp(os.path.getmtime(diff_file_lp), tzlocal()),
+                        "mtime": datetime.fromtimestamp(fs.getmtime(diff_file), tzlocal()),
                     }
                 else:
-                    if os.path.exists(diff_file_lp):
-                        os.remove(diff_file_lp)
+                    if fs.exists(diff_file):
+                        fs.remove(diff_file)
                     not_updated.append(file)
             except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as e:
                 self.log.warning("failed to create changeset for " + path)
@@ -763,10 +761,9 @@ class MerginProject:
         self.log.info("Making a temporary copy (full upload): " + path)
         tmp_file = os.path.join(tmp_dir, path)
         os.makedirs(os.path.dirname(tmp_file), exist_ok=True)
-        tmp_file_lp = long_path(tmp_file)
         self.geodiff.make_copy_sqlite(self.fpath(path), tmp_file)
-        f.size = os.path.getsize(tmp_file_lp)
-        f.checksum = generate_checksum(tmp_file_lp)
+        f.size = fs.getsize(tmp_file)
+        f.checksum = generate_checksum(tmp_file)
         f.chunks = [str(uuid.uuid4()) for i in range(math.ceil(f.size / UPLOAD_CHUNK_SIZE))]
         f.upload_file = tmp_file
         return tmp_file
@@ -813,9 +810,6 @@ class MerginProject:
             server_file = self.fpath(path, download_dir)
             live_file = self.fpath(path)
             basefile = self.fpath_meta(path)
-            server_file_lp = long_path(server_file)
-            live_file_lp = long_path(live_file)
-            basefile_lp = long_path(basefile)
             action_type = action.type
             if action_type == PullActionType.COPY:
                 # simply copy the file from server
@@ -823,7 +817,7 @@ class MerginProject:
                     self.geodiff.make_copy_sqlite(server_file, live_file)
                     self.geodiff.make_copy_sqlite(server_file, basefile)
                 else:
-                    shutil.copy(server_file_lp, live_file_lp)
+                    fs.copy(server_file, live_file)
             elif action_type == PullActionType.APPLY_DIFF_NO_REBASE:
                 # simply apply the diff without rebase (no local changes or non-conflicting local changes)
                 self.update_without_rebase(path, server_file, live_file, basefile, download_dir)
@@ -849,14 +843,14 @@ class MerginProject:
                         f_server_unfinished = self.fpath_unfinished_pull(path)
                         self.geodiff.make_copy_sqlite(server_file, f_server_unfinished)
                 else:
-                    shutil.copy(server_file_lp, live_file_lp)
+                    fs.copy(server_file, live_file)
 
             elif action_type == PullActionType.DELETE:
                 # remove local file
-                if os.path.exists(live_file_lp):
-                    os.remove(live_file_lp)
-                    if self.is_versioned_file(path) and os.path.exists(basefile_lp):
-                        os.remove(basefile_lp)
+                if fs.exists(live_file):
+                    fs.remove(live_file)
+                    if self.is_versioned_file(path) and fs.exists(basefile):
+                        fs.remove(basefile)
 
         return conflicts
 
@@ -984,9 +978,8 @@ class MerginProject:
                     continue
 
                 basefile = self.fpath_meta(path)
-                basefile_lp = long_path(basefile)
                 if k == "removed":
-                    os.remove(basefile_lp)
+                    fs.remove(basefile)
                 elif k == "added":
                     self.geodiff.make_copy_sqlite(self.fpath(path), basefile)
                 elif k == "updated":
@@ -1003,7 +996,7 @@ class MerginProject:
                         if patch_error:
                             # in case of local sync issues it is safier to remove basefile, next time it will be downloaded from server
                             self.log.warning("removing basefile (because of apply diff error) for: " + path)
-                            os.remove(basefile_lp)
+                            fs.remove(basefile)
                 else:
                     pass
 
@@ -1017,8 +1010,7 @@ class MerginProject:
         :rtype: str
         """
         src = self.fpath(file)
-        src_lp = long_path(src)
-        if not os.path.exists(src_lp):
+        if not fs.exists(src):
             return
 
         backup_path = unique_path_name(
@@ -1028,7 +1020,7 @@ class MerginProject:
         if self.is_versioned_file(file):
             self.geodiff.make_copy_sqlite(src, backup_path)
         else:
-            shutil.copy(src_lp, long_path(backup_path))
+            fs.copy(src, backup_path)
         return backup_path
 
     def apply_diffs(self, basefile, diffs):
@@ -1099,9 +1091,11 @@ class MerginProject:
 
         self.log.info("resolving unfinished pull")
 
-        for root, dirs, files in os.walk(long_path(self.unfinished_pull_dir)):
+        for root, dirs, files in fs.walk(self.unfinished_pull_dir):
             for file_name in files:
-                src = os.path.join(root, file_name)  # already long-path-prefixed, root came from os.walk above
+                # fs.walk() traverses the long-path-prefixed dir, so root (and thus src) is prefixed too;
+                src = os.path.join(root, file_name)
+                # the relpath base must be prefixed as well to strip it correctly.
                 file_path = os.path.relpath(src, long_path(self.unfinished_pull_dir))
                 dest = self.fpath(file_path)
                 basefile = self.fpath_meta(file_path)
