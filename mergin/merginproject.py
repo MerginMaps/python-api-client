@@ -1093,7 +1093,6 @@ class MerginProject:
 
         for root, dirs, files in fs.walk(self.unfinished_pull_dir):
             for file_name in files:
-                # fs.walk() traverses the long-path-prefixed dir, so root (and thus src) is prefixed too;
                 src = os.path.join(root, file_name)
                 # the relpath base must be prefixed as well to strip it correctly.
                 file_path = os.path.relpath(src, long_path(self.unfinished_pull_dir))
