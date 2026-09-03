@@ -1199,7 +1199,7 @@ class MerginClient:
         """
         Download project file at specified version. Get the latest if no version specified.
 
-        :param project_dir: project local directory
+        :param project_dir: project local directory or a full project name ("<workspace>/<project>")
         :type project_dir: String
         :param file_path: relative path of file to download in the project directory
         :type file_path: String
@@ -1401,11 +1401,11 @@ class MerginClient:
         """
         Download project files at specified version. Get the latest if no version specified.
 
-        :param project_dir: project local directory
+        :param project_dir: project local directory or a full project name ("<workspace>/<project>")
         :type project_dir: String
         :param file_path: List of relative paths of files to download in the project directory
         :type file_path: List[String]
-        :param output_paths: List of paths for files to download to. Should be same length of as file_path. Default is `None` which means that files are downloaded into MerginProject at project_dir.
+        :param output_paths: List of paths for files to download to. Should be same length of as file_path. Default is `None` which means that files are downloaded into MerginProject at project_dir (only valid when project_dir is an existing local checkout).
         :type output_paths: List[String]
         :param version: optional version tag for downloaded file
         :type version: String
