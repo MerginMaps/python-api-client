@@ -186,6 +186,7 @@ def test_get_local_delta():
         # Mock files() to return origin info for version lookup
         mp.files = lambda: []
         mp.inspect_files = lambda: []  # Dummy return
+        mp.file_filter = lambda: {"include": None, "exclude": None}  # no sparse checkout filter in this test
 
         # check if geopackage is updated (is_open) but missing - geodiff lib error, than updated file is reported
         mock_changes = {

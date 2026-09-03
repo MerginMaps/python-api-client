@@ -34,7 +34,7 @@ from .common import (
 )
 from .merginproject import MerginProject, pygeodiff
 from .editor import filter_changes
-from .utils import get_data_checksum, cleanup_tmp_dir
+from .utils import get_data_checksum, cleanup_tmp_dir, filter_files
 
 POST_JSON_HEADERS = {"Content-Type": "application/json"}
 
@@ -457,6 +457,14 @@ def push_project_finalize(job: UploadJob):
                 job.mp.log.info("cancel response: " + str(err2))
             cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
             raise err
+
+    # keep the sparse checkout: re-apply the filter this project was
+    # downloaded with, since job.server_resp is a fresh, unfiltered response from the server
+    # and update_metadata() replaces the whole metadata dict rather than merging into it
+    file_filter = job.mp.file_filter()
+    job.server_resp["files"] = filter_files(job.server_resp["files"], **file_filter)
+    if file_filter["include"] or file_filter["exclude"]:
+        job.server_resp["file_filter"] = file_filter
 
     job.mp.update_metadata(job.server_resp)
     try:

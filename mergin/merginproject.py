@@ -24,6 +24,7 @@ from .utils import (
     unique_path_name,
     conflicted_copy_file_name,
     edit_conflict_file_name,
+    filter_files,
 )
 from .local_changes import FileChange
 
@@ -214,6 +215,13 @@ class MerginProject:
         """Returns project's list of files (each file being a dictionary)"""
         self._read_metadata()
         return self._metadata["files"]
+
+    def file_filter(self) -> dict:
+        """
+        Returns the include/exclude file filter this project was downloaded with, as a dict with "include" and "exclude" keys.
+        """
+        self._read_metadata()
+        return self._metadata.get("file_filter", {"include": None, "exclude": None})
 
     @property
     def metadata(self) -> dict:
@@ -566,7 +574,8 @@ class MerginProject:
         :rtype: List[ProjectDeltaItem]
         """
         result = []
-        changes = self.compare_file_sets(self.files(), self.inspect_files())
+        current_files = filter_files(self.inspect_files(), **self.file_filter())
+        changes = self.compare_file_sets(self.files(), current_files)
         added = changes.get("added", [])
         removed = changes.get("removed", [])
         updated = changes.get("updated", [])
@@ -655,7 +664,8 @@ class MerginProject:
         :returns: changes metadata for files to be pushed to server
         :rtype: dict
         """
-        changes = self.compare_file_sets(self.files(), self.inspect_files())
+        current_files = filter_files(self.inspect_files(), **self.file_filter())
+        changes = self.compare_file_sets(self.files(), current_files)
         # do checkpoint to push changes from wal file to gpkg
         for file in changes["added"] + changes["updated"]:
             size, checksum = do_sqlite_checkpoint(self.fpath(file["path"]), self.log)

@@ -1,4 +1,5 @@
 import hashlib
+import inspect
 import json
 import logging
 import os
@@ -1151,6 +1152,270 @@ def test_download_versions(mc):
     # try to download not-existing version
     with pytest.raises(ClientError):
         mc.download_project(project, project_dir_v3, "v3")
+
+
+def test_download_project_with_filter(mc):
+    """Test downloading a project with include/exclude filters, and that they're mutually exclusive."""
+    test_project = "test_download_project_filter"
+    project = create_project_path(test_project, mc)
+    project_dir = os.path.join(TMP_DIR, test_project)
+    include_dir = os.path.join(TMP_DIR, test_project + "_include")
+    exclude_dir = os.path.join(TMP_DIR, test_project + "_exclude")
+    conflict_dir = os.path.join(TMP_DIR, test_project + "_conflict")
+
+    cleanup(mc, project, [project_dir, include_dir, exclude_dir, conflict_dir])
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project_and_push(project, project_dir)
+
+    # include filter: only matching files are fetched
+    mc.download_project(project, include_dir, include=["*.gpkg"])
+
+    downloaded_files = set()
+    for root, _, files in os.walk(include_dir):
+        if ".mergin" in root.split(os.sep):
+            continue
+        for f in files:
+            rel = os.path.relpath(os.path.join(root, f), include_dir)
+            downloaded_files.add(rel.replace(os.sep, "/"))
+
+    assert downloaded_files
+    assert all(f.endswith(".gpkg") for f in downloaded_files)
+    assert "test.qgs" not in downloaded_files
+    assert "test.txt" not in downloaded_files
+
+    mp = MerginProject(include_dir)
+    assert all(f["path"].endswith(".gpkg") for f in mp.files())
+    assert mp.file_filter() == {"include": ["*.gpkg"], "exclude": None}
+
+    # exclude filter: matching files are skipped
+    mc.download_project(project, exclude_dir, exclude=["test_dir/*"])
+
+    assert os.path.exists(os.path.join(exclude_dir, "base.gpkg"))
+    assert not os.path.exists(os.path.join(exclude_dir, "test_dir"))
+
+    mp = MerginProject(exclude_dir)
+    assert not any(f["path"].startswith("test_dir/") for f in mp.files())
+    assert mp.file_filter() == {"include": None, "exclude": ["test_dir/*"]}
+
+    # include and exclude cannot be combined
+    with pytest.raises(ClientError, match="Cannot use both include and exclude"):
+        mc.download_project(project, conflict_dir, include=["*.gpkg"], exclude=["*.txt"])
+    assert not os.path.exists(conflict_dir)
+
+
+def test_sparse_checkout_filter_is_immutable(mc):
+    """Once a directory has been downloaded with a filter, there is no way to change that
+    filter in place - the only way to get a different filter is to check out into a fresh
+    directory.
+    """
+    test_project = "test_sparse_checkout_immutable"
+    project = create_project_path(test_project, mc)
+    project_dir = os.path.join(TMP_DIR, test_project)
+    sparse_dir = os.path.join(TMP_DIR, test_project + "_sparse")
+
+    cleanup(mc, project, [project_dir, sparse_dir])
+    shutil.copytree(TEST_DATA_DIR, project_dir)
+    mc.create_project_and_push(project, project_dir)
+
+    mc.download_project(project, sparse_dir, exclude=["test_dir/*"])
+    original_filter = MerginProject(sparse_dir).file_filter()
+
+    # trying to download again into the same directory - with the same or a different filter -
+    # must fail without touching anything, regardless of what filter (if any) is requested
+    for kwargs in ({"exclude": ["test_dir/*"]}, {"include": ["*.gpkg"]}, {}):
+        with pytest.raises(ClientError, match="Project directory already exists"):
+            mc.download_project(project, sparse_dir, **kwargs)
+
+    assert MerginProject(sparse_dir).file_filter() == original_filter
+
+    # pull_project()/push_project() take no filter arguments at all - there is no API through
+    # which a different filter could be supplied for an existing checkout
+    assert "include" not in inspect.signature(mc.pull_project).parameters
+    assert "include" not in inspect.signature(mc.push_project).parameters
+
+
+def test_pull_on_sparse_checkout(mc):
+    """A sparse checkout keeps respecting its filter across subsequent pulls: excluded files
+    stay ignored even as the server moves ahead, and a genuine local-vs-server conflict on an
+    included file is still detected and resolved correctly.
+    """
+    test_project = "test_pull_sparse_checkout"
+    project = create_project_path(test_project, mc)
+    project_dir = os.path.join(TMP_DIR, test_project)
+    sparse_dir = os.path.join(TMP_DIR, test_project + "_sparse")
+
+    cleanup(mc, project, [project_dir, sparse_dir])
+    create_versioned_project(mc, test_project, project_dir, "base.gpkg", remove=False)
+
+    mc.download_project(project, sparse_dir, exclude=["test_dir/*"])
+    assert not os.path.exists(os.path.join(sparse_dir, "test_dir"))
+    sparse_version_before = MerginProject(sparse_dir).version()
+
+    # change an excluded file on the server, by pushing from the reference (full) checkout
+    mp_ref = MerginProject(project_dir)
+    with open(mp_ref.fpath("test_dir/test2.txt"), "a") as f:
+        f.write("change that only affects an excluded file")
+    mc.push_project(project_dir)
+    server_version = mc.project_info(project)["version"]
+    assert server_version != sparse_version_before
+
+    mc.pull_project(sparse_dir)
+
+    mp_sparse = MerginProject(sparse_dir)
+    assert mp_sparse.version() == server_version
+    assert not os.path.exists(os.path.join(sparse_dir, "test_dir"))
+    assert not any(f["path"].startswith("test_dir/") for f in mp_sparse.files())
+
+    # now a genuine conflict: edit an included file locally, but don't push it yet
+    shutil.copy(os.path.join(TEST_DATA_DIR, "two_tables.gpkg"), os.path.join(sparse_dir, "base.gpkg"))
+
+    # meanwhile a conflicting edit to the same file gets pushed from the reference (full) checkout
+    shutil.copy(os.path.join(TEST_DATA_DIR, "two_tables_drop.gpkg"), os.path.join(project_dir, "base.gpkg"))
+    mc.push_project(project_dir)
+    server_version = mc.project_info(project)["version"]
+    assert server_version != mp_sparse.version()
+
+    # pulling the sparse checkout now must detect the conflict (not silently drop the local
+    # edit, not crash, and not leave the sparse checkout in a broken state)
+    mc.pull_project(sparse_dir)
+
+    mp_sparse = MerginProject(sparse_dir)
+    assert mp_sparse.version() == server_version
+    assert not os.path.exists(os.path.join(sparse_dir, "test_dir"))  # filter still respected
+    conflict_files = [f for f in os.listdir(sparse_dir) if "conflicted copy" in f]
+    assert conflict_files, "expected a conflicted copy of base.gpkg to be created"
+
+
+def test_push_on_sparse_checkout(mc):
+    """Pushing from a sparse checkout must never touch the files it never downloaded: not a
+    no-op push (must not delete excluded files it's not tracking), not a real push of an
+    included file's edit (must not wipe the persisted filter from local metadata.
+    """
+    test_project = "test_push_sparse_checkout"
+    project = create_project_path(test_project, mc)
+    project_dir = os.path.join(TMP_DIR, test_project)
+    sparse_dir = os.path.join(TMP_DIR, test_project + "_sparse")
+
+    cleanup(mc, project, [project_dir, sparse_dir])
+    create_versioned_project(mc, test_project, project_dir, "base.gpkg", remove=False)
+
+    mc.download_project(project, sparse_dir, exclude=["test_dir/*"])
+
+    # no local edits - must be a no-op, not a deletion of excluded files
+    mc.push_project(sparse_dir)
+
+    server_files = {f["path"] for f in mc.project_info(project)["files"]}
+    assert "test_dir/test2.txt" in server_files
+    assert "test_dir/modified_1_geom.gpkg" in server_files
+
+    # a real push of an included file's edit must not lose the persisted filter afterwards
+    shutil.copy(os.path.join(TEST_DATA_DIR, "two_tables_drop.gpkg"), os.path.join(sparse_dir, "base.gpkg"))
+    mc.push_project(sparse_dir)
+
+    mp_sparse = MerginProject(sparse_dir)
+    assert mp_sparse.file_filter() == {"include": None, "exclude": ["test_dir/*"]}
+    assert not any(f["path"].startswith("test_dir/") for f in mp_sparse.files())
+    server_files = {f["path"] for f in mc.project_info(project)["files"]}
+    assert "test_dir/test2.txt" in server_files
+    assert "test_dir/modified_1_geom.gpkg" in server_files
+
+    # manually add a file outside the filter's scope - it must not get pushed either
+    os.makedirs(os.path.join(sparse_dir, "test_dir"), exist_ok=True)
+    with open(os.path.join(sparse_dir, "test_dir", "new_stray.txt"), "w") as f:
+        f.write("should not be pushed")
+
+    mc.push_project(sparse_dir)
+
+    server_files = {f["path"] for f in mc.project_info(project)["files"]}
+    assert "test_dir/new_stray.txt" not in server_files
+
+    # a delete-only push goes through a different shortcut code path server-side
+    # it must also keep the filter intact and leave excluded files alone
+    # old_metadata.json already present on server and not affected by filter
+    os.remove(os.path.join(sparse_dir, "old_metadata.json"))
+    mc.push_project(sparse_dir)
+
+    mp_sparse = MerginProject(sparse_dir)
+    assert mp_sparse.file_filter() == {"include": None, "exclude": ["test_dir/*"]}
+    assert not any(f["path"].startswith("test_dir/") for f in mp_sparse.files())
+    server_files = {f["path"] for f in mc.project_info(project)["files"]}
+    assert "old_metadata.json" not in server_files
+    assert "test_dir/test2.txt" in server_files
+    assert "test_dir/modified_1_geom.gpkg" in server_files
+
+
+def test_sparse_checkout_pull_push_v1_api(mc):
+    """Same filter-persistence guarantees as test_pull_on_sparse_checkout/test_push_on_sparse_checkout,
+    but forcing the legacy v1 pull/push code paths.
+    """
+    server_features = mc.server_features()
+    mc._server_features = {"v2_pull_enabled": False, "v2_push_enabled": False}
+
+    test_project = "test_sparse_checkout_v1_api"
+    project = create_project_path(test_project, mc)
+    project_dir = os.path.join(TMP_DIR, test_project)
+    sparse_dir = os.path.join(TMP_DIR, test_project + "_sparse")
+
+    cleanup(mc, project, [project_dir, sparse_dir])
+    create_versioned_project(mc, test_project, project_dir, "base.gpkg", remove=False)
+
+    mc.download_project(project, sparse_dir, exclude=["test_dir/*"])
+
+    # change an excluded file on the server - a v1 pull must still skip it
+    mp_ref = MerginProject(project_dir)
+    with open(mp_ref.fpath("test_dir/test2.txt"), "a") as f:
+        f.write("change to an excluded file, v1 api")
+    mc.push_project(project_dir)
+
+    mc.pull_project(sparse_dir)
+
+    mp_sparse = MerginProject(sparse_dir)
+    assert mp_sparse.version() == mc.project_info(project)["version"]
+    assert not os.path.exists(os.path.join(sparse_dir, "test_dir"))
+    assert not any(f["path"].startswith("test_dir/") for f in mp_sparse.files())
+
+    # a real edit to an included file, pushed via v1 - filter must survive it
+    shutil.copy(os.path.join(TEST_DATA_DIR, "two_tables_drop.gpkg"), os.path.join(sparse_dir, "base.gpkg"))
+    mc.push_project(sparse_dir)
+
+    mp_sparse = MerginProject(sparse_dir)
+    assert mp_sparse.file_filter() == {"include": None, "exclude": ["test_dir/*"]}
+    assert not any(f["path"].startswith("test_dir/") for f in mp_sparse.files())
+    server_files = {f["path"] for f in mc.project_info(project)["files"]}
+    assert "test_dir/test2.txt" in server_files
+    assert "test_dir/modified_1_geom.gpkg" in server_files
+
+    mc._server_features = server_features
+
+
+def test_project_status_on_sparse_checkout(mc):
+    """`status` must not report excluded files as pending server changes -
+    they were deliberately never meant to be pulled, so they shouldn't show up as if a pull
+    were needed to fetch them.
+    """
+    test_project = "test_status_sparse_checkout"
+    project = create_project_path(test_project, mc)
+    project_dir = os.path.join(TMP_DIR, test_project)
+    sparse_dir = os.path.join(TMP_DIR, test_project + "_sparse")
+
+    cleanup(mc, project, [project_dir, sparse_dir])
+    create_versioned_project(mc, test_project, project_dir, "base.gpkg", remove=False)
+
+    mc.download_project(project, sparse_dir, exclude=["test_dir/*"])
+
+    # change both an excluded and an included file on the server
+    mp_ref = MerginProject(project_dir)
+    with open(mp_ref.fpath("test_dir/test2.txt"), "a") as f:
+        f.write("change to an excluded file")
+    shutil.copy(os.path.join(TEST_DATA_DIR, "two_tables_drop.gpkg"), os.path.join(project_dir, "base.gpkg"))
+    mc.push_project(project_dir)
+
+    pull_changes, _, _ = mc.project_status(sparse_dir)
+
+    changed_paths = {f["path"] for files in pull_changes.values() for f in files}
+    assert "test_dir/test2.txt" not in changed_paths
+    # a real, included change must still be reported
+    assert "base.gpkg" in changed_paths
 
 
 def test_paginated_project_list(mc):

@@ -25,7 +25,7 @@ import concurrent.futures
 from .common import CHUNK_SIZE, ClientError, DeltaChangeType, PullActionType
 from .models import ProjectDelta, ProjectDeltaChange, PullAction
 from .merginproject import MerginProject
-from .utils import cleanup_tmp_dir, save_to_file
+from .utils import cleanup_tmp_dir, filter_files, path_matches_filter, save_to_file, validates_file_filter
 from typing import List, Optional
 
 # status = download_project_async(...)
@@ -242,10 +242,15 @@ def _cleanup_failed_download(mergin_project: MerginProject = None):
     return dest_path
 
 
-def download_project_async(mc, project_path, directory, project_version=None):
+@validates_file_filter
+def download_project_async(mc, project_path, directory, project_version=None, include=None, exclude=None):
     """
     Starts project download in background and returns handle to the pending project download.
     Using that object it is possible to watch progress or cancel the ongoing work.
+
+    `include`/`exclude` are optional lists of glob patterns (matched against each file's project
+    path, e.g. "media/*" or "*.gpkg") to only download a subset of the project's files. They are
+    mutually exclusive.
     """
 
     if "/" not in project_path:
@@ -275,6 +280,11 @@ def download_project_async(mc, project_path, directory, project_version=None):
     version = project_info["version"] if project_info["version"] else "v0"
 
     mp.log.info(f"got project info. version {version}")
+
+    # keep only the files matching the filter (if any)
+    project_info["files"] = filter_files(project_info["files"], include=include, exclude=exclude)
+    if include or exclude:
+        project_info["file_filter"] = {"include": include, "exclude": exclude}
 
     # prepare download
     update_tasks = []  # stuff to do at the end of download
@@ -525,6 +535,9 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
         mp.log.info("--- pull aborted")
         raise
 
+    file_filter = mp.file_filter()
+    delta.changes = [c for c in delta.changes if path_matches_filter(c.path, **file_filter)]
+
     mp.log.info(f"got project versions: local version {local_version} / server version {server_version}")
 
     if local_version == server_version:
@@ -747,6 +760,14 @@ def pull_project_finalize(job: PullJob):
         job.mp.log.info("--- pull aborted")
         cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
         raise ClientError("Failed to apply pull actions: " + str(e))
+
+    file_filter = job.mp.file_filter()
+    job.project_info["files"] = filter_files(job.project_info["files"], **file_filter)
+    # keep the sparse checkout: re-apply the filter this project was downloaded with,
+    # since job.project_info is a fresh, unfiltered response from the server
+    # and update_metadata() replaces the whole metadata dict rather than merging into it
+    if file_filter["include"] or file_filter["exclude"]:
+        job.project_info["file_filter"] = file_filter
 
     job.mp.update_metadata(job.project_info)
 
