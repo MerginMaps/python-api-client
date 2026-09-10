@@ -220,10 +220,21 @@ class MerginProject:
 
     def file_filter(self) -> dict:
         """
-        Returns the include/exclude file filter this project was downloaded with, as a dict with "include" and "exclude" keys.
+        Returns the include/exclude file filter this project was downloaded with, as a dict
+        with "include" and "exclude" keys. Stored in its own file (.mergin/file_filter.json)
         """
-        self._read_metadata()
-        return self._metadata.get("file_filter", {"include": None, "exclude": None})
+        filter_file = self.fpath_meta("file_filter.json")
+        if not os.path.exists(filter_file):
+            return {"include": None, "exclude": None}
+        with open(filter_file, "r") as f:
+            return json.load(f)
+
+    def write_file_filter(self, file_filter: dict) -> None:
+        """
+        Persists the include/exclude file filter this project was downloaded with.
+        """
+        with open(self.fpath_meta("file_filter.json"), "w") as f:
+            json.dump(file_filter, f, indent=2)
 
     @property
     def metadata(self) -> dict:

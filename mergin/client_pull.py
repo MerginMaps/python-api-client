@@ -284,8 +284,9 @@ def download_project_async(mc, project_path, directory, project_version=None, in
 
     # keep only the files matching the filter (if any)
     project_info["files"] = filter_files(project_info["files"], include=include, exclude=exclude)
+    # persisted once since it must never change again for this checkout
     if include or exclude:
-        project_info["file_filter"] = {"include": include, "exclude": exclude}
+        mp.write_file_filter({"include": include, "exclude": exclude})
 
     # prepare download
     update_tasks = []  # stuff to do at the end of download
@@ -762,13 +763,8 @@ def pull_project_finalize(job: PullJob):
         cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
         raise ClientError("Failed to apply pull actions: " + str(e))
 
-    file_filter = job.mp.file_filter()
-    job.project_info["files"] = filter_files(job.project_info["files"], **file_filter)
-    # keep the sparse checkout: re-apply the filter this project was downloaded with,
-    # since job.project_info is a fresh, unfiltered response from the server
-    # and update_metadata() replaces the whole metadata dict rather than merging into it
-    if file_filter["include"] or file_filter["exclude"]:
-        job.project_info["file_filter"] = file_filter
+    # keep only in-scope files in the metadata we're about to persist
+    job.project_info["files"] = filter_files(job.project_info["files"], **job.mp.file_filter())
 
     job.mp.update_metadata(job.project_info)
 
