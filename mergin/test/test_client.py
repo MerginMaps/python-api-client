@@ -1354,6 +1354,42 @@ def test_download_file(mc):
         mc.download_file(project_dir, f_updated, f_downloaded, version="v5")
 
 
+def test_download_file_without_checkout(mc):
+    """Test downloading a single file directly by project name, without an existing local checkout."""
+    test_project = "test_download_file_without_checkout"
+    project = create_project_path(test_project, mc)
+    project_dir = os.path.join(TMP_DIR, test_project)
+    f_updated = "base.gpkg"
+
+    create_versioned_project(mc, test_project, project_dir, f_updated)
+
+    # download straight from the server by "workspace/project" name into a fresh directory
+    # that has never been used as a project checkout
+    download_dir = os.path.join(TMP_DIR, test_project + "_no_checkout")
+    remove_folders([download_dir])
+    os.makedirs(download_dir, exist_ok=True)
+    f_downloaded = os.path.join(download_dir, f_updated)
+
+    expected_content = "inserted_1_A.gpkg"
+    mc.download_project_file(project, f_updated, f_downloaded, version="v2")
+    expected = os.path.join(TEST_DATA_DIR, expected_content)
+    assert check_gpkg_same_content(MerginProject(project_dir), f_downloaded, expected)
+    assert not os.path.exists(os.path.join(download_dir, ".mergin"))
+
+    # output_file must be provided explicitly when there is no local checkout
+    with pytest.raises(ClientError, match="output_file must be provided"):
+        mc.download_project_file(project, f_updated, None)
+
+    # non-existent file in an existing project - same error as with a local checkout
+    with pytest.raises(ClientError, match=r"No \[does_not_exist\.gpkg\] exists at version v2"):
+        mc.download_project_file(project, "does_not_exist.gpkg", f_downloaded, version="v2")
+
+    # non-existent / inaccessible project should fail clearly too
+    nonexistent_project = create_project_path("this_project_does_not_exist", mc)
+    with pytest.raises(ClientError):
+        mc.download_project_file(nonexistent_project, f_updated, f_downloaded)
+
+
 def test_download_diffs(mc):
     """Test download diffs for a project file between specified project versions."""
     test_project = "test_download_diffs"

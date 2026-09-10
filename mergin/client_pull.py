@@ -25,8 +25,8 @@ import concurrent.futures
 from .common import CHUNK_SIZE, ClientError, DeltaChangeType, PullActionType
 from .models import ProjectDelta, ProjectDeltaChange, PullAction
 from .merginproject import MerginProject
-from .utils import cleanup_tmp_dir, save_to_file
-from typing import List, Optional
+from .utils import cleanup_tmp_dir, is_versioned_file, save_to_file
+from typing import List, Optional, Union
 
 # status = download_project_async(...)
 #
@@ -54,7 +54,7 @@ class DownloadJob:
         update_tasks,
         download_queue_items,
         tmp_dir: tempfile.TemporaryDirectory,
-        mp,
+        mp: Union[MerginProject, "DownloadScratchContext"],
         project_info,
     ):
         self.project_path = project_path
@@ -64,7 +64,7 @@ class DownloadJob:
         self.update_tasks = update_tasks
         self.download_queue_items = download_queue_items
         self.tmp_dir = tmp_dir
-        self.mp = mp  # MerginProject instance
+        self.mp = mp
         self.is_cancelled = False
         self.project_info = project_info  # parsed JSON with project info returned from the server
         self.failure_log_file = None  # log file, copied from the project directory if download fails
@@ -78,6 +78,25 @@ class DownloadJob:
         for item in self.download_queue_items:
             print("- {} {} {} {}".format(item.file_path, item.version, item.part_index, item.size))
         print("--- END ---")
+
+
+class DownloadScratchContext:
+    """
+    Minimal stand-in for MerginProject used when downloading a file directly by
+    project name ("<workspace>/<project>") without an existing local project checkout.
+
+    Provides only what the shared download job code actually needs from MerginProject.
+    """
+
+    def __init__(self, mc, cache_dir: str):
+        self.log = mc.log
+        self.cache_dir = cache_dir
+        # only used by _cleanup_failed_download() to look for a log file
+        self.dir = cache_dir
+
+    def remove_logging_handler(self):
+        # no-op: self.log is mc's shared logger, not owned by this throwaway context
+        pass
 
 
 class DownloadQueueItem:
@@ -398,7 +417,7 @@ class UpdateTask:
         self.download_queue_items = download_queue_items
         self.latest_version = latest_version
 
-    def apply(self, directory, mp):
+    def apply(self, directory, mp: Union[MerginProject, "DownloadScratchContext"]):
         """assemble downloaded chunks into a single file"""
 
         if self.destination_file is None:
@@ -411,14 +430,14 @@ class UpdateTask:
         os.makedirs(file_dir, exist_ok=True)
 
         # ignore check if we download not-latest version of gpkg file (possibly reconstructed on server on demand)
-        check_size = self.latest_version or not mp.is_versioned_file(self.file_path)
+        check_size = self.latest_version or not is_versioned_file(self.file_path)
         # merge chunks together (and delete them afterwards)
         file_to_merge = DownloadFile(dest_file_path, self.download_queue_items, check_size)
         file_to_merge.from_chunks()
 
         # Make a copy of the file to meta dir only if there is no user-specified path for the file.
-        # destination_file is None for full project download and takes a meaningful value for a single file download.
-        if mp.is_versioned_file(self.file_path) and self.destination_file is None:
+        # destination_file is None for full project download and takes a meaningful value for a single file download
+        if self.destination_file is None and is_versioned_file(self.file_path):
             mp.geodiff.make_copy_sqlite(mp.fpath(self.file_path), mp.fpath_meta(self.file_path))
 
 
@@ -774,6 +793,23 @@ def download_file_finalize(job):
     download_files_finalize(job)
 
 
+def download_project_file_async(mc, project_path: str, file_path: str, output_file: str, version: str = None):
+    """
+    Starts background download of a single project file at specified version, fetched directly
+    from the server without needing an existing local project checkout.
+    Returns handle to the pending download.
+
+    :param project_path: full project name ("<workspace>/<project>")
+    :param output_file: destination path for the downloaded file
+    """
+    if not output_file:
+        raise ClientError("output_file must be provided when downloading a file without a local project checkout")
+
+    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
+    mp = DownloadScratchContext(mc, tmp_dir.name)
+    return _download_files_async(mc, mp, project_path, [file_path], [output_file], version, tmp_dir)
+
+
 def download_diffs_async(mc, project_directory, file_path, versions):
     """
     Starts background download project file diffs for specified versions.
@@ -897,14 +933,29 @@ def download_diffs_finalize(job: PullJob) -> List[str]:
 
 
 def download_files_async(
-    mc, project_dir: str, file_paths: typing.List[str], output_paths: typing.List[str], version: str
+    mc, project_dir: str, file_paths: typing.List[str], output_paths: typing.List[str] = None, version: str = None
 ):
     """
     Starts background download project files at specified version.
     Returns handle to the pending download.
+
+    `project_dir` must be an existing local project directory.
     """
     mp = MerginProject(project_dir)
     project_path = mp.project_full_name()
+    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
+    return _download_files_async(mc, mp, project_path, file_paths, output_paths, version, tmp_dir)
+
+
+def _download_files_async(
+    mc,
+    mp: Union[MerginProject, "DownloadScratchContext"],
+    project_path: str,
+    file_paths: typing.List[str],
+    output_paths: typing.List[str],
+    version: str,
+    tmp_dir: tempfile.TemporaryDirectory,
+):
     ver_info = f"at version {version}" if version is not None else "at latest version"
     mp.log.info(f"Getting [{', '.join(file_paths)}] {ver_info}")
     latest_proj_info = mc.project_info(project_path)
@@ -913,9 +964,6 @@ def download_files_async(
     else:
         project_info = latest_proj_info
     mp.log.info(f"Got project info. version {project_info['version']}")
-
-    # set temporary directory for download
-    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
 
     if output_paths is None:
         output_paths = []
@@ -991,6 +1039,4 @@ def download_files_finalize(job: DownloadJob):
     for task in job.update_tasks:
         task.apply(job.tmp_dir, job.mp)
 
-    # Remove temporary download directory
-    if job.tmp_dir is not None and os.path.exists(job.tmp_dir.name):
-        cleanup_tmp_dir(job.mp, job.tmp_dir)
+    cleanup_tmp_dir(job.mp, job.tmp_dir)

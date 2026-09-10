@@ -29,6 +29,7 @@ from mergin.client_pull import (
     download_project_cancel,
     download_file_async,
     download_file_finalize,
+    download_project_file_async,
     download_project_finalize,
     download_project_is_running,
 )
@@ -335,17 +336,33 @@ def share(ctx, project):
 @click.argument("filepath")
 @click.argument("output")
 @click.option("--version", help="Project version tag, for example 'v3'")
+@click.option(
+    "--project",
+    help="Full project name ('<workspace>/<project>') to download the file directly from the server. "
+    "If not given, the current directory is used and must be an existing checked out project.",
+)
 @click.pass_context
-def download_file(ctx, filepath, output, version):
+def download_file(ctx, filepath, output, version, project):
     """
-    Download project file at specified version. `project` needs to be a combination of namespace/project.
-    If no version is given, the latest will be fetched.
+    Download project file at specified version. If no version is given, the latest will be fetched.
     """
     mc = ctx.obj["client"]
     if mc is None:
         return
     try:
-        job = download_file_async(mc, os.getcwd(), filepath, output, version)
+        if project is not None:
+            job = download_project_file_async(mc, project, filepath, output, version)
+        else:
+            try:
+                MerginProject(os.getcwd()).project_full_name()
+            except InvalidProject:
+                click.secho(
+                    "Current directory is not a Mergin Maps project. Run this command from within a "
+                    "checked out project directory, or pass --project <workspace>/<project>.",
+                    fg="red",
+                )
+                return
+            job = download_file_async(mc, os.getcwd(), filepath, output, version)
         with click.progressbar(length=job.total_size) as bar:
             last_transferred_size = 0
             while download_project_is_running(job):
