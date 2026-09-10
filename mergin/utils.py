@@ -52,8 +52,8 @@ def save_to_file(stream, path):
 
 def move_file(src, dest):
     dest_dir = os.path.dirname(dest)
-    os.makedirs(dest_dir, exist_ok=True)
-    os.rename(src, dest)
+    os.makedirs(long_path(dest_dir), exist_ok=True)
+    os.rename(long_path(src), long_path(dest))
 
 
 class DateTimeEncoder(json.JSONEncoder):
@@ -167,13 +167,13 @@ def unique_path_name(path):
     """
     unique_path = str(path)
 
-    is_dir = os.path.isdir(path)
+    is_dir = os.path.isdir(long_path(path))
     head, tail = os.path.split(os.path.normpath(path))
     ext = "".join(Path(tail).suffixes)
     file_name = tail.replace(ext, "")
 
     i = 0
-    while os.path.exists(unique_path):
+    while os.path.exists(long_path(unique_path)):
         i += 1
 
         if is_dir:

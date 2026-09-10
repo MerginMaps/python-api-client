@@ -43,6 +43,14 @@ def makedirs(path, exist_ok=False):
     os.makedirs(long_path(path), exist_ok=exist_ok)
 
 
+def mkdir(path):
+    os.mkdir(long_path(path))
+
+
+def rmtree(path):
+    shutil.rmtree(long_path(path))
+
+
 def connect(path):
     return sqlite3.connect(long_path(path))
 

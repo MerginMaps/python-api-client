@@ -234,7 +234,7 @@ def _cleanup_failed_download(mergin_project: MerginProject = None):
     log_file = os.path.join(mergin_project.dir, ".mergin", "client-log.txt")
     dest_path = None
 
-    if os.path.exists(log_file):
+    if fs.exists(log_file):
         tmp_file = tempfile.NamedTemporaryFile(prefix="mergin-", suffix=".txt", delete=False)
         tmp_file.close()
         dest_path = tmp_file.name
@@ -251,9 +251,9 @@ def download_project_async(mc, project_path, directory, project_version=None):
 
     if "/" not in project_path:
         raise ClientError("Project name needs to be fully qualified, e.g. <username>/<projectname>")
-    if os.path.exists(directory):
+    if fs.exists(directory):
         raise ClientError("Project directory already exists")
-    os.makedirs(directory)
+    fs.makedirs(directory)
     mp = MerginProject(directory)
 
     mp.log.info("--- version: " + mc.user_agent_info())
@@ -409,7 +409,7 @@ class UpdateTask:
         else:
             file_dir = os.path.dirname(os.path.normpath(self.destination_file))
             dest_file_path = self.destination_file
-        os.makedirs(file_dir, exist_ok=True)
+        fs.makedirs(file_dir, exist_ok=True)
 
         # ignore check if we download not-latest version of gpkg file (possibly reconstructed on server on demand)
         check_size = self.latest_version or not mp.is_versioned_file(self.file_path)
@@ -993,5 +993,5 @@ def download_files_finalize(job: DownloadJob):
         task.apply(job.tmp_dir, job.mp)
 
     # Remove temporary download directory
-    if job.tmp_dir is not None and os.path.exists(job.tmp_dir.name):
+    if job.tmp_dir is not None and fs.exists(job.tmp_dir.name):
         cleanup_tmp_dir(job.mp, job.tmp_dir)

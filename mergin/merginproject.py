@@ -3,7 +3,6 @@ import logging
 import math
 import os
 import re
-import shutil
 from typing import List, Optional, Dict
 import typing
 import uuid
@@ -41,54 +40,6 @@ except (ImportError, ModuleNotFoundError):
     import pygeodiff
 
 
-class GeoDiffLongPath:
-    """
-    Wraps a pygeodiff.GeoDiff instance so that every filesystem path passed to it is prefixed
-    with the Windows extended-length ("\\?\") marker.
-
-    Only the geodiff methods that take path arguments are listed explicitly.
-    """
-
-    def __init__(self, geodiff):
-        self._geodiff = geodiff
-
-    def create_changeset(self, base, modified, changeset):
-        return self._geodiff.create_changeset(long_path(base), long_path(modified), long_path(changeset))
-
-    def apply_changeset(self, base, changeset):
-        return self._geodiff.apply_changeset(long_path(base), long_path(changeset))
-
-    def rebase(self, base, modified_their, modified, conflict):
-        return self._geodiff.rebase(
-            long_path(base), long_path(modified_their), long_path(modified), long_path(conflict)
-        )
-
-    def make_copy_sqlite(self, src, dst):
-        return self._geodiff.make_copy_sqlite(long_path(src), long_path(dst))
-
-    def has_changes(self, changeset):
-        return self._geodiff.has_changes(long_path(changeset))
-
-    def changes_count(self, changeset):
-        return self._geodiff.changes_count(long_path(changeset))
-
-    def read_changeset(self, changeset):
-        return self._geodiff.read_changeset(long_path(changeset))
-
-    def list_changes_summary(self, changeset, json):
-        return self._geodiff.list_changes_summary(long_path(changeset), long_path(json))
-
-    def concat_changes(self, list_changesets, output_changeset):
-        return self._geodiff.concat_changes([long_path(p) for p in list_changesets], long_path(output_changeset))
-
-    def schema(self, driver, driver_info, src, json):
-        return self._geodiff.schema(driver, driver_info, long_path(src), long_path(json))
-
-    def __getattr__(self, name):
-        # everything without path arguments (set_logger_callback, level/table setters, version(), ...)
-        return getattr(self._geodiff, name)
-
-
 class MerginProject:
     """Base class for Mergin Maps local projects.
 
@@ -97,19 +48,19 @@ class MerginProject:
 
     def __init__(self, directory):
         self.dir = os.path.abspath(directory)
-        if not os.path.exists(self.dir):
+        if not fs.exists(self.dir):
             raise InvalidProject("Project directory does not exist")
 
         self.meta_dir = os.path.join(self.dir, ".mergin")
-        if not os.path.exists(self.meta_dir):
-            os.mkdir(self.meta_dir)
+        if not fs.exists(self.meta_dir):
+            fs.mkdir(self.meta_dir)
 
         # location for files from unfinished pull
         self.unfinished_pull_dir = os.path.join(self.meta_dir, "unfinished_pull")
 
         self.cache_dir = os.path.join(self.meta_dir, ".cache")
-        if not os.path.exists(self.cache_dir):
-            os.mkdir(self.cache_dir)
+        if not fs.exists(self.cache_dir):
+            fs.mkdir(self.cache_dir)
 
         # metadata from JSON are lazy loaded
         self._metadata = None
@@ -119,7 +70,7 @@ class MerginProject:
 
         # make sure we can load correct pygeodiff
         try:
-            self.geodiff = GeoDiffLongPath(pygeodiff.GeoDiff())
+            self.geodiff = pygeodiff.GeoDiff()
         except pygeodiff.geodifflib.GeoDiffLibVersionError:
             # this is a fatal error, we can't live without geodiff
             self.log.error("Unable to load geodiff! (lib version error)")
@@ -145,7 +96,9 @@ class MerginProject:
         if not self.log.handlers:
             # we only need to set the handler once
             # (otherwise we would get things logged multiple times as loggers are cached)
-            log_handler = logging.FileHandler(os.path.join(self.meta_dir, "client-log.txt"), encoding="utf-8")
+            log_handler = logging.FileHandler(
+                long_path(os.path.join(self.meta_dir, "client-log.txt")), encoding="utf-8"
+            )
             log_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
             self.log.addHandler(log_handler)
 
@@ -172,7 +125,7 @@ class MerginProject:
         root = other_dir or self.dir
         abs_path = os.path.abspath(os.path.join(root, file))
         f_dir = os.path.dirname(abs_path)
-        os.makedirs(f_dir, exist_ok=True)
+        fs.makedirs(f_dir, exist_ok=True)
         return abs_path
 
     def fpath_meta(self, file):
@@ -280,9 +233,9 @@ class MerginProject:
         """Loads the project's metadata from JSON"""
         if self._metadata is not None:
             return
-        if not os.path.exists(self.fpath_meta("mergin.json")):
+        if not fs.exists(self.fpath_meta("mergin.json")):
             raise InvalidProject("Project metadata has not been created yet")
-        with open(self.fpath_meta("mergin.json"), "r") as file:
+        with fs.open_file(self.fpath_meta("mergin.json"), "r") as file:
             self._metadata = json.load(file)
 
         self.is_old_metadata = "/" in self._metadata["name"]
@@ -302,9 +255,9 @@ class MerginProject:
         (and therefore creating MerginProject would fail).
         """
         meta_dir = os.path.join(project_directory, ".mergin")
-        os.makedirs(meta_dir, exist_ok=True)
+        fs.makedirs(meta_dir, exist_ok=True)
         metadata_json_file = os.path.abspath(os.path.join(meta_dir, "mergin.json"))
-        with open(metadata_json_file, "w") as file:
+        with fs.open_file(metadata_json_file, "w") as file:
             json.dump(data, file, indent=2)
 
     def is_versioned_file(self, file):
@@ -760,7 +713,7 @@ class MerginProject:
         path = f.path
         self.log.info("Making a temporary copy (full upload): " + path)
         tmp_file = os.path.join(tmp_dir, path)
-        os.makedirs(os.path.dirname(tmp_file), exist_ok=True)
+        fs.makedirs(os.path.dirname(tmp_file), exist_ok=True)
         self.geodiff.make_copy_sqlite(self.fpath(path), tmp_file)
         f.size = fs.getsize(tmp_file)
         f.checksum = generate_checksum(tmp_file)
@@ -777,10 +730,10 @@ class MerginProject:
                 result_file = self.fpath("change_list" + str(idx), self.meta_dir)
                 try:
                     self.geodiff.list_changes_summary(changeset, result_file)
-                    with open(result_file, "r") as f:
+                    with fs.open_file(result_file, "r") as f:
                         change = f.read()
                         changes[file["path"]] = json.loads(change)
-                    os.remove(result_file)
+                    fs.remove(result_file)
                 except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
                     pass
         return changes
@@ -1061,7 +1014,7 @@ class MerginProject:
         :returns: whether there is an unfinished pull
         :rtype: bool
         """
-        return os.path.exists(self.unfinished_pull_dir)
+        return fs.exists(self.unfinished_pull_dir)
 
     def resolve_unfinished_pull(self, user_name):
         """
@@ -1093,9 +1046,8 @@ class MerginProject:
 
         for root, dirs, files in fs.walk(self.unfinished_pull_dir):
             for file_name in files:
-                src = os.path.join(root, file_name)
-                # the relpath base must be prefixed as well to strip it correctly.
-                file_path = os.path.relpath(src, long_path(self.unfinished_pull_dir))
+                file_path = os.path.relpath(os.path.join(root, file_name), long_path(self.unfinished_pull_dir))
+                src = self.fpath_unfinished_pull(file_path)
                 dest = self.fpath(file_path)
                 basefile = self.fpath_meta(file_path)
 
@@ -1116,7 +1068,7 @@ class MerginProject:
                     self.log.error("unable to apply changes from previous unfinished pull!")
                     raise ClientError("Unable to resolve unfinished pull!")
 
-        shutil.rmtree(self.unfinished_pull_dir)
+        fs.rmtree(self.unfinished_pull_dir)
         self.log.info("unfinished pull resolved successfuly!")
         return conflicts
 
@@ -1162,7 +1114,7 @@ class MerginProject:
 
         diff_abs = self.fpath_meta(diff_rel_path)
         try:
-            return GeoDiffLongPath(pygeodiff.GeoDiff()).changes_count(diff_abs)
+            return pygeodiff.GeoDiff().changes_count(diff_abs)
         except (
             pygeodiff.GeoDiffLibError,
             pygeodiff.GeoDiffLibConflictError,

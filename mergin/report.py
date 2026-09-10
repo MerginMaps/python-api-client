@@ -286,8 +286,8 @@ def create_report(mc, directory, since, to, out_file):
 
     # export report to csv file
     out_dir = os.path.dirname(out_file)
-    os.makedirs(out_dir, exist_ok=True)
-    with open(out_file, "w", newline="") as f_csv:
+    fs.makedirs(out_dir, exist_ok=True)
+    with fs.open_file(out_file, "w", newline="") as f_csv:
         writer = csv.DictWriter(f_csv, fieldnames=headers)
         writer.writeheader()
         writer.writerows(records)

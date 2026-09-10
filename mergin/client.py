@@ -66,6 +66,7 @@ from .utils import (
     int_version,
     is_version_acceptable,
     normalize_role,
+    long_path,
 )
 from . import fs
 from .version import __version__
@@ -205,7 +206,7 @@ class MerginClient:
         self.log.setLevel(logging.DEBUG)  # log everything (it would otherwise log just warnings+errors)
         if not self.log.handlers:
             if client_log_file:
-                log_handler = logging.FileHandler(client_log_file)
+                log_handler = logging.FileHandler(long_path(client_log_file))
                 log_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
                 self.log.addHandler(log_handler)
             else:
@@ -532,7 +533,7 @@ class MerginClient:
         :param namespace: Deprecated. project_name should be full project name. Optional namespace for a new project. If empty username is used.
         :type namespace: String
         """
-        if os.path.exists(os.path.join(directory, ".mergin")):
+        if fs.exists(os.path.join(directory, ".mergin")):
             raise ClientError("Directory is already assigned to a Mergin Maps project (contains .mergin sub-dir)")
 
         if namespace and "/" not in project_name:
@@ -1242,7 +1243,7 @@ class MerginClient:
         # concatenate diffs, if needed
         output_dir = os.path.dirname(output_diff)
         if len(diffs) >= 1:
-            os.makedirs(output_dir, exist_ok=True)
+            fs.makedirs(output_dir, exist_ok=True)
             if len(diffs) > 1:
                 mp.geodiff.concat_changes(diffs, output_diff)
             elif len(diffs) == 1:
@@ -1612,14 +1613,14 @@ class MerginClient:
         local_logs_file_size_to_send = int(MAX_LOG_FILE_SIZE_TO_SEND * 0.8)
 
         global_logs = b""
-        if global_log_file and os.path.exists(global_log_file):
-            with open(global_log_file, "rb") as f:
-                if os.path.getsize(global_log_file) > global_logs_file_size_to_send:
+        if global_log_file and fs.exists(global_log_file):
+            with fs.open_file(global_log_file, "rb") as f:
+                if fs.getsize(global_log_file) > global_logs_file_size_to_send:
                     f.seek(-global_logs_file_size_to_send, os.SEEK_END)
                 global_logs = f.read() + b"\n--------------------------------\n\n"
 
-        with open(logfile, "rb") as f:
-            if os.path.getsize(logfile) > local_logs_file_size_to_send:
+        with fs.open_file(logfile, "rb") as f:
+            if fs.getsize(logfile) > local_logs_file_size_to_send:
                 f.seek(-local_logs_file_size_to_send, os.SEEK_END)
             logs = f.read()
 
