@@ -1371,23 +1371,23 @@ def test_download_file_without_checkout(mc):
     f_downloaded = os.path.join(download_dir, f_updated)
 
     expected_content = "inserted_1_A.gpkg"
-    mc.download_file(project, f_updated, f_downloaded, version="v2")
+    mc.download_project_file(project, f_updated, f_downloaded, version="v2")
     expected = os.path.join(TEST_DATA_DIR, expected_content)
     assert check_gpkg_same_content(MerginProject(project_dir), f_downloaded, expected)
     assert not os.path.exists(os.path.join(download_dir, ".mergin"))
 
-    # output_paths must be provided explicitly when there is no local checkout
-    with pytest.raises(ClientError, match="output_paths must be provided"):
-        mc.download_files(project, [f_updated])
+    # output_file must be provided explicitly when there is no local checkout
+    with pytest.raises(ClientError, match="output_file must be provided"):
+        mc.download_project_file(project, f_updated, None)
 
     # non-existent file in an existing project - same error as with a local checkout
     with pytest.raises(ClientError, match=r"No \[does_not_exist\.gpkg\] exists at version v2"):
-        mc.download_file(project, "does_not_exist.gpkg", f_downloaded, version="v2")
+        mc.download_project_file(project, "does_not_exist.gpkg", f_downloaded, version="v2")
 
     # non-existent / inaccessible project should fail clearly too
     nonexistent_project = create_project_path("this_project_does_not_exist", mc)
     with pytest.raises(ClientError):
-        mc.download_file(nonexistent_project, f_updated, f_downloaded)
+        mc.download_project_file(nonexistent_project, f_updated, f_downloaded)
 
 
 def test_download_diffs(mc):

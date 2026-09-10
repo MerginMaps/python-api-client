@@ -29,6 +29,7 @@ from mergin.client_pull import (
     download_project_cancel,
     download_file_async,
     download_file_finalize,
+    download_project_file_async,
     download_project_finalize,
     download_project_is_running,
 )
@@ -348,19 +349,20 @@ def download_file(ctx, filepath, output, version, project):
     mc = ctx.obj["client"]
     if mc is None:
         return
-    if project is None:
-        # no --project given, so we default to the current directory - make sure that's actually a checked out project
-        try:
-            MerginProject(os.getcwd()).project_full_name()
-        except InvalidProject:
-            click.secho(
-                "Current directory is not a Mergin Maps project. Run this command from within a "
-                "checked out project directory, or pass --project <workspace>/<project>.",
-                fg="red",
-            )
-            return
     try:
-        job = download_file_async(mc, project or os.getcwd(), filepath, output, version)
+        if project is not None:
+            job = download_project_file_async(mc, project, filepath, output, version)
+        else:
+            try:
+                MerginProject(os.getcwd()).project_full_name()
+            except InvalidProject:
+                click.secho(
+                    "Current directory is not a Mergin Maps project. Run this command from within a "
+                    "checked out project directory, or pass --project <workspace>/<project>.",
+                    fg="red",
+                )
+                return
+            job = download_file_async(mc, os.getcwd(), filepath, output, version)
         with click.progressbar(length=job.total_size) as bar:
             last_transferred_size = 0
             while download_project_is_running(job):

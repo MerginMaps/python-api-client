@@ -22,7 +22,7 @@ from dataclasses import asdict
 import concurrent.futures
 
 
-from .common import CHUNK_SIZE, ClientError, DeltaChangeType, InvalidProject, PullActionType
+from .common import CHUNK_SIZE, ClientError, DeltaChangeType, PullActionType
 from .models import ProjectDelta, ProjectDeltaChange, PullAction
 from .merginproject import MerginProject
 from .utils import cleanup_tmp_dir, is_versioned_file, save_to_file
@@ -82,8 +82,8 @@ class DownloadJob:
 
 class DownloadScratchContext:
     """
-    Minimal stand-in for MerginProject, used by download_files_async() when downloading files
-    directly by project name ("<workspace>/<project>") without an existing local project checkout.
+    Minimal stand-in for MerginProject used when downloading a file directly by
+    project name ("<workspace>/<project>") without an existing local project checkout.
 
     Provides only what the shared download job code actually needs from MerginProject.
     """
@@ -793,6 +793,23 @@ def download_file_finalize(job):
     download_files_finalize(job)
 
 
+def download_project_file_async(mc, project_path: str, file_path: str, output_file: str, version: str = None):
+    """
+    Starts background download of a single project file at specified version, fetched directly
+    from the server without needing an existing local project checkout.
+    Returns handle to the pending download.
+
+    :param project_path: full project name ("<workspace>/<project>")
+    :param output_file: destination path for the downloaded file
+    """
+    if not output_file:
+        raise ClientError("output_file must be provided when downloading a file without a local project checkout")
+
+    tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
+    mp = DownloadScratchContext(mc, tmp_dir.name)
+    return _download_files_async(mc, mp, project_path, [file_path], [output_file], version, tmp_dir)
+
+
 def download_diffs_async(mc, project_directory, file_path, versions):
     """
     Starts background download project file diffs for specified versions.
@@ -916,35 +933,29 @@ def download_diffs_finalize(job: PullJob) -> List[str]:
 
 
 def download_files_async(
-    mc, project_dir: str, file_paths: typing.List[str], output_paths: typing.List[str], version: str
+    mc, project_dir: str, file_paths: typing.List[str], output_paths: typing.List[str] = None, version: str = None
 ):
     """
     Starts background download project files at specified version.
     Returns handle to the pending download.
 
-    `project_dir` can either be an existing local project directory (previously fetched with
-    download_project()), or a full project name ("<workspace>/<project>") to download files
-    directly from the server without needing a local checkout. In the latter case, `output_paths`
-    must be provided explicitly, as there is no project directory to place files into by default.
+    `project_dir` must be an existing local project directory.
     """
-    # temporary directory to stage downloaded chunks in
+    mp = MerginProject(project_dir)
+    project_path = mp.project_full_name()
     tmp_dir = tempfile.TemporaryDirectory(prefix="python-api-client-")
+    return _download_files_async(mc, mp, project_path, file_paths, output_paths, version, tmp_dir)
 
-    mp: Union[MerginProject, "DownloadScratchContext"]
-    try:
-        mp = MerginProject(project_dir)
-        project_path = mp.project_full_name()
-    except InvalidProject:
-        # project_dir is not an existing local checkout - treat it as a full project name
-        # ("<workspace>/<project>") and download straight from the server instead
-        if output_paths is None:
-            cleanup_tmp_dir(mc, tmp_dir)
-            raise ClientError(
-                "output_paths must be provided when downloading files without an existing local project checkout"
-            )
-        project_path = project_dir
-        mp = DownloadScratchContext(mc, tmp_dir.name)
 
+def _download_files_async(
+    mc,
+    mp: Union[MerginProject, "DownloadScratchContext"],
+    project_path: str,
+    file_paths: typing.List[str],
+    output_paths: typing.List[str],
+    version: str,
+    tmp_dir: tempfile.TemporaryDirectory,
+):
     ver_info = f"at version {version}" if version is not None else "at latest version"
     mp.log.info(f"Getting [{', '.join(file_paths)}] {ver_info}")
     latest_proj_info = mc.project_info(project_path)
