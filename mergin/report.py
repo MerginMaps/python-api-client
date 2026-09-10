@@ -8,6 +8,7 @@ from itertools import groupby
 from . import ClientError
 from .merginproject import MerginProject, pygeodiff
 from .utils import int_version
+from . import fs
 
 try:
     from qgis.core import (
@@ -244,14 +245,14 @@ def create_report(mc, directory, since, to, out_file):
 
             # download full gpkg in "to" version to analyze its schema to determine which col is geometry
             full_gpkg = mp.fpath_cache(f["path"], version=to)
-            if not os.path.exists(full_gpkg):
+            if not fs.exists(full_gpkg):
                 mc.download_file(directory, f["path"], full_gpkg, to)
 
             # get gpkg schema
             schema_file = full_gpkg + "-schema.json"  # geodiff writes schema into a file
-            if not os.path.exists(schema_file):
+            if not fs.exists(schema_file):
                 mp.geodiff.schema("sqlite", "", full_gpkg, schema_file)
-            with open(schema_file, "r") as sf:
+            with fs.open_file(schema_file, "r") as sf:
                 schema = json.load(sf).get("geodiff_schema")
 
             # add records for every version (diff) and all tables within geopackage
@@ -285,8 +286,8 @@ def create_report(mc, directory, since, to, out_file):
 
     # export report to csv file
     out_dir = os.path.dirname(out_file)
-    os.makedirs(out_dir, exist_ok=True)
-    with open(out_file, "w", newline="") as f_csv:
+    fs.makedirs(out_dir, exist_ok=True)
+    with fs.open_file(out_file, "w", newline="") as f_csv:
         writer = csv.DictWriter(f_csv, fieldnames=headers)
         writer.writeheader()
         writer.writerows(records)

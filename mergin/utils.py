@@ -21,7 +21,7 @@ def generate_checksum(file, chunk_size=4096):
     :return: sha1 checksum
     """
     checksum = hashlib.sha1()  # nosec B324 - usedforsecurity=False flag is compatible with python 3.9+
-    with open(file, "rb") as f:
+    with open(long_path(file), "rb") as f:
         while True:
             chunk = f.read(chunk_size)
             if not chunk:
@@ -37,9 +37,9 @@ def save_to_file(stream, path):
     """
     directory = os.path.abspath(os.path.dirname(path))
 
-    os.makedirs(directory, exist_ok=True)
+    os.makedirs(long_path(directory), exist_ok=True)
 
-    with open(path, "wb") as output:
+    with open(long_path(path), "wb") as output:
         writer = io.BufferedWriter(output, buffer_size=32768)
         while True:
             part = stream.read(4096)
@@ -52,8 +52,8 @@ def save_to_file(stream, path):
 
 def move_file(src, dest):
     dest_dir = os.path.dirname(dest)
-    os.makedirs(dest_dir, exist_ok=True)
-    os.rename(src, dest)
+    os.makedirs(long_path(dest_dir), exist_ok=True)
+    os.rename(long_path(src), long_path(dest))
 
 
 class DateTimeEncoder(json.JSONEncoder):
@@ -88,10 +88,11 @@ def do_sqlite_checkpoint(path, log=None):
     """
     new_size = None
     new_checksum = None
-    if ".gpkg" in path and os.path.exists(f"{path}-wal"):
+    path_lp = long_path(path)
+    if ".gpkg" in path and os.path.exists(f"{path_lp}-wal"):
         if log:
             log.info("checkpoint - going to add it in " + path)
-        conn = sqlite3.connect(path)
+        conn = sqlite3.connect(path_lp)
         cursor = conn.cursor()
         cursor.execute("PRAGMA wal_checkpoint=FULL")
         if log:
@@ -99,7 +100,7 @@ def do_sqlite_checkpoint(path, log=None):
         cursor.execute("VACUUM")
         conn.commit()
         conn.close()
-        new_size = os.path.getsize(path)
+        new_size = os.path.getsize(path_lp)
         new_checksum = generate_checksum(path)
         if log:
             log.info("checkpoint - new size {} checksum {}".format(new_size, new_checksum))
@@ -166,13 +167,13 @@ def unique_path_name(path):
     """
     unique_path = str(path)
 
-    is_dir = os.path.isdir(path)
+    is_dir = os.path.isdir(long_path(path))
     head, tail = os.path.split(os.path.normpath(path))
     ext = "".join(Path(tail).suffixes)
     file_name = tail.replace(ext, "")
 
     i = 0
-    while os.path.exists(unique_path):
+    while os.path.exists(long_path(unique_path)):
         i += 1
 
         if is_dir:
@@ -264,6 +265,25 @@ def is_versioned_file(path: str) -> bool:
     diff_extensions = [".gpkg", ".sqlite"]
     f_extension = os.path.splitext(path)[1]
     return f_extension.lower() in diff_extensions
+
+
+def long_path(path: str) -> str:
+    """
+    Prefix an absolute path with the Windows "\\?\" extended-length marker, so file APIs used by
+    geodiff/SQLite and Python's own open() can handle long paths without raising an error.
+
+    :param path: absolute or relative path, with either posix or windows separators
+    :type path: str
+    :returns: extended-length path on Windows, the unchanged path otherwise
+    :rtype: str
+    """
+    if os.name != "nt":
+        return path
+    backslash = chr(92)
+    prefix = backslash + backslash + "?" + backslash
+    if path.startswith(prefix):
+        return path
+    return prefix + os.path.abspath(path)
 
 
 def is_qgis_file(path: str) -> bool:

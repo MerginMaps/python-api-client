@@ -26,6 +26,7 @@ from .common import CHUNK_SIZE, ClientError, DeltaChangeType, PullActionType
 from .models import ProjectDelta, ProjectDeltaChange, PullAction
 from .merginproject import MerginProject
 from .utils import cleanup_tmp_dir, save_to_file
+from . import fs
 from typing import List, Optional
 
 # status = download_project_async(...)
@@ -142,7 +143,7 @@ class DownloadDiffQueueItem:
         if resp.status in [200, 206]:
             mp.log.debug(f"Download finished: {self.diff_id}")
             save_to_file(resp, self.download_file_path)
-            self.size = os.path.getsize(self.download_file_path)
+            self.size = fs.getsize(self.download_file_path)
         else:
             mp.log.error(f"Download failed: {self.diff_id}")
             raise ClientError(f"Failed to download of diff file {self.diff_id} to {self.download_file_path}")
@@ -164,19 +165,19 @@ class DownloadFile:
     def from_chunks(self):
         """Merges downloaded chunks into a single file at dest_file path"""
         file_dir = os.path.dirname(self.dest_file)
-        os.makedirs(file_dir, exist_ok=True)
+        fs.makedirs(file_dir, exist_ok=True)
 
-        with open(self.dest_file, "wb") as final:
+        with fs.open_file(self.dest_file, "wb") as final:
             for item in self.downloaded_items:
-                with open(item.download_file_path, "rb") as chunk:
+                with fs.open_file(item.download_file_path, "rb") as chunk:
                     shutil.copyfileobj(chunk, final)
-                os.remove(item.download_file_path)
+                fs.remove(item.download_file_path)
 
         if not self.size_check:
             return
         expected_size = sum(item.size for item in self.downloaded_items)
-        if os.path.getsize(self.dest_file) != expected_size:
-            os.remove(self.dest_file)
+        if fs.getsize(self.dest_file) != expected_size:
+            fs.remove(self.dest_file)
             raise ClientError("Download of file {} failed. Please try it again.".format(self.dest_file))
 
 
@@ -233,7 +234,7 @@ def _cleanup_failed_download(mergin_project: MerginProject = None):
     log_file = os.path.join(mergin_project.dir, ".mergin", "client-log.txt")
     dest_path = None
 
-    if os.path.exists(log_file):
+    if fs.exists(log_file):
         tmp_file = tempfile.NamedTemporaryFile(prefix="mergin-", suffix=".txt", delete=False)
         tmp_file.close()
         dest_path = tmp_file.name
@@ -250,9 +251,9 @@ def download_project_async(mc, project_path, directory, project_version=None):
 
     if "/" not in project_path:
         raise ClientError("Project name needs to be fully qualified, e.g. <username>/<projectname>")
-    if os.path.exists(directory):
+    if fs.exists(directory):
         raise ClientError("Project directory already exists")
-    os.makedirs(directory)
+    fs.makedirs(directory)
     mp = MerginProject(directory)
 
     mp.log.info("--- version: " + mc.user_agent_info())
@@ -408,7 +409,7 @@ class UpdateTask:
         else:
             file_dir = os.path.dirname(os.path.normpath(self.destination_file))
             dest_file_path = self.destination_file
-        os.makedirs(file_dir, exist_ok=True)
+        fs.makedirs(file_dir, exist_ok=True)
 
         # ignore check if we download not-latest version of gpkg file (possibly reconstructed on server on demand)
         check_size = self.latest_version or not mp.is_versioned_file(self.file_path)
@@ -555,7 +556,7 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
             pull_action_type == PullActionType.COPY_CONFLICT and change.type == DeltaChangeType.UPDATE_DIFF
         ):
             basefile = mp.fpath_meta(change.path)
-            if not os.path.exists(basefile):
+            if not fs.exists(basefile):
                 # The basefile does not exist for some reason. This should not happen normally (maybe user removed the file
                 # or we removed it within previous pull because we failed to apply patch the older version for some reason).
                 # But it's not a problem - we will download the newest version and we're sorted.
@@ -722,7 +723,7 @@ def pull_project_finalize(job: PullJob):
         basefile = job.mp.fpath_meta(file_path)
         server_file = job.mp.fpath(file_path, job.tmp_dir.name)
 
-        shutil.copy(basefile, server_file)
+        fs.copy(basefile, server_file)
         diffs = [job.mp.fpath(f, job.tmp_dir.name) for f in file_diffs]
         patch_error = job.mp.apply_diffs(server_file, diffs)
         if patch_error:
@@ -735,7 +736,7 @@ def pull_project_finalize(job: PullJob):
             job.mp.log.error("Diffs we were applying: " + str(diffs))
             job.mp.log.error("Removing basefile because it would be corrupted anyway...")
             job.mp.log.info("--- pull aborted")
-            os.remove(basefile)
+            fs.remove(basefile)
             raise ClientError("Cannot patch basefile {}! Please try syncing again.".format(basefile))
     conflicts = []
     job.mp.log.info(f"--- applying pull actions {job.pull_actions}")
@@ -830,7 +831,7 @@ def download_diffs_async(mc, project_directory, file_path, versions):
             diff_only=True,
         )
         dest_file_path = mp.fpath_cache(diff["path"], version=file["version"])
-        if os.path.exists(dest_file_path):
+        if fs.exists(dest_file_path):
             continue
         download_files.append(DownloadFile(dest_file_path, items))
         download_list.extend(items)
@@ -992,5 +993,5 @@ def download_files_finalize(job: DownloadJob):
         task.apply(job.tmp_dir, job.mp)
 
     # Remove temporary download directory
-    if job.tmp_dir is not None and os.path.exists(job.tmp_dir.name):
+    if job.tmp_dir is not None and fs.exists(job.tmp_dir.name):
         cleanup_tmp_dir(job.mp, job.tmp_dir)
