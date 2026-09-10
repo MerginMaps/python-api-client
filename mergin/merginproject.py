@@ -25,6 +25,7 @@ from .utils import (
     conflicted_copy_file_name,
     edit_conflict_file_name,
     filter_files,
+    is_path_in_scope,
 )
 from .local_changes import FileChange
 
@@ -212,9 +213,10 @@ class MerginProject:
         return self._metadata["version"]
 
     def files(self) -> list:
-        """Returns project's list of files (each file being a dictionary)"""
+        """Returns project's list of files (each file being a dictionary), scoped to this
+        project's file_filter() if one is set (sparse checkout)."""
         self._read_metadata()
-        return self._metadata["files"]
+        return filter_files(self._metadata["files"], **self.file_filter())
 
     def file_filter(self) -> dict:
         """
@@ -312,10 +314,12 @@ class MerginProject:
     def inspect_files(self):
         """
         Inspect files in project directory and return metadata.
+        Only files matching this project's file_filter() are included.
 
         :returns: metadata for files in project directory in server required format
         :rtype: list[dict]
         """
+        file_filter = self.file_filter()
         files_meta = []
         for root, dirs, files in os.walk(self.dir, topdown=True):
             dirs[:] = [d for d in dirs if d not in [".mergin"]]
@@ -326,6 +330,8 @@ class MerginProject:
                 abs_path = os.path.abspath(os.path.join(root, file))
                 rel_path = os.path.relpath(abs_path, start=self.dir)
                 proj_path = "/".join(rel_path.split(os.path.sep))  # we need posix path
+                if not is_path_in_scope(proj_path, **file_filter):
+                    continue
                 files_meta.append(
                     {
                         "path": proj_path,
@@ -574,8 +580,7 @@ class MerginProject:
         :rtype: List[ProjectDeltaItem]
         """
         result = []
-        current_files = filter_files(self.inspect_files(), **self.file_filter())
-        changes = self.compare_file_sets(self.files(), current_files)
+        changes = self.compare_file_sets(self.files(), self.inspect_files())
         added = changes.get("added", [])
         removed = changes.get("removed", [])
         updated = changes.get("updated", [])
@@ -664,8 +669,7 @@ class MerginProject:
         :returns: changes metadata for files to be pushed to server
         :rtype: dict
         """
-        current_files = filter_files(self.inspect_files(), **self.file_filter())
-        changes = self.compare_file_sets(self.files(), current_files)
+        changes = self.compare_file_sets(self.files(), self.inspect_files())
         # do checkpoint to push changes from wal file to gpkg
         for file in changes["added"] + changes["updated"]:
             size, checksum = do_sqlite_checkpoint(self.fpath(file["path"]), self.log)

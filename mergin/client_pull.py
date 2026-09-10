@@ -25,7 +25,7 @@ import concurrent.futures
 from .common import CHUNK_SIZE, ClientError, DeltaChangeType, PullActionType
 from .models import ProjectDelta, ProjectDeltaChange, PullAction
 from .merginproject import MerginProject
-from .utils import cleanup_tmp_dir, filter_files, path_matches_filter, save_to_file, validates_file_filter
+from .utils import cleanup_tmp_dir, filter_files, is_path_in_scope, save_to_file
 from typing import List, Optional
 
 # status = download_project_async(...)
@@ -242,7 +242,6 @@ def _cleanup_failed_download(mergin_project: MerginProject = None):
     return dest_path
 
 
-@validates_file_filter
 def download_project_async(mc, project_path, directory, project_version=None, include=None, exclude=None):
     """
     Starts project download in background and returns handle to the pending project download.
@@ -253,6 +252,8 @@ def download_project_async(mc, project_path, directory, project_version=None, in
     mutually exclusive.
     """
 
+    if include and exclude:
+        raise ClientError("Cannot use both include and exclude filters at the same time")
     if "/" not in project_path:
         raise ClientError("Project name needs to be fully qualified, e.g. <username>/<projectname>")
     if os.path.exists(directory):
@@ -536,7 +537,7 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
         raise
 
     file_filter = mp.file_filter()
-    delta.changes = [c for c in delta.changes if path_matches_filter(c.path, **file_filter)]
+    delta.changes = [c for c in delta.changes if is_path_in_scope(c.path, **file_filter)]
 
     mp.log.info(f"got project versions: local version {local_version} / server version {server_version}")
 

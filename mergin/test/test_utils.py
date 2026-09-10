@@ -1,6 +1,6 @@
 import pytest
 
-from ..utils import path_matches_filter, filter_files
+from ..utils import is_path_in_scope, filter_files
 from ..common import ClientError
 
 
@@ -40,8 +40,8 @@ from ..common import ClientError
         pytest.param("data.gpkg", None, ["media/*", "*.tmp", "*-wal"], True, id="exclude-list-none-match"),
     ],
 )
-def test_path_matches_filter(path, include, exclude, expected):
-    assert path_matches_filter(path, include=include, exclude=exclude) is expected
+def test_is_path_in_scope(path, include, exclude, expected):
+    assert is_path_in_scope(path, include=include, exclude=exclude) is expected
 
 
 @pytest.mark.parametrize(
@@ -72,8 +72,8 @@ def test_filter_files_keeps_matching_dicts_as_is():
 
 
 def test_filter_files_raises_on_mutually_exclusive_args():
-    """Unlike path_matches_filter, filter_files() is a public entry point (decorated with
-    @validates_file_filter) and does enforce that include/exclude are mutually exclusive.
+    """Unlike is_path_in_scope, filter_files() is the validating entry point and
+    enforces that include/exclude are mutually exclusive.
     """
     files = [{"path": "a.gpkg"}]
     with pytest.raises(ClientError, match="Cannot use both include and exclude"):

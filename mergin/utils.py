@@ -3,8 +3,6 @@ import io
 import json
 import hashlib
 import fnmatch
-import functools
-import inspect
 import re
 import sqlite3
 from datetime import datetime
@@ -283,30 +281,14 @@ def is_mergin_config(path: str) -> bool:
     return filename == "mergin-config.json"
 
 
-def validates_file_filter(func):
-    """
-    Marks a function as accepting an `include`/`exclude` glob-filter signature, and validates
-    those arguments (mutually exclusive) before every call - regardless of whether the caller
-    passed them positionally or by keyword.
-    """
-    signature = inspect.signature(func)
-
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        bound_args = signature.bind_partial(*args, **kwargs)
-        if bound_args.arguments.get("include") and bound_args.arguments.get("exclude"):
-            raise ClientError("Cannot use both include and exclude filters at the same time")
-        return func(*args, **kwargs)
-
-    return wrapper
-
-
-def path_matches_filter(path: str, include: List[str] = None, exclude: List[str] = None) -> bool:
+def is_path_in_scope(path: str, include: List[str] = None, exclude: List[str] = None) -> bool:
     """
     Returns whether `path` should be kept under a sparse-checkout style include/exclude filter.
 
     With `include`, only paths matching at least one glob pattern are kept. With `exclude`,
     paths matching at least one pattern are dropped. With neither given, every path is kept.
+
+    Assumes include/exclude were already validated as mutually exclusive by the caller.
     """
     if include:
         return any(fnmatch.fnmatchcase(path, pattern) for pattern in include)
@@ -315,19 +297,15 @@ def path_matches_filter(path: str, include: List[str] = None, exclude: List[str]
     return True
 
 
-@validates_file_filter
 def filter_files(files: List[dict], include: List[str] = None, exclude: List[str] = None) -> List[dict]:
     """
-    Keep only files matching a sparse-checkout style filter.
+    Keep only files (dict with 'path' key) matching a sparse-checkout style filter.
 
-    :param files: list of file metadata dicts, each with a 'path' key
-    :param include: glob patterns - only matching files are kept
-    :param exclude: glob patterns - matching files are dropped
-    :returns: filtered list of file metadata dicts
-
-    .. seealso:: path_matches_filter
+    .. seealso:: is_path_in_scope
     """
-    return [f for f in files if path_matches_filter(f["path"], include=include, exclude=exclude)]
+    if include and exclude:
+        raise ClientError("Cannot use both include and exclude filters at the same time")
+    return [f for f in files if is_path_in_scope(f["path"], include=include, exclude=exclude)]
 
 
 def bytes_to_human_size(bytes: int):
