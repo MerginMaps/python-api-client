@@ -249,16 +249,20 @@ def list_projects(ctx, name, namespace, order_params):
 @click.argument("project")
 @click.argument("directory", type=click.Path(), required=False)
 @click.option("--version", default=None, help="Version of project to download")
+@click.option("--include", multiple=True, help="Only download files matching this pattern, e.g. '*.gpkg'")
+@click.option("--exclude", multiple=True, help="Skip files matching this pattern, e.g. 'media/*'")
 @click.pass_context
-def download(ctx, project, directory, version):
+def download(ctx, project, directory, version, include, exclude):
     """Download last version of mergin project."""
     mc = ctx.obj["client"]
     if mc is None:
         return
+    if include and exclude:
+        raise click.UsageError("--include and --exclude cannot be used together")
     directory = directory or os.path.basename(project)
     click.echo("Downloading into {}".format(directory))
     try:
-        job = download_project_async(mc, project, directory, version)
+        job = download_project_async(mc, project, directory, version, include=include, exclude=exclude)
         with click.progressbar(length=job.total_size) as bar:
             last_transferred_size = 0
             while download_project_is_running(job):

@@ -25,7 +25,7 @@ import concurrent.futures
 from .common import CHUNK_SIZE, ClientError, DeltaChangeType, PullActionType
 from .models import ProjectDelta, ProjectDeltaChange, PullAction
 from .merginproject import MerginProject
-from .utils import cleanup_tmp_dir, is_versioned_file, save_to_file
+from .utils import cleanup_tmp_dir, filter_files, is_path_in_scope, save_to_file, is_versioned_file
 from typing import List, Optional, Union
 
 # status = download_project_async(...)
@@ -261,12 +261,18 @@ def _cleanup_failed_download(mergin_project: MerginProject = None):
     return dest_path
 
 
-def download_project_async(mc, project_path, directory, project_version=None):
+def download_project_async(mc, project_path, directory, project_version=None, include=None, exclude=None):
     """
     Starts project download in background and returns handle to the pending project download.
     Using that object it is possible to watch progress or cancel the ongoing work.
+
+    `include`/`exclude` are optional lists of glob patterns (matched against each file's project
+    path, e.g. "media/*" or "*.gpkg") to only download a subset of the project's files. They are
+    mutually exclusive.
     """
 
+    if include and exclude:
+        raise ClientError("Cannot use both include and exclude filters at the same time")
     if "/" not in project_path:
         raise ClientError("Project name needs to be fully qualified, e.g. <username>/<projectname>")
     if os.path.exists(directory):
@@ -294,6 +300,12 @@ def download_project_async(mc, project_path, directory, project_version=None):
     version = project_info["version"] if project_info["version"] else "v0"
 
     mp.log.info(f"got project info. version {version}")
+
+    # keep only the files matching the filter (if any)
+    project_info["files"] = filter_files(project_info["files"], include=include, exclude=exclude)
+    # persisted once since it must never change again for this checkout
+    if include or exclude:
+        mp.write_file_filter({"include": include, "exclude": exclude})
 
     # prepare download
     update_tasks = []  # stuff to do at the end of download
@@ -544,6 +556,9 @@ def pull_project_async(mc, directory) -> Optional[PullJob]:
         mp.log.info("--- pull aborted")
         raise
 
+    file_filter = mp.file_filter()
+    delta.changes = [c for c in delta.changes if is_path_in_scope(c.path, **file_filter)]
+
     mp.log.info(f"got project versions: local version {local_version} / server version {server_version}")
 
     if local_version == server_version:
@@ -766,6 +781,9 @@ def pull_project_finalize(job: PullJob):
         job.mp.log.info("--- pull aborted")
         cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
         raise ClientError("Failed to apply pull actions: " + str(e))
+
+    # keep only in-scope files in the metadata we're about to persist
+    job.project_info["files"] = filter_files(job.project_info["files"], **job.mp.file_filter())
 
     job.mp.update_metadata(job.project_info)
 
