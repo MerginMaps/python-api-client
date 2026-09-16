@@ -167,6 +167,12 @@ class MerginProject:
         self._read_metadata()
         return self._metadata.get("role")
 
+    def update_project_role(self, role: str) -> None:
+        """Stores the user's current role on the project."""
+        self._read_metadata()
+        self._metadata["role"] = role
+        MerginProject.write_metadata(self.dir, self._metadata)
+
     def project_id(self) -> str:
         """Returns ID of the project (UUID using 8-4-4-4-12 formatting without braces)
 

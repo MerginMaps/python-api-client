@@ -471,3 +471,28 @@ def test_tables_to_skip_and_include_mutually_exclusive():
         mp.set_tables_to_skip(["table_a"])
         with pytest.raises(GeoDiffLibError):
             mp.set_tables_to_include(["table_b"])
+
+
+def test_update_project_role():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        project_dir = os.path.join(tmp_dir, "test_update_project_role")
+        shutil.copytree(TEST_DATA_DIR, project_dir)
+
+        os.makedirs(os.path.join(project_dir, ".mergin"), exist_ok=True)
+        with open(os.path.join(project_dir, "v2_metadata.json"), "r") as f:
+            metadata = json.load(f)
+        project_metadata_file = os.path.join(project_dir, ".mergin", "mergin.json")
+        with open(project_metadata_file, "w") as f:
+            json.dump(metadata, f, indent=2)
+
+        mp = MerginProject(project_dir)
+        assert mp.project_role() == "owner"
+
+        mp.update_project_role("reader")
+        assert mp.project_role() == "reader"
+        # the rest of the metadata has to survive, otherwise the local sync state would be lost
+        assert mp.version() == metadata.get("version")
+        assert mp.files() == metadata.get("files")
+
+        # the new role is on disk, not just in the in-memory cache
+        assert MerginProject(project_dir).project_role() == "reader"

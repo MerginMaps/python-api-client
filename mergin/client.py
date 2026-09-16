@@ -1157,6 +1157,8 @@ class MerginClient:
         mp = MerginProject(directory)
         server_info = self.project_info(mp.project_full_name(), since=mp.version())
 
+        mp.update_project_role(server_info["role"])
+
         pull_changes = mp.get_pull_changes(server_info.get("files", []), server_info.get("version"))
 
         push_changes = mp.get_push_changes()
