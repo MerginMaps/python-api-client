@@ -201,5 +201,3 @@ To run the same check automatically before each commit, install the [pre-commit]
     pip install pre-commit
     pre-commit install
 ```
-
-The hook then runs on every `git commit`.
