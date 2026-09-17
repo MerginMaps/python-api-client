@@ -34,7 +34,7 @@ from .common import (
 )
 from .merginproject import MerginProject, pygeodiff
 from .editor import filter_changes
-from .utils import get_data_checksum, cleanup_tmp_dir
+from .utils import get_data_checksum, cleanup_tmp_dir, filter_files
 
 POST_JSON_HEADERS = {"Content-Type": "application/json"}
 
@@ -457,6 +457,9 @@ def push_project_finalize(job: UploadJob):
                 job.mp.log.info("cancel response: " + str(err2))
             cleanup_tmp_dir(job.mp, job.tmp_dir)  # delete our temporary dir and all its content
             raise err
+
+    # keep only in-scope files in the metadata we're about to persist
+    job.server_resp["files"] = filter_files(job.server_resp["files"], **job.mp.file_filter())
 
     job.mp.update_metadata(job.server_resp)
     try:

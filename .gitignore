@@ -14,3 +14,4 @@ deps
 venv
 debug.py
 .vscode/
+.python-version

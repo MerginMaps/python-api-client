@@ -46,6 +46,7 @@ from .client_pull import (
     download_file_async,
     download_files_async,
     download_files_finalize,
+    download_project_file_async,
     download_diffs_async,
     download_project_finalize,
     download_project_wait,
@@ -63,6 +64,7 @@ from .client_push import (
 from .utils import DateTimeEncoder, get_versions_with_file_changes, int_version, is_version_acceptable
 from .utils import (
     DateTimeEncoder,
+    filter_files,
     get_versions_with_file_changes,
     int_version,
     is_version_acceptable,
@@ -902,7 +904,7 @@ class MerginClient:
         filtered_versions = list(filter(lambda v: (num_since <= int_version(v["name"]) <= num_to), versions))
         return filtered_versions
 
-    def download_project(self, project_path, directory, version=None):
+    def download_project(self, project_path, directory, version=None, include=None, exclude=None):
         """
         Download project into given directory. If version is not specified, latest version is downloaded
 
@@ -914,8 +916,16 @@ class MerginClient:
 
         :param version: Project version to download, e.g. v42
         :type version: String
+
+        :param include: Optional list of glob patterns (matched against each file's project path, e.g.
+            "media/*" or "*.gpkg") - only matching files are downloaded.
+        :type include: List[String]
+
+        :param exclude: Optional list of glob patterns - matching files are skipped. Mutually exclusive
+            with include.
+        :type exclude: List[String]
         """
-        job = download_project_async(self, project_path, directory, version)
+        job = download_project_async(self, project_path, directory, version, include=include, exclude=exclude)
         download_project_wait(job)
         download_project_finalize(job)
 
@@ -1158,6 +1168,10 @@ class MerginClient:
         server_info = self.project_info(mp.project_full_name(), since=mp.version())
 
         pull_changes = mp.get_pull_changes(server_info.get("files", []), server_info.get("version"))
+        # on a sparse checkout, don't report excluded files as pending server changes -
+        # they were never meant to be pulled in the first place
+        file_filter = mp.file_filter()
+        pull_changes = {change_type: filter_files(files, **file_filter) for change_type, files in pull_changes.items()}
 
         push_changes = mp.get_push_changes()
         push_changes_summary = mp.get_list_of_push_changes(push_changes)
@@ -1209,6 +1223,24 @@ class MerginClient:
         :type version: String
         """
         job = download_file_async(self, project_dir, file_path, output_filename, version=version)
+        pull_project_wait(job)
+        download_file_finalize(job)
+
+    def download_project_file(self, project_path, file_path, output_filename, version=None):
+        """
+        Download a single project file at specified version directly from the server, without
+        needing an existing local project checkout.
+
+        :param project_path: full project name ("<workspace>/<project>")
+        :type project_path: String
+        :param file_path: relative path of file to download in the project directory
+        :type file_path: String
+        :param output_filename: full destination path for saving the downloaded file
+        :type output_filename: String
+        :param version: optional version tag for downloaded file
+        :type version: String
+        """
+        job = download_project_file_async(self, project_path, file_path, output_filename, version=version)
         pull_project_wait(job)
         download_file_finalize(job)
 
