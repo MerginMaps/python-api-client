@@ -1167,6 +1167,8 @@ class MerginClient:
         mp = MerginProject(directory)
         server_info = self.project_info(mp.project_full_name(), since=mp.version())
 
+        mp.update_project_role(server_info["role"])
+
         pull_changes = mp.get_pull_changes(server_info.get("files", []), server_info.get("version"))
         # on a sparse checkout, don't report excluded files as pending server changes -
         # they were never meant to be pulled in the first place
