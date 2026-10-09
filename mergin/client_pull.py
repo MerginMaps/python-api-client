@@ -182,7 +182,7 @@ class DownloadFile:
 
     def from_chunks(self):
         """Merges downloaded chunks into a single file at dest_file path"""
-        file_dir = os.path.dirname(self.dest_file)
+        file_dir = os.path.abspath(os.path.dirname(self.dest_file))
         os.makedirs(file_dir, exist_ok=True)
 
         with open(self.dest_file, "wb") as final:
@@ -437,7 +437,7 @@ class UpdateTask:
             file_dir = os.path.dirname(os.path.normpath(os.path.join(directory, self.file_path)))
             dest_file_path = os.path.join(file_dir, basename)
         else:
-            file_dir = os.path.dirname(os.path.normpath(self.destination_file))
+            file_dir = os.path.dirname(os.path.abspath(self.destination_file))
             dest_file_path = self.destination_file
         os.makedirs(file_dir, exist_ok=True)
 
