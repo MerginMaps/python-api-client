@@ -1274,7 +1274,7 @@ class MerginClient:
             diffs.append(mp.fpath_cache(file_history["history"][v]["diff"]["path"], v))
 
         # concatenate diffs, if needed
-        output_dir = os.path.dirname(output_diff)
+        output_dir = os.path.abspath(os.path.dirname(output_diff))
         if len(diffs) >= 1:
             os.makedirs(output_dir, exist_ok=True)
             if len(diffs) > 1:
