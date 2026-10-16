@@ -2,7 +2,9 @@ import os
 import shutil
 import json
 import tempfile
+from types import SimpleNamespace
 import pytest
+from mergin import merginproject
 from mergin.merginproject import MerginProject
 from pygeodiff import GeoDiffLibError
 from mergin.common import DeltaChangeType, PullActionType, ClientError
@@ -497,3 +499,19 @@ def test_update_project_role():
 
         # the new role is on disk, not just in the in-memory cache
         assert MerginProject(project_dir).project_role() == "reader"
+
+
+@pytest.mark.parametrize(
+    "system, machine, callback_set",
+    [("Darwin", "x86_64", False), ("Darwin", "arm64", True), ("Linux", "x86_64", True)],
+)
+def test_geodiff_logger_callback_platforms(monkeypatch, system, machine, callback_set):
+    """The geodiff logger callback is skipped on Intel macOS, where creating it hangs QGIS."""
+    callbacks = []
+    monkeypatch.setattr(merginproject.pygeodiff.GeoDiff, "set_logger_callback", lambda self, cb: callbacks.append(cb))
+    monkeypatch.setattr(merginproject, "platform", SimpleNamespace(system=lambda: system, machine=lambda: machine))
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        MerginProject(tmp_dir)
+
+    assert bool(callbacks) == callback_set

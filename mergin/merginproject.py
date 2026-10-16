@@ -2,6 +2,7 @@ import json
 import logging
 import math
 import os
+import platform
 import re
 import shutil
 from typing import List, Optional, Dict
@@ -87,8 +88,10 @@ class MerginProject:
             else:
                 self.log.info("GEODIFF: " + text)
 
-        self.geodiff.set_logger_callback(_logger_callback)
-        self.geodiff.set_maximum_logger_level(pygeodiff.GeoDiff.LevelDebug)
+        # creating a ctypes callback hangs forever in the hardened QGIS build on Intel macOS
+        if not (platform.system() == "Darwin" and platform.machine() == "x86_64"):
+            self.geodiff.set_logger_callback(_logger_callback)
+            self.geodiff.set_maximum_logger_level(pygeodiff.GeoDiff.LevelDebug)
 
     def setup_logging(self, logger_name):
         """Setup logging into project directory's .mergin/client-log.txt file."""
