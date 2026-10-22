@@ -236,16 +236,16 @@ class MerginProject:
         with "include" and "exclude" keys. Stored in its own file (.mergin/file_filter.json)
         """
         filter_file = self.fpath_meta("file_filter.json")
-        if not os.path.exists(filter_file):
+        if not fs.exists(filter_file):
             return {"include": None, "exclude": None}
-        with open(filter_file, "r") as f:
+        with fs.open_file(filter_file, "r") as f:
             return json.load(f)
 
     def write_file_filter(self, file_filter: dict) -> None:
         """
         Persists the include/exclude file filter this project was downloaded with.
         """
-        with open(self.fpath_meta("file_filter.json"), "w") as f:
+        with fs.open_file(self.fpath_meta("file_filter.json"), "w") as f:
             json.dump(file_filter, f, indent=2)
 
     @property

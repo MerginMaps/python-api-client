@@ -26,7 +26,6 @@ from .common import CHUNK_SIZE, ClientError, DeltaChangeType, PullActionType
 from .models import ProjectDelta, ProjectDeltaChange, PullAction
 from .merginproject import MerginProject
 from . import fs
-from typing import List, Optional
 from .utils import cleanup_tmp_dir, filter_files, is_path_in_scope, save_to_file, is_versioned_file
 from typing import List, Optional, Union
 
