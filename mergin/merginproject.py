@@ -4,7 +4,6 @@ import math
 import os
 import platform
 import re
-import shutil
 from typing import List, Optional, Dict
 import typing
 import uuid
@@ -20,6 +19,7 @@ from .models import ProjectDelta, ProjectDeltaChange, ProjectDeltaItemDiff, Pull
 from .utils import (
     generate_checksum,
     is_versioned_file,
+    long_path,
     int_version,
     do_sqlite_checkpoint,
     unique_path_name,
@@ -29,6 +29,7 @@ from .utils import (
     is_path_in_scope,
 )
 from .local_changes import FileChange
+from . import fs
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -50,19 +51,19 @@ class MerginProject:
 
     def __init__(self, directory):
         self.dir = os.path.abspath(directory)
-        if not os.path.exists(self.dir):
+        if not fs.exists(self.dir):
             raise InvalidProject("Project directory does not exist")
 
         self.meta_dir = os.path.join(self.dir, ".mergin")
-        if not os.path.exists(self.meta_dir):
-            os.mkdir(self.meta_dir)
+        if not fs.exists(self.meta_dir):
+            fs.mkdir(self.meta_dir)
 
         # location for files from unfinished pull
         self.unfinished_pull_dir = os.path.join(self.meta_dir, "unfinished_pull")
 
         self.cache_dir = os.path.join(self.meta_dir, ".cache")
-        if not os.path.exists(self.cache_dir):
-            os.mkdir(self.cache_dir)
+        if not fs.exists(self.cache_dir):
+            fs.mkdir(self.cache_dir)
 
         # metadata from JSON are lazy loaded
         self._metadata = None
@@ -100,7 +101,9 @@ class MerginProject:
         if not self.log.handlers:
             # we only need to set the handler once
             # (otherwise we would get things logged multiple times as loggers are cached)
-            log_handler = logging.FileHandler(os.path.join(self.meta_dir, "client-log.txt"), encoding="utf-8")
+            log_handler = logging.FileHandler(
+                long_path(os.path.join(self.meta_dir, "client-log.txt")), encoding="utf-8"
+            )
             log_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
             self.log.addHandler(log_handler)
 
@@ -127,7 +130,7 @@ class MerginProject:
         root = other_dir or self.dir
         abs_path = os.path.abspath(os.path.join(root, file))
         f_dir = os.path.dirname(abs_path)
-        os.makedirs(f_dir, exist_ok=True)
+        fs.makedirs(f_dir, exist_ok=True)
         return abs_path
 
     def fpath_meta(self, file):
@@ -233,16 +236,16 @@ class MerginProject:
         with "include" and "exclude" keys. Stored in its own file (.mergin/file_filter.json)
         """
         filter_file = self.fpath_meta("file_filter.json")
-        if not os.path.exists(filter_file):
+        if not fs.exists(filter_file):
             return {"include": None, "exclude": None}
-        with open(filter_file, "r") as f:
+        with fs.open_file(filter_file, "r") as f:
             return json.load(f)
 
     def write_file_filter(self, file_filter: dict) -> None:
         """
         Persists the include/exclude file filter this project was downloaded with.
         """
-        with open(self.fpath_meta("file_filter.json"), "w") as f:
+        with fs.open_file(self.fpath_meta("file_filter.json"), "w") as f:
             json.dump(file_filter, f, indent=2)
 
     @property
@@ -260,9 +263,9 @@ class MerginProject:
         """Loads the project's metadata from JSON"""
         if self._metadata is not None:
             return
-        if not os.path.exists(self.fpath_meta("mergin.json")):
+        if not fs.exists(self.fpath_meta("mergin.json")):
             raise InvalidProject("Project metadata has not been created yet")
-        with open(self.fpath_meta("mergin.json"), "r") as file:
+        with fs.open_file(self.fpath_meta("mergin.json"), "r") as file:
             self._metadata = json.load(file)
 
         self.is_old_metadata = "/" in self._metadata["name"]
@@ -282,9 +285,9 @@ class MerginProject:
         (and therefore creating MerginProject would fail).
         """
         meta_dir = os.path.join(project_directory, ".mergin")
-        os.makedirs(meta_dir, exist_ok=True)
+        fs.makedirs(meta_dir, exist_ok=True)
         metadata_json_file = os.path.abspath(os.path.join(meta_dir, "mergin.json"))
-        with open(metadata_json_file, "w") as file:
+        with fs.open_file(metadata_json_file, "w") as file:
             json.dump(data, file, indent=2)
 
     def is_versioned_file(self, file):
@@ -309,7 +312,7 @@ class MerginProject:
         f_extension = os.path.splitext(path)[1]
         if f_extension != ".gpkg":
             return False
-        if os.path.exists(f"{path}-wal"):
+        if fs.exists(f"{path}-wal"):
             return True
         return False
 
@@ -341,14 +344,13 @@ class MerginProject:
         """
         file_filter = self.file_filter()
         files_meta = []
-        for root, dirs, files in os.walk(self.dir, topdown=True):
+        for root, dirs, files in fs.walk(self.dir, topdown=True):
             dirs[:] = [d for d in dirs if d not in [".mergin"]]
             for file in files:
                 if self.ignore_file(file):
                     continue
-
-                abs_path = os.path.abspath(os.path.join(root, file))
-                rel_path = os.path.relpath(abs_path, start=self.dir)
+                abs_path = os.path.join(root, file)
+                rel_path = os.path.relpath(abs_path, start=long_path(self.dir))
                 proj_path = "/".join(rel_path.split(os.path.sep))  # we need posix path
                 if not is_path_in_scope(proj_path, **file_filter):
                     continue
@@ -356,8 +358,8 @@ class MerginProject:
                     {
                         "path": proj_path,
                         "checksum": generate_checksum(abs_path),
-                        "size": os.path.getsize(abs_path),
-                        "mtime": datetime.fromtimestamp(os.path.getmtime(abs_path), tzlocal()),
+                        "size": fs.getsize(abs_path),
+                        "mtime": datetime.fromtimestamp(fs.getmtime(abs_path), tzlocal()),
                     }
                 )
         return files_meta
@@ -657,16 +659,16 @@ class MerginProject:
                 delta_item.size = checkpoint_size
                 delta_item.checksum = checkpoint_checksum
 
+            diff_location = self.fpath(diff_file, diff_directory)
             try:
-                diff_location = self.fpath(diff_file, diff_directory)
                 self.geodiff.create_changeset(origin_file, current_file, diff_location)
                 if not self.geodiff.has_changes(diff_location):
-                    os.remove(diff_location)
+                    fs.remove(diff_location)
                     continue
 
                 delta_item.checksum = change.get("origin_checksum")
                 delta_item.type = DeltaChangeType.UPDATE_DIFF
-                os.remove(diff_location)
+                fs.remove(diff_location)
             except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as e:
                 self.log.warning("failed to create changeset for " + path)
                 # probably the database schema has been modified if geodiff cannot create changeset.
@@ -714,19 +716,19 @@ class MerginProject:
             try:
                 self.geodiff.create_changeset(origin_file, current_file, diff_file)
                 if self.geodiff.has_changes(diff_file):
-                    diff_size = os.path.getsize(diff_file)
+                    diff_size = fs.getsize(diff_file)
                     file["checksum"] = file["origin_checksum"]  # need to match basefile on server
                     file["chunks"] = [str(uuid.uuid4()) for i in range(math.ceil(diff_size / UPLOAD_CHUNK_SIZE))]
-                    file["mtime"] = datetime.fromtimestamp(os.path.getmtime(current_file), tzlocal())
+                    file["mtime"] = datetime.fromtimestamp(fs.getmtime(current_file), tzlocal())
                     file["diff"] = {
                         "path": diff_name,
                         "checksum": generate_checksum(diff_file),
                         "size": diff_size,
-                        "mtime": datetime.fromtimestamp(os.path.getmtime(diff_file), tzlocal()),
+                        "mtime": datetime.fromtimestamp(fs.getmtime(diff_file), tzlocal()),
                     }
                 else:
-                    if os.path.exists(diff_file):
-                        os.remove(diff_file)
+                    if fs.exists(diff_file):
+                        fs.remove(diff_file)
                     not_updated.append(file)
             except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError) as e:
                 self.log.warning("failed to create changeset for " + path)
@@ -745,9 +747,9 @@ class MerginProject:
         path = f.path
         self.log.info("Making a temporary copy (full upload): " + path)
         tmp_file = os.path.join(tmp_dir, path)
-        os.makedirs(os.path.dirname(tmp_file), exist_ok=True)
+        fs.makedirs(os.path.dirname(tmp_file), exist_ok=True)
         self.geodiff.make_copy_sqlite(self.fpath(path), tmp_file)
-        f.size = os.path.getsize(tmp_file)
+        f.size = fs.getsize(tmp_file)
         f.checksum = generate_checksum(tmp_file)
         f.chunks = [str(uuid.uuid4()) for i in range(math.ceil(f.size / UPLOAD_CHUNK_SIZE))]
         f.upload_file = tmp_file
@@ -762,10 +764,10 @@ class MerginProject:
                 result_file = self.fpath("change_list" + str(idx), self.meta_dir)
                 try:
                     self.geodiff.list_changes_summary(changeset, result_file)
-                    with open(result_file, "r") as f:
+                    with fs.open_file(result_file, "r") as f:
                         change = f.read()
                         changes[file["path"]] = json.loads(change)
-                    os.remove(result_file)
+                    fs.remove(result_file)
                 except (pygeodiff.GeoDiffLibError, pygeodiff.GeoDiffLibConflictError):
                     pass
         return changes
@@ -802,7 +804,7 @@ class MerginProject:
                     self.geodiff.make_copy_sqlite(server_file, live_file)
                     self.geodiff.make_copy_sqlite(server_file, basefile)
                 else:
-                    shutil.copy(server_file, live_file)
+                    fs.copy(server_file, live_file)
             elif action_type == PullActionType.APPLY_DIFF_NO_REBASE:
                 # simply apply the diff without rebase (no local changes or non-conflicting local changes)
                 self.update_without_rebase(path, server_file, live_file, basefile, download_dir)
@@ -828,14 +830,14 @@ class MerginProject:
                         f_server_unfinished = self.fpath_unfinished_pull(path)
                         self.geodiff.make_copy_sqlite(server_file, f_server_unfinished)
                 else:
-                    shutil.copy(server_file, live_file)
+                    fs.copy(server_file, live_file)
 
             elif action_type == PullActionType.DELETE:
                 # remove local file
-                if os.path.exists(live_file):
-                    os.remove(live_file)
-                    if self.is_versioned_file(path) and os.path.exists(basefile):
-                        os.remove(basefile)
+                if fs.exists(live_file):
+                    fs.remove(live_file)
+                    if self.is_versioned_file(path) and fs.exists(basefile):
+                        fs.remove(basefile)
 
         return conflicts
 
@@ -964,7 +966,7 @@ class MerginProject:
 
                 basefile = self.fpath_meta(path)
                 if k == "removed":
-                    os.remove(basefile)
+                    fs.remove(basefile)
                 elif k == "added":
                     self.geodiff.make_copy_sqlite(self.fpath(path), basefile)
                 elif k == "updated":
@@ -981,7 +983,7 @@ class MerginProject:
                         if patch_error:
                             # in case of local sync issues it is safier to remove basefile, next time it will be downloaded from server
                             self.log.warning("removing basefile (because of apply diff error) for: " + path)
-                            os.remove(basefile)
+                            fs.remove(basefile)
                 else:
                     pass
 
@@ -995,7 +997,7 @@ class MerginProject:
         :rtype: str
         """
         src = self.fpath(file)
-        if not os.path.exists(src):
+        if not fs.exists(src):
             return
 
         backup_path = unique_path_name(
@@ -1005,7 +1007,7 @@ class MerginProject:
         if self.is_versioned_file(file):
             self.geodiff.make_copy_sqlite(src, backup_path)
         else:
-            shutil.copy(src, backup_path)
+            fs.copy(src, backup_path)
         return backup_path
 
     def apply_diffs(self, basefile, diffs):
@@ -1046,7 +1048,7 @@ class MerginProject:
         :returns: whether there is an unfinished pull
         :rtype: bool
         """
-        return os.path.exists(self.unfinished_pull_dir)
+        return fs.exists(self.unfinished_pull_dir)
 
     def resolve_unfinished_pull(self, user_name):
         """
@@ -1076,10 +1078,10 @@ class MerginProject:
 
         self.log.info("resolving unfinished pull")
 
-        for root, dirs, files in os.walk(self.unfinished_pull_dir):
+        for root, dirs, files in fs.walk(self.unfinished_pull_dir):
             for file_name in files:
-                src = os.path.join(root, file_name)
-                file_path = os.path.relpath(src, self.unfinished_pull_dir)
+                file_path = os.path.relpath(os.path.join(root, file_name), long_path(self.unfinished_pull_dir))
+                src = self.fpath_unfinished_pull(file_path)
                 dest = self.fpath(file_path)
                 basefile = self.fpath_meta(file_path)
 
@@ -1100,7 +1102,7 @@ class MerginProject:
                     self.log.error("unable to apply changes from previous unfinished pull!")
                     raise ClientError("Unable to resolve unfinished pull!")
 
-        shutil.rmtree(self.unfinished_pull_dir)
+        fs.rmtree(self.unfinished_pull_dir)
         self.log.info("unfinished pull resolved successfuly!")
         return conflicts
 
