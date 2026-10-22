@@ -1,42 +1,16 @@
-name: Python-api QA (Security & Style)
+name: QGIS Plugin Repository Checks
 
-# Trigger the workflow on every push
 on: [push]
 
 jobs:
-  quality-assurance:
+  qgis_repo_checks:
+    name: Mirror plugins.qgis.org upload scan
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      # This package ships inside the QGIS plugin zip, so the scan that gates it is
+      # the plugin's. The action lives there to keep one copy of the rule snapshot.
+      - uses: MerginMaps/qgis-plugin/.github/actions/qgis-repo-checks@master
         with:
-          python-version: '3.10'
-
-      - name: Install dependencies
-        run: |
-          # Upgrade pip and install security/linting tools
-          python -m pip install --upgrade pip
-          pip install bandit detect-secrets
-
-      # - name: Install dependencies
-      #   run: |
-      #     # Upgrade pip and install security/linting tools
-      #     python -m pip install --upgrade pip
-      #     pip install bandit detect-secrets flake8 flake8-json
-
-      - name: Run Bandit (Security Scan)
-        # Scan the mergin folder for vulnerabilities, excluding the test directory
-        run: bandit -r ./mergin/ -ll --exclude ./mergin/test
-
-      - name: Run Detect Secrets
-        # Scan the plugin directory for hardcoded secrets/credentials
-        run: detect-secrets scan ./mergin/ --all-files
-
-      # - name: Run Flake8 (Style Check)
-      #   # Style enforcement using MerginMaps standards
-      #   # Ignoring E501 (line length) and W503 (operator line breaks)
-      #   run: |
-      #     flake8 ./mergin/ --max-line-length=120 --ignore=E501,W503 --exclude=test
+          root: mergin

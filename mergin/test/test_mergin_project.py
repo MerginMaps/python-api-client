@@ -2,7 +2,9 @@ import os
 import shutil
 import json
 import tempfile
+from types import SimpleNamespace
 import pytest
+from mergin import merginproject
 from mergin.merginproject import MerginProject
 from pygeodiff import GeoDiffLibError
 from mergin.common import DeltaChangeType, PullActionType, ClientError
@@ -186,6 +188,7 @@ def test_get_local_delta():
         # Mock files() to return origin info for version lookup
         mp.files = lambda: []
         mp.inspect_files = lambda: []  # Dummy return
+        mp.file_filter = lambda: {"include": None, "exclude": None}  # no sparse checkout filter in this test
 
         # check if geopackage is updated (is_open) but missing - geodiff lib error, than updated file is reported
         mock_changes = {
@@ -471,3 +474,44 @@ def test_tables_to_skip_and_include_mutually_exclusive():
         mp.set_tables_to_skip(["table_a"])
         with pytest.raises(GeoDiffLibError):
             mp.set_tables_to_include(["table_b"])
+
+
+def test_update_project_role():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        project_dir = os.path.join(tmp_dir, "test_update_project_role")
+        shutil.copytree(TEST_DATA_DIR, project_dir)
+
+        os.makedirs(os.path.join(project_dir, ".mergin"), exist_ok=True)
+        with open(os.path.join(project_dir, "v2_metadata.json"), "r") as f:
+            metadata = json.load(f)
+        project_metadata_file = os.path.join(project_dir, ".mergin", "mergin.json")
+        with open(project_metadata_file, "w") as f:
+            json.dump(metadata, f, indent=2)
+
+        mp = MerginProject(project_dir)
+        assert mp.project_role() == "owner"
+
+        mp.update_project_role("reader")
+        assert mp.project_role() == "reader"
+        # the rest of the metadata has to survive, otherwise the local sync state would be lost
+        assert mp.version() == metadata.get("version")
+        assert mp.files() == metadata.get("files")
+
+        # the new role is on disk, not just in the in-memory cache
+        assert MerginProject(project_dir).project_role() == "reader"
+
+
+@pytest.mark.parametrize(
+    "system, machine, callback_set",
+    [("Darwin", "x86_64", False), ("Darwin", "arm64", True), ("Linux", "x86_64", True)],
+)
+def test_geodiff_logger_callback_platforms(monkeypatch, system, machine, callback_set):
+    """The geodiff logger callback is skipped on Intel macOS, where creating it hangs QGIS."""
+    callbacks = []
+    monkeypatch.setattr(merginproject.pygeodiff.GeoDiff, "set_logger_callback", lambda self, cb: callbacks.append(cb))
+    monkeypatch.setattr(merginproject, "platform", SimpleNamespace(system=lambda: system, machine=lambda: machine))
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        MerginProject(tmp_dir)
+
+    assert bool(callbacks) == callback_set

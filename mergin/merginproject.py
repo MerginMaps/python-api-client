@@ -2,6 +2,7 @@ import json
 import logging
 import math
 import os
+import platform
 import re
 from typing import List, Optional, Dict
 import typing
@@ -24,6 +25,8 @@ from .utils import (
     unique_path_name,
     conflicted_copy_file_name,
     edit_conflict_file_name,
+    filter_files,
+    is_path_in_scope,
 )
 from .local_changes import FileChange
 from . import fs
@@ -86,8 +89,10 @@ class MerginProject:
             else:
                 self.log.info("GEODIFF: " + text)
 
-        self.geodiff.set_logger_callback(_logger_callback)
-        self.geodiff.set_maximum_logger_level(pygeodiff.GeoDiff.LevelDebug)
+        # creating a ctypes callback hangs forever in the hardened QGIS build on Intel macOS
+        if not (platform.system() == "Darwin" and platform.machine() == "x86_64"):
+            self.geodiff.set_logger_callback(_logger_callback)
+            self.geodiff.set_maximum_logger_level(pygeodiff.GeoDiff.LevelDebug)
 
     def setup_logging(self, logger_name):
         """Setup logging into project directory's .mergin/client-log.txt file."""
@@ -170,6 +175,12 @@ class MerginProject:
         self._read_metadata()
         return self._metadata.get("role")
 
+    def update_project_role(self, role: str) -> None:
+        """Stores the user's current role on the project."""
+        self._read_metadata()
+        self._metadata["role"] = role
+        MerginProject.write_metadata(self.dir, self._metadata)
+
     def project_id(self) -> str:
         """Returns ID of the project (UUID using 8-4-4-4-12 formatting without braces)
 
@@ -214,9 +225,28 @@ class MerginProject:
         return self._metadata["version"]
 
     def files(self) -> list:
-        """Returns project's list of files (each file being a dictionary)"""
+        """Returns project's list of files (each file being a dictionary), scoped to this
+        project's file_filter() if one is set (sparse checkout)."""
         self._read_metadata()
-        return self._metadata["files"]
+        return filter_files(self._metadata["files"], **self.file_filter())
+
+    def file_filter(self) -> dict:
+        """
+        Returns the include/exclude file filter this project was downloaded with, as a dict
+        with "include" and "exclude" keys. Stored in its own file (.mergin/file_filter.json)
+        """
+        filter_file = self.fpath_meta("file_filter.json")
+        if not os.path.exists(filter_file):
+            return {"include": None, "exclude": None}
+        with open(filter_file, "r") as f:
+            return json.load(f)
+
+    def write_file_filter(self, file_filter: dict) -> None:
+        """
+        Persists the include/exclude file filter this project was downloaded with.
+        """
+        with open(self.fpath_meta("file_filter.json"), "w") as f:
+            json.dump(file_filter, f, indent=2)
 
     @property
     def metadata(self) -> dict:
@@ -307,10 +337,12 @@ class MerginProject:
     def inspect_files(self):
         """
         Inspect files in project directory and return metadata.
+        Only files matching this project's file_filter() are included.
 
         :returns: metadata for files in project directory in server required format
         :rtype: list[dict]
         """
+        file_filter = self.file_filter()
         files_meta = []
         for root, dirs, files in fs.walk(self.dir, topdown=True):
             dirs[:] = [d for d in dirs if d not in [".mergin"]]
@@ -320,6 +352,8 @@ class MerginProject:
                 abs_path = os.path.join(root, file)
                 rel_path = os.path.relpath(abs_path, start=long_path(self.dir))
                 proj_path = "/".join(rel_path.split(os.path.sep))  # we need posix path
+                if not is_path_in_scope(proj_path, **file_filter):
+                    continue
                 files_meta.append(
                     {
                         "path": proj_path,

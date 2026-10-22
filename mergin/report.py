@@ -285,7 +285,7 @@ def create_report(mc, directory, since, to, out_file):
             raise ClientError("Reporting failed, please check log for details")
 
     # export report to csv file
-    out_dir = os.path.dirname(out_file)
+    out_dir = os.path.abspath(os.path.dirname(out_file))
     fs.makedirs(out_dir, exist_ok=True)
     with fs.open_file(out_file, "w", newline="") as f_csv:
         writer = csv.DictWriter(f_csv, fieldnames=headers)

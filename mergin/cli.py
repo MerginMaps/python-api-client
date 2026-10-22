@@ -29,6 +29,7 @@ from mergin.client_pull import (
     download_project_cancel,
     download_file_async,
     download_file_finalize,
+    download_project_file_async,
     download_project_finalize,
     download_project_is_running,
 )
@@ -248,16 +249,20 @@ def list_projects(ctx, name, namespace, order_params):
 @click.argument("project")
 @click.argument("directory", type=click.Path(), required=False)
 @click.option("--version", default=None, help="Version of project to download")
+@click.option("--include", multiple=True, help="Only download files matching this pattern, e.g. '*.gpkg'")
+@click.option("--exclude", multiple=True, help="Skip files matching this pattern, e.g. 'media/*'")
 @click.pass_context
-def download(ctx, project, directory, version):
+def download(ctx, project, directory, version, include, exclude):
     """Download last version of mergin project."""
     mc = ctx.obj["client"]
     if mc is None:
         return
+    if include and exclude:
+        raise click.UsageError("--include and --exclude cannot be used together")
     directory = directory or os.path.basename(project)
     click.echo("Downloading into {}".format(directory))
     try:
-        job = download_project_async(mc, project, directory, version)
+        job = download_project_async(mc, project, directory, version, include=include, exclude=exclude)
         with click.progressbar(length=job.total_size) as bar:
             last_transferred_size = 0
             while download_project_is_running(job):
@@ -335,17 +340,33 @@ def share(ctx, project):
 @click.argument("filepath")
 @click.argument("output")
 @click.option("--version", help="Project version tag, for example 'v3'")
+@click.option(
+    "--project",
+    help="Full project name ('<workspace>/<project>') to download the file directly from the server. "
+    "If not given, the current directory is used and must be an existing checked out project.",
+)
 @click.pass_context
-def download_file(ctx, filepath, output, version):
+def download_file(ctx, filepath, output, version, project):
     """
-    Download project file at specified version. `project` needs to be a combination of namespace/project.
-    If no version is given, the latest will be fetched.
+    Download project file at specified version. If no version is given, the latest will be fetched.
     """
     mc = ctx.obj["client"]
     if mc is None:
         return
     try:
-        job = download_file_async(mc, os.getcwd(), filepath, output, version)
+        if project is not None:
+            job = download_project_file_async(mc, project, filepath, output, version)
+        else:
+            try:
+                MerginProject(os.getcwd()).project_full_name()
+            except InvalidProject:
+                click.secho(
+                    "Current directory is not a Mergin Maps project. Run this command from within a "
+                    "checked out project directory, or pass --project <workspace>/<project>.",
+                    fg="red",
+                )
+                return
+            job = download_file_async(mc, os.getcwd(), filepath, output, version)
         with click.progressbar(length=job.total_size) as bar:
             last_transferred_size = 0
             while download_project_is_running(job):

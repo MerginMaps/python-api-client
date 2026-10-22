@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Mergin Maps Python Client"
+type: software
+authors:
+  - name: "Lutra Consulting Ltd."
+url: "https://pypi.org/project/mergin-client/"
+repository-code: "https://github.com/MerginMaps/python-api-client"
+license: MIT

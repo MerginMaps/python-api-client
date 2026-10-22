@@ -3,7 +3,7 @@ import tempfile
 import pytest
 from mergin.common import DeltaChangeType, CHUNK_SIZE
 from mergin.models import ProjectDeltaChange, ProjectDeltaItemDiff
-from mergin.client_pull import get_download_diff_files, get_download_items
+from mergin.client_pull import DownloadQueueItem, UpdateTask, get_download_diff_files, get_download_items
 
 
 def test_get_diff_download_files():
@@ -74,3 +74,20 @@ def test_get_download_items():
         assert items[0].file_path == "base.gpkg"
         assert items[0].size == 50
         assert items[0].download_file_path == os.path.join(tmp_dir, "diff_file.0")
+
+
+@pytest.mark.parametrize("output_file", ["out.txt", "./out.txt"])
+def test_update_task_apply_to_bare_filename(output_file, monkeypatch):
+    """Single file download must accept an output path without a directory part."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        chunk_path = os.path.join(tmp_dir, "data.txt.0")
+        with open(chunk_path, "wb") as f:
+            f.write(b"content")
+        item = DownloadQueueItem("data.txt", 7, "v1", False, 0, chunk_path)
+        task = UpdateTask("data.txt", [item], destination_file=output_file)
+
+        monkeypatch.chdir(tmp_dir)
+        task.apply(tmp_dir, None)
+
+        with open(os.path.join(tmp_dir, "out.txt"), "rb") as f:
+            assert f.read() == b"content"

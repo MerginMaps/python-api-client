@@ -9,8 +9,7 @@
 
 This repository contains a Python client module for access to [Mergin Maps](https://merginmaps.com/) service and a command-line tool for easy access to data stored in Mergin Maps.
 
-<div><img align="left" width="45" height="45" src="https://raw.githubusercontent.com/MerginMaps/docs/main/src/public/slack.svg"><a href="https://merginmaps.com/community/join">Join our community chat</a><br/>and ask questions!</div><br />
-
+<a href="https://community.merginmaps.com">Join our community</a> and ask questions!
 
 To install the module:
 ```bash
@@ -191,4 +190,14 @@ For running test do:
     export TEST_API_PASSWORD2=<pwd2>
     pip install pytest pytest-cov coveralls
     pytest --cov-report html --cov=mergin mergin/test/
+```
+
+### Code style
+
+Code is formatted with [black](https://github.com/psf/black) (line length 120), enforced in CI.
+To run the same check automatically before each commit, install the [pre-commit](https://pre-commit.com/) hooks once:
+
+```bash
+    pip install pre-commit
+    pre-commit install
 ```
