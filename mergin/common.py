@@ -34,7 +34,7 @@ MAX_UPLOAD_VERSIONED_SIZE = 5 * (1024**3)
 MAX_UPLOAD_CHANGES = 100
 
 # default URL for submitting logs
-MERGIN_DEFAULT_LOGS_URL = "https://g4pfq226j0.execute-api.eu-west-1.amazonaws.com/mergin_client_log_submit"
+MERGIN_DEFAULT_LOGS_URL = "https://api.merginmaps.com/logs"
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
