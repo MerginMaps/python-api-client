@@ -3174,7 +3174,7 @@ def test_workspace_requests(mc: MerginClient):
     # Check type and common value
     assert type(usage) == dict
     assert usage["api"]["allowed"] == True
-    assert usage["history"]["quota"] > 0
+    assert usage["history"]["quota"] == -1
     assert usage["history"]["usage"] == 0
 
     service = user_in_workspace.workspace_service(ws_id)
