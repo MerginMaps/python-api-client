@@ -177,16 +177,16 @@ For using mergin client with its dependencies packaged locally run:
 
 This is the same set of pinned packages the QGIS plugin bundles (see [Locked requirements](#locked-requirements)).
 
-### Running the CLI from source
+### Running from source
 
-Install the package in editable mode into a Python 3.10+ environment. pip creates the `mergin` command, which runs the code from your checkout, so changes apply without reinstalling:
+Install the package in editable mode into a Python 3.10+ environment. pip creates the `mergin` command and makes `import mergin` work in that environment. Both run the code from your checkout, so changes apply without reinstalling:
 ```bash
     pip install -r requirements.txt
     pip install --editable . --no-deps
     mergin --help
 ```
 
-To check the packaged CLI exactly as users get it, build a wheel and install that instead:
+To check the package exactly as users get it, build a wheel and install that instead:
 ```bash
     pip install build
     python -m build
