@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mergin-client"
+dynamic = ["version"]
+description = "Mergin Maps utils and client"
+readme = { text = "Mergin Maps utils and client", content-type = "text/plain" }
+license = "MIT"
+authors = [{ name = "Lutra Consulting Ltd.", email = "info@merginmaps.com" }]
+requires-python = ">=3.10"
+dependencies = [
+    "python-dateutil>=2.9.0,<3",
+    "pygeodiff==2.3.2",
+    "click>=8.1.3,<9",
+    "truststore>=0.10.5",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+]
+
+[project.urls]
+Homepage = "https://github.com/MerginMaps/python-api-client"
+
+[project.scripts]
+mergin = "mergin.cli:cli"
+
+[tool.setuptools.dynamic]
+version = { attr = "mergin.version.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["mergin*"]
+
+[dependency-groups]
+dev = ["pytest", "pytest-cov", "pytz", "black==26.1.0"]
+
+[tool.black]
+line-length = 120

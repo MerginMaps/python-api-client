@@ -1,7 +1,6 @@
-# Black version is kept in sync with .github/workflows/code_style.yml
+# Black version is kept in sync with .github/workflows/code_style.yml and the "dev" group in pyproject.toml
 repos:
   - repo: https://github.com/psf/black-pre-commit-mirror
     rev: 26.1.0
     hooks:
       - id: black
-        args: ["--line-length=120"]

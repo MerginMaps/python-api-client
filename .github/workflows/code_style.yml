@@ -6,10 +6,10 @@ jobs:
   code_style_python:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
       - uses: psf/black@stable
         with:
-          # bump this version as needed
+          # bump this version as needed (keep in sync with .pre-commit-config.yaml and the "dev" group in pyproject.toml)
           version: 26.1.0
-          options: "--check --diff --verbose -l 120"
+          options: "--check --diff --verbose"
           src: "./mergin"

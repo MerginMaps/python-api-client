@@ -163,38 +163,66 @@ Python 3.10+ required. Create `mergin/deps` folder where [geodiff](https://githu
 ```bash
     rm -r mergin/deps
     mkdir mergin/deps
-    pip install python-dateutil pytz truststore
-    pip install pygeodiff --target=mergin/deps
+    pip install -r requirements.dev.txt
+    pip install --no-deps --target=mergin/deps $(grep '^pygeodiff==' requirements.txt)
 ```
 
 For using mergin client with its dependencies packaged locally run:
 ```bash
-    pip install wheel
-    python3 setup.py sdist bdist_wheel
     mkdir -p mergin/deps
-    pip wheel -r mergin_client.egg-info/requires.txt -w mergin/deps
+    pip wheel --no-deps -r requirements.txt -w mergin/deps
     unzip mergin/deps/pygeodiff-*.whl -d mergin/deps
     pip install --editable .
 ```
 
+This is the same set of pinned packages the QGIS plugin bundles (see [Locked requirements](#locked-requirements)).
+
+### Running the CLI from source
+
+Install the package in editable mode into a Python 3.10+ environment. pip creates the `mergin` command, which runs the code from your checkout, so changes apply without reinstalling:
+```bash
+    pip install --editable .
+    mergin --help
+```
+
+To check the packaged CLI exactly as users get it, build a wheel and install that instead:
+```bash
+    pip install build
+    python -m build
+    pip install --force-reinstall dist/mergin_client-*.whl
+    mergin --help
+```
+
 ### Tests
-For running test do:
+With the dependencies from [Installing deps](#installing-deps) in place, run tests with:
 
 ```bash
-    cd mergin
     # TEST_ related vairables are optional
     export TEST_MERGIN_URL=<url> # testing server
     export TEST_API_USERNAME=<username>
     export TEST_API_PASSWORD=<pwd>
     export TEST_API_USERNAME2=<username2>
     export TEST_API_PASSWORD2=<pwd2>
-    pip install pytest pytest-cov coveralls
     pytest --cov-report html --cov=mergin mergin/test/
 ```
 
+### Locked requirements
+
+Dependency ranges live in `pyproject.toml`; that is what users installing from PyPI get. Two generated files pin exact versions on top of that:
+
+- `requirements.txt`: runtime dependencies only. The [QGIS plugin](https://github.com/MerginMaps/qgis-plugin) bundles exactly these into `mergin/deps`.
+- `requirements.dev.txt`: `requirements.txt` plus development and test dependencies, used by CI and for local development.
+
+After changing dependencies in `pyproject.toml`, or to pick up newer versions, regenerate both with Python 3.10 (the version the QGIS plugin bundles for and CI uses) and commit them:
+```bash
+    PYTHON=python3.10 scripts/lock_requirements.sh
+```
+CI runs `pip check` after installing from the lock, so it fails if the pins no longer satisfy `pyproject.toml`.
+
 ### Code style
 
-Code is formatted with [black](https://github.com/psf/black) (line length 120), enforced in CI.
+Code is formatted with [black](https://github.com/psf/black) (line length 120, configured in `pyproject.toml`), enforced in CI.
+Black is installed with `requirements.dev.txt`; to check formatting manually run `black --check ./mergin`.
 To run the same check automatically before each commit, install the [pre-commit](https://pre-commit.com/) hooks once:
 
 ```bash
