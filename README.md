@@ -181,7 +181,8 @@ This is the same set of pinned packages the QGIS plugin bundles (see [Locked req
 
 Install the package in editable mode into a Python 3.10+ environment. pip creates the `mergin` command, which runs the code from your checkout, so changes apply without reinstalling:
 ```bash
-    pip install --editable .
+    pip install -r requirements.txt
+    pip install --editable . --no-deps
     mergin --help
 ```
 

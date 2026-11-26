@@ -34,6 +34,7 @@ version = { attr = "mergin.version.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["mergin*"]
+exclude = ["mergin.test*"]
 
 [dependency-groups]
 dev = ["pytest", "pytest-cov", "pytz", "black==26.1.0"]
