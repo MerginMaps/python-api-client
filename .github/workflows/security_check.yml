@@ -7,7 +7,7 @@ jobs:
     name: Mirror plugins.qgis.org upload scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # This package ships inside the QGIS plugin zip, so the scan that gates it is
       # the plugin's. The action lives there to keep one copy of the rule snapshot.
